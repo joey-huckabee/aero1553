@@ -64,9 +64,7 @@ staged.
    is check 2.
 2. **Missing final newline** — every staged text file must end in `\n`.
    Added in v2.12.0, when check 1 was found to have never enforced the
-   guarantee its description claimed. `*.svg` is exempt: the committed
-   diagrams are PlantUML output, which ends at `>` with no trailing
-   newline, and hand-appending one would be undone by the next render.
+   guarantee its description claimed.
 3. **CRLF line endings** — staged text files must be LF-only.
    Belt-and-suspenders alongside `.gitattributes` if you add one.
 4. **Merge conflict markers** — explicit scan for `<<<<<<<`, `=======`,

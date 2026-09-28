@@ -208,7 +208,7 @@ docs/
 ├── VENDOR-CSV-DIFFS.md Alignment statement vs DDC vendor CSV (column-by-column)
 ├── TRACE-MATRIX.md     Auto-generated trace matrix (L1 -> L2 -> L3 -> tests)
 ├── ROADMAP.md          Versioned roadmap
-└── diagrams/           PlantUML sources and rendered SVGs
+└── diagrams/           Hand-written SVG diagrams (the source of truth)
 
 tests/
 └── conformance/     Cross-implementation suite (Rust ↔ Python oracle)

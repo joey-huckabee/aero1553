@@ -50,6 +50,14 @@ shared behavior) holds at any compatible version pair. See
 - The Python CLI's startup log line now reads `aero1553 v<version>`, the
   same as the Rust CLI's. It previously said `MIE-Decoder v<version>` while
   Rust said `mie-decoder v<version>`.
+- **The architecture diagrams are hand-written SVG, and PlantUML is gone.**
+  `docs/diagrams/{class,component,dataflow}.svg` are now their own source;
+  the `.puml` files and the CI `diagrams` job are removed. The redraw also
+  corrects content that had gone stale: all three implementations are shown
+  (C++ was missing), the temp file is `<dest>.aero1553.tmp.<pid>.…`, several
+  output-safety requirement IDs were wrong, the class diagram's enums and
+  fields now match the code, and the data flow gains the empty-recording and
+  `0x0000` terminator paths and drops an fsync step no implementation has.
 
 ## [3.0.0] — 2026-08-28
 

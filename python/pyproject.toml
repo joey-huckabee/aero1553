@@ -247,7 +247,7 @@ allowed-confusables = ["–", "—", "×", "µ"]
 # function used only by tests is not "dead"). The ignored names are intentional:
 # `option_string` is the argparse Action.__call__ interface arg; the two
 # constants are documented module reference values (MAX_RECORD_BYTES is also in
-# docs/diagrams/class.puml) that stay part of the surface though unused in-tree.
+# docs/diagrams/class.svg) that stay part of the surface though unused in-tree.
 # Run: `poetry -C python run vulture`.
 [tool.vulture]
 paths = ["src", "tests"]

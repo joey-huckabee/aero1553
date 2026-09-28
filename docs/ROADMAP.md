@@ -319,58 +319,6 @@ that will not expire — a C API signature, the C++11 floor, a documented design
 decision, or a tool that cannot parse the alternative. Those are catalogued at
 the suppression list itself.
 
-## Diagram rendering: staleness detection still deferred (two of three causes fixed)
-
-The `diagrams` CI job used to re-render `docs/diagrams/*.puml` and byte-diff the
-result against the committed `*.svg`, and never verified anything, for three
-independent reasons found on 2026-08-09.
-
-**As of v2.15.0 the job no longer claims to check staleness.** The misleading
-step is gone; what replaced it verifies what is actually checkable and
-deterministic — that every source still parses and renders whole. Two of the
-three causes below are now resolved, and the remaining one is the reason
-staleness detection is still deferred rather than merely unfinished.
-
-- **PlantUML names its output after the diagram, not the source file.** Every
-  source opens `@startuml Aero1553 Class Diagram`, so `-o docs/diagrams`
-  writes `Aero1553 Class Diagram.svg` and never touches the tracked
-  `class.svg`. `git diff --exit-code` only inspects tracked files, so the
-  untracked renders are invisible and the step passes unconditionally.
-  **Moot for the current job**, which renders into a scratch directory and
-  never diffs; it returns the moment a staleness guard is attempted, and the
-  fix then is to map `@startuml` names back to source basenames explicitly.
-  Note that fixing *only* this, while leaving the reproducibility problem
-  below, converts a step that always passes into one that always fails.
-- **PlantUML exits 0 on a failed render.** `component.puml` crashes in the
-  smetana layout engine (`java.lang.IllegalStateException` in
-  `smetana.core.JUtils.qsort`, reached from `dot_mincross`) on stable 1.2026.5
-  and 1.2026.6, emitting a truncated ~14 KB SVG where a whole one is ~60 KB —
-  and the process still returns 0. **Fixed in v2.15.0**: the job scans the
-  render log for exceptions and asserts every source produced a non-trivial
-  SVG (>20 KB), because the exit code cannot be trusted. Both halves were
-  verified against 1.2026.5, which the new check correctly rejects.
-- **The pinned version has never matched the committed SVGs, and the version
-  that does can't be pinned.** CI pins stable `1.2026.5`; all three committed
-  SVGs carry `<?plantuml 1.2026.7beta11?>`, a build published only under
-  PlantUML's rolling `snapshot` pre-release, whose assets are named
-  `plantuml-SNAPSHOT.jar` and are overwritten in place. It is the only build
-  tested here that renders all three diagrams without crashing, and it is
-  precisely the one a URL cannot pin. Resolving this means either moving
-  `component.puml` off smetana onto Graphviz `dot` (which CI already installs
-  for `dataflow.puml`) so a stable release suffices, or waiting for the
-  smetana fix to reach a stable release.
-
-A fourth problem constrains whatever is built: **the render is not reproducible
-across machines.** Re-rendering the *unchanged* `component.puml` and
-`dataflow.puml` with the *same* jar on a different host shifted the canvas
-(3350×1490 → 3370×1537 and 3871 → 3844 wide), because PlantUML measures text
-with the JVM's font metrics and those differ by platform and font set. So a
-byte-diff guard can only ever hold if one fixed environment renders every
-committed SVG — a pinned container image, or CI as the sole renderer. A guard
-that instead asserts *"the render completes without error and produces every
-expected file"* is weaker but environment-independent, and would have caught
-two of the three defects above.
-
 ## Performance refinements (deferred)
 
 Surfaced by a source review and **verified real but deliberately deferred** —

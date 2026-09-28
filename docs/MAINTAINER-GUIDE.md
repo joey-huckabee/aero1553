@@ -67,7 +67,7 @@ aero1553/
 │   ├── USER-GUIDE.md       end-to-end walkthrough for analysts / operators
 │   ├── VENDOR-CSV-DIFFS.md alignment statement vs DDC vendor CSV
 │   ├── MAINTAINER-GUIDE.md (this file)
-│   └── diagrams/           PlantUML sources and rendered SVGs
+│   └── diagrams/           hand-written SVG diagrams (the source of truth)
 ├── config/default.toml     fully-commented reference TOML schema
 └── .github/workflows/      ci.yml, cpp-ci.yml, differential.yml, fuzz.yml,
                             codeql.yml, sonarcloud.yml
@@ -153,39 +153,18 @@ python scripts/build-trace-matrix.py --check     # what CI does — exits 1 on d
 # (reads the vendor CSV only — no MIE file, no decoder run)
 python scripts/diagnose-vendor-delta.py vendor.csv
 
-# PlantUML diagrams
-plantuml -tsvg docs/diagrams/*.puml              # regenerate committed SVGs
-
 # CLI dry-runs against a real file
 (cd rust && cargo run --release -- decode path/to/recording.mie -o decoded.csv)
 poetry -C python run aero1553 decode path/to/recording.mie -o decoded.csv
 ```
 
-Commit each `docs/diagrams/*.puml` source with its matching rendered
-`docs/diagrams/*.svg`. Regenerate the SVG whenever the PlantUML source changes —
-**CI will not catch a stale SVG** (it cannot; see §9 and `ROADMAP.md`). It
-*will* catch a source that stops parsing or renders truncated, which the job
-could not do before v2.15.0.
-
-Two traps when regenerating:
-
-- **The output file is named after `@startuml <name>`, not the source.**
-  `plantuml -tsvg docs/diagrams/class.puml` writes
-  `Aero1553 Class Diagram.svg`. Rename it onto `class.svg` yourself.
-- **PlantUML exits 0 on a crashed render**, leaving a truncated SVG. Grep the
-  render output for `Exception`, and sanity-check the result (`class.svg`
-  should contain every type declared in `class.puml`; a whole
-  `component.svg` is ~60 KB, a crashed one ~14 KB).
-
-Render with PlantUML **1.2026.7** or newer — the version CI pins. It is the
-first *stable* release on which `component.puml` does not crash in the smetana
-layout engine; 1.2026.5 and 1.2026.6 both produce a truncated stub while
-exiting 0. The committed SVGs predate it and carry `1.2026.7beta11`, the
-rolling snapshot that was the only working build at the time. Read the
-`<?plantuml VERSION?>` processing instruction inside any committed `*.svg` to
-confirm what produced it. Note also that PlantUML lays out using the JVM's font
-metrics, so re-rendering an *unchanged* source on a different machine will
-still shift the canvas; expect byte differences that are not content changes.
+The diagrams in `docs/diagrams/` (`class.svg`, `component.svg`,
+`dataflow.svg`) are hand-written SVG and are their own source -- there is no
+generator. Edit the SVG directly: every box, note and edge is a `<g id="...">`
+preceded by a comment naming it. Keep the text ASCII, the file LF with a final
+newline, and the colours on the CSS custom properties at the top so the light
+and dark themes stay in step. No CI job checks the diagrams, so update them in
+the same change as the code they depict.
 
 ---
 
@@ -513,7 +492,6 @@ shows up as a gap rather than silently drifting:
 | `conformance` | `pip install -e ./python` then `python tests/conformance/run.py --skip cpp` — every fixture, Rust and Python. The opt-out is explicit: the runner defaults to every registered implementation and fails if one is missing, so this job cannot pass by silently testing fewer | `ubuntu-latest`, `windows-latest` | Block merge |
 | `trace-matrix` | `python scripts/build-trace-matrix.py --check` — fails if `docs/TRACE-MATRIX.md` is stale relative to the spec docs + test markers | `ubuntu-latest` | Block merge |
 | `repo-hygiene` | `bash scripts/repo-hygiene.sh` — re-runs the pre-commit hook's file-level checks (final newline, CRLF, merge markers, 1 MB cap, `*.mie`, `Cargo.lock` parity, `dbg!()`, `unsafe`/`SAFETY:`) over the whole tracked tree, so a `--no-verify` commit is still caught, plus the doc-drift checks that have no hook counterpart (this table lists every `ci.yml` job; the config-key set agrees across its three text sources; no TRACE-MATRIX row claims Implemented with no artifact; the declared Rust MSRV agrees across `Cargo.toml`, CI and the docs; `ROADMAP.md` doesn't restate a `TRACE-MATRIX.md` status; the Python exception hierarchy matches its ASCII-tree and UML drawings; every shipped string literal in all three implementations is ASCII, via `scripts/assert-ascii-output.py` — L2-CLI-014) | `ubuntu-latest` | Block merge |
-| `diagrams` | Renders every `docs/diagrams/*.puml` with the pinned PlantUML version into a scratch directory and fails if any source does not parse or does not render whole — the log is scanned for exceptions (PlantUML **exits 0 on a crashed render**) and every output SVG must exceed 20 KB (a crashed `component.puml` yields a ~14 KB stub against a ~60 KB whole one). It does **not** check the committed `*.svg` for staleness: PlantUML lays out with the JVM's font metrics, so a CI render never byte-matches a locally-committed SVG and such a diff would fail every PR. See the "Diagram rendering" section of `ROADMAP.md` | `ubuntu-latest` | Block merge |
 
 The jobs above are `.github/workflows/ci.yml`, which gates the Rust and Python
 implementations. The C++ implementation gates separately in
@@ -556,8 +534,6 @@ unpick the integration. clang-tidy 22, cppcheck, ASan, UBSan, LSan and Valgrind
 already cover the rest.
 
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
-
-The `diagrams` job pins PlantUML to `1.2026.5`, which is **not** the version that produced the committed SVGs (`1.2026.7beta11`, from the unpinnable rolling `snapshot` pre-release — read the `<?plantuml VERSION?>` processing instruction inside any `docs/diagrams/*.svg`). That mismatch went unnoticed because the job never compares the tracked files at all. Three independent defects and the reproducibility constraint on any replacement are written up under "Diagram rendering" in `ROADMAP.md`.
 
 A separate scheduled workflow, `.github/workflows/fuzz.yml`, runs a deeper L1-ROB-001 fuzz burn-in daily (and on manual `workflow_dispatch`), across **all three** implementations and on **both** Linux and Windows. The normal `rust` / `python` / C++ suites run the fixed 256-iteration default; the burn-in sets `MIE_FUZZ_ITERATIONS` (default 25 000) so the deterministic harness sweeps a much larger input space. `docs/FUZZING.md` is the full map of what is fuzzed and what is not; this section covers the CI wiring.
 

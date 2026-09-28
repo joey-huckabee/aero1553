@@ -50,7 +50,7 @@ done
 
 is_binary() {
     case "$1" in
-        *.png|*.jpg|*.jpeg|*.gif|*.ico|*.pdf|*.bin|*.mie|*.svg) return 0 ;;
+        *.png|*.jpg|*.jpeg|*.gif|*.ico|*.pdf|*.bin|*.mie) return 0 ;;
         *) return 1 ;;
     esac
 }
@@ -366,15 +366,18 @@ if grep -nE '\b(Draft|Implemented|Verified)\b' docs/ROADMAP.md >&2; then
     bad "docs/ROADMAP.md asserts a verification status; link to docs/TRACE-MATRIX.md instead of copying it"
 fi
 
-# ── 13. Python exception hierarchy agrees with its two drawings ───────
+# ── 13. Python exception hierarchy agrees with its drawing ────────────
 # exceptions.py is the truth; ERROR-CATALOG.md §2 redraws it as an ASCII tree
-# and docs/diagrams/class.puml redraws it again as UML, and both drawings
-# claim to be complete ("every variant has a counterpart", "correspond one to
-# one, in both directions"). Both had drifted: the ASCII tree lost
-# MieFileIoError when it was added in v2.12.0, and the diagram was missing
-# three leaf classes outright. A hand-maintained copy of a class tree is not
-# checkable by reading it — every child's *parent* has to match.
-step "Python exception hierarchy matches ERROR-CATALOG §2 and class.puml"
+# and claims to be complete ("every variant has a counterpart"). It had
+# drifted: the tree lost MieFileIoError when it was added in v2.12.0. A
+# hand-maintained copy of a class tree is not checkable by reading it --
+# every child's *parent* has to match.
+#
+# The UML class diagram used to be checked here too, while it was generated
+# from docs/diagrams/class.puml. It is now a hand-drawn SVG with no parseable
+# relation syntax, and checking it was deliberately dropped rather than
+# emulated with markup conventions; ERROR-CATALOG is the checked drawing.
+step "Python exception hierarchy matches ERROR-CATALOG §2"
 if [[ -z "$PY_BIN" ]]; then
     list "skipped: no Python 3 interpreter"
 elif ! "$PY_BIN" - <<'PY'
@@ -398,14 +401,11 @@ for line in block.splitlines():
     tree[name] = stack[-1][1] if stack else "Exception"
     stack.append((depth, name))
 
-puml = pathlib.Path("docs/diagrams/class.puml").read_text(encoding="utf-8")
-uml = {c: p for p, c in re.findall(r'^\s*(Mie\w+|Aero1553Error) <\|-- (Mie\w+)', puml, re.M)}
-
 bad = False
 # Labels stay ASCII: this prints to a Windows console under cp437 as readily
 # as to a UTF-8 CI runner, and a UnicodeEncodeError here would look like a
 # check failure rather than a terminal limitation.
-for label, drawing in (("ERROR-CATALOG.md section 2 tree", tree), ("class.puml", uml)):
+for label, drawing in (("ERROR-CATALOG.md section 2 tree", tree),):
     for name, parent in sorted(truth.items()):
         if name == "Aero1553Error":
             continue          # the root; drawn as a child of Exception
