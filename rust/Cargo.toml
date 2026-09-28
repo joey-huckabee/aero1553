@@ -1,5 +1,5 @@
 [package]
-name = "mie-decoder"
+name = "aero1553"
 version = "3.0.0"
 edition = "2024"
 rust-version = "1.88"
@@ -28,12 +28,11 @@ struct_now_doc_hidden = "allow"
 function_now_doc_hidden = "allow"
 
 [lib]
-name = "mie_decoder"
 path = "src/lib.rs"
 
 [[bin]]
-name = "mie-decoder"
-path = "src/bin/mie-decoder.rs"
+name = "aero1553"
+path = "src/bin/aero1553.rs"
 
 [dependencies]
 memmap2 = "0.9"

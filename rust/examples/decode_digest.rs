@@ -22,7 +22,7 @@
 //! digest here means the *Rust* decoder changed, which is a different problem
 //! from the C++ one having drifted.
 
-use mie_decoder::decode::{
+use aero1553::decode::{
     decode_command_word, decode_irig_timestamp, decode_standard_timestamp, decode_type_word,
 };
 

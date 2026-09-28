@@ -110,7 +110,7 @@ pub fn emit(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
     );
 }
 
-/// The former name of [`emit`], kept so `mie_decoder::log::_emit` still
+/// The former name of [`emit`], kept so `aero1553::log::_emit` still
 /// resolves.
 ///
 /// Renaming a `pub` item would be an API removal, and `cargo-semver-checks`

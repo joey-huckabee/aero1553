@@ -4,5 +4,5 @@ use std::process::ExitCode;
 
 fn main() -> ExitCode {
     let argv: Vec<String> = std::env::args().collect();
-    mie_decoder::cli::run(argv)
+    aero1553::cli::run(argv)
 }

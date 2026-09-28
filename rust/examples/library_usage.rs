@@ -8,7 +8,7 @@
 //! It is `no_run` in spirit: it references files that need not exist, so build
 //! it (`cargo build --example library_usage`) rather than running it.
 
-use mie_decoder::{
+use aero1553::{
     filter::{FilterConfig, FilterIterExt},
     reader::MieFileReader,
     writer::{WriteOptions, write_csv},
