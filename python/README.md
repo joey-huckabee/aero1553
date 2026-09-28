@@ -1,8 +1,8 @@
-# MIE-Decoder (Python)
+# Aero1553 (Python)
 
-The Python implementation of MIE-Decoder: a decoder for DDC MIL-STD-1553 MIE
-binary recording files, exposing both a `mie-decoder` CLI and an importable
-`mie_decoder` package. Supports Python 3.10–3.14.
+The Python implementation of Aero1553: a decoder for DDC MIL-STD-1553 MIE
+binary recording files, exposing both a `aero1553` CLI and an importable
+`aero1553` package. Supports Python 3.10–3.14.
 
 Shared documentation — the project overview, CLI reference, configuration
 schema, supported message formats, error catalog, and vendor-CSV alignment —
@@ -28,7 +28,7 @@ and removes packages that are not part of the locked environment.
 ## Library usage
 
 ```python
-from mie_decoder import MieFileReader
+from aero1553 import MieFileReader
 
 reader = MieFileReader("recording.mie")
 for message in reader:
@@ -36,14 +36,14 @@ for message in reader:
 ```
 
 `MieFileReader` and the `MieMessage` records it yields are importable directly
-from the package root (`mie_decoder`).
+from the package root (`aero1553`).
 
 ## Development
 
 ```bash
 poetry -C python run pytest        # test suite
 poetry -C python run mypy src      # strict type check (CI-gated)
-poetry -C python run mie-decoder --help
+poetry -C python run aero1553 --help
 poetry -P python build             # wheel + sdist — note the -P (see below)
 ```
 
@@ -61,7 +61,7 @@ See [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the full development workflow.
 python/
 ├── pyproject.toml      Poetry + PEP 621 hybrid; pytest markers registered here
 ├── poetry.lock         pinned dependencies; committed
-├── src/mie_decoder/    package source (mirrors the Rust module names)
+├── src/aero1553/    package source (mirrors the Rust module names)
 └── tests/              pytest suite
 ```
 

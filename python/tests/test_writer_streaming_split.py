@@ -16,14 +16,14 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.exceptions import (
+from aero1553.exceptions import (
     MieClobberRefusedError,
     MieUnrecoverableSyncLossError,
     MieWriterError,
 )
-from mie_decoder.models import MieMessage
-from mie_decoder.reader import MieFileReader
-from mie_decoder.writer import WriteOptions, write_csv_split
+from aero1553.models import MieMessage
+from aero1553.reader import MieFileReader
+from aero1553.writer import WriteOptions, write_csv_split
 from tests.conftest import RECORD_RT15_SA11_RCV
 
 
@@ -80,7 +80,7 @@ def test_split_allow_partial_with_errors_commits_both_partials(
     assert b",ERROR," in err_bytes
 
     # No temp files left behind.
-    assert list(tmp_path.glob("*.mie-decoder.tmp.*")) == []
+    assert list(tmp_path.glob("*.aero1553.tmp.*")) == []
 
 
 @pytest.mark.requirement("L2-WRT-016")
@@ -104,7 +104,7 @@ def test_split_allow_partial_no_errors_omits_errors_partial(
     assert outcome.error_count == 0
     assert (dest.with_name("out.csv.partial")).exists()
     assert not (tmp_path / "out_errors.csv.partial").exists()
-    assert list(tmp_path.glob("*.mie-decoder.tmp.*")) == []
+    assert list(tmp_path.glob("*.aero1553.tmp.*")) == []
 
 
 @pytest.mark.requirement("L2-WRT-016")
@@ -146,7 +146,7 @@ def test_split_partial_main_commit_failure_leaves_no_orphan_errors_partial(
     )
     assert not dest.exists()
     assert not (tmp_path / "out_errors.csv").exists()
-    assert list(tmp_path.glob("*.mie-decoder.tmp.*")) == []
+    assert list(tmp_path.glob("*.aero1553.tmp.*")) == []
 
 
 @pytest.mark.requirement("L2-WRT-016")
@@ -177,7 +177,7 @@ def test_split_partial_errors_commit_failure_leaves_the_main_partial(
         "the main .partial must survive an errors-commit failure"
     )
     assert errors_partial.is_dir(), "the errors .partial target should be untouched"
-    assert list(tmp_path.glob("*.mie-decoder.tmp.*")) == []
+    assert list(tmp_path.glob("*.aero1553.tmp.*")) == []
 
 
 @pytest.mark.requirement("L2-WRT-017")
@@ -206,4 +206,4 @@ def test_split_no_clobber_refuses_an_errors_file_that_appears_mid_decode(
     assert errors_dest.read_text() == "theirs\n", "a refused commit must not touch it"
     # Main is committed first and its own destination was free, so it survives.
     assert dest.read_bytes().startswith(b"TIME_STAMP,RT,MSG,")
-    assert list(tmp_path.glob("*.mie-decoder.tmp.*")) == []
+    assert list(tmp_path.glob("*.aero1553.tmp.*")) == []

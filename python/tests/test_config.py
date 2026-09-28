@@ -1,4 +1,4 @@
-"""Tests for mie_decoder.config and mie_decoder.filters modules."""
+"""Tests for aero1553.config and aero1553.filters modules."""
 
 from __future__ import annotations
 
@@ -7,15 +7,15 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.config import (
+from aero1553.config import (
     DecoderConfig,
     FilterConfig,
     _parse_bus_names,
     _parse_type_names,
     load_config,
 )
-from mie_decoder.filters import apply_filters
-from mie_decoder.models import (
+from aero1553.filters import apply_filters
+from aero1553.models import (
     Bus,
     CommandWord,
     DeltaScope,
@@ -27,7 +27,7 @@ from mie_decoder.models import (
     TimestampFormat,
     TypeWord,
 )
-from mie_decoder.sync import DEFAULT_LOOKAHEAD_RECORDS
+from aero1553.sync import DEFAULT_LOOKAHEAD_RECORDS
 
 
 def _make_msg(
@@ -369,7 +369,7 @@ class TestApplyFilters:
     @pytest.mark.requirement("L2-FLT-001")
     def test_end_to_end_with_reader(self, tmp_mie_file: Path) -> None:
         """Filter should work with actual MieFileReader output."""
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         reader = MieFileReader(tmp_mie_file)
         # Exclude RT 15 SA 22 — should drop the 2nd and 3rd records
@@ -457,7 +457,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L2-CLI-010")
     def test_exclude_types_cli(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "filtered.csv"
         # Exclude RT_TO_BC (type 0x04) — should remove 3rd record
@@ -477,7 +477,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L2-CLI-010")
     def test_exclude_rts_cli(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "rt_filtered.csv"
         # All records are RT 15, so excluding it should leave 0 data rows
@@ -497,7 +497,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L2-CFG-004")
     def test_config_file_cli(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         cfg = tmp_path / "test.toml"
         cfg.write_text('[filter]\nexclude_types = ["RT_TO_BC"]\n')
@@ -521,7 +521,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L3-PY-013")
     def test_include_subaddresses_cli(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "inc.csv"
         rc = main(
@@ -540,7 +540,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L3-PY-013")
     def test_include_comma_separated_values(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "inc_comma.csv"
         rc = main(
@@ -559,7 +559,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L3-PY-013")
     def test_include_repeated_flag_accumulates(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "inc_rep.csv"
         # Equivalent to the comma form above.
@@ -583,7 +583,7 @@ class TestCliFilters:
     def test_include_rts_no_match_yields_header_only(
         self, tmp_mie_file: Path, tmp_path: Path
     ) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "inc_none.csv"
         rc = main(
@@ -602,7 +602,7 @@ class TestCliFilters:
 
     @pytest.mark.requirement("L2-CLI-010")
     def test_bad_rt_value_is_usage_error(self, tmp_mie_file: Path, tmp_path: Path) -> None:
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "bad.csv"
         rc = main(
@@ -625,14 +625,14 @@ class TestErrorModeConfig:
     @pytest.mark.requirement("L2-CFG-001")
     def test_default_is_inline(self) -> None:
         """Inline is the built-in default; separate is opt-in (L2-ERR-011)."""
-        from mie_decoder.models import ErrorMode
+        from aero1553.models import ErrorMode
 
         config = DecoderConfig()
         assert config.error_mode == ErrorMode.INLINE
 
     @pytest.mark.requirement("L2-CFG-001")
     def test_override_to_separate(self) -> None:
-        from mie_decoder.models import ErrorMode
+        from aero1553.models import ErrorMode
 
         config = DecoderConfig()
         updated = config.with_overrides(error_mode=ErrorMode.SEPARATE)
@@ -640,7 +640,7 @@ class TestErrorModeConfig:
 
     @pytest.mark.requirement("L2-ERR-011")
     def test_load_from_toml(self, tmp_path: Path) -> None:
-        from mie_decoder.models import ErrorMode
+        from aero1553.models import ErrorMode
 
         cfg = tmp_path / "em.toml"
         cfg.write_text('[decode]\nerror_mode = "separate"\n')
@@ -650,7 +650,7 @@ class TestErrorModeConfig:
     @pytest.mark.requirement("L2-ERR-011")
     def test_omitted_error_mode_key_defaults_to_inline(self, tmp_path: Path) -> None:
         """A config saying nothing about error_mode gets the new default."""
-        from mie_decoder.models import ErrorMode
+        from aero1553.models import ErrorMode
 
         cfg = tmp_path / "quiet.toml"
         cfg.write_text("[decode]\nstrict = false\n")
@@ -671,7 +671,7 @@ class TestErrorModeConfig:
         opts out."""
         import csv
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import (
             errored_record_rt15_sa11_us,
             normal_record_rt15_sa11_us,
@@ -700,7 +700,7 @@ class TestErrorModeConfig:
         default, so this flag is the opt-out."""
         import csv
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import (
             errored_record_rt15_sa11_us,
             normal_record_rt15_sa11_us,
@@ -725,7 +725,7 @@ class TestErrorModeConfig:
         self, tmp_mie_file: Path, tmp_path: Path
     ) -> None:
         """Even with --separate-errors, a clean decode creates no errors file."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "main.csv"
         rc = main(["decode", str(tmp_mie_file), "-o", str(out), "--separate-errors"])
@@ -744,7 +744,7 @@ class TestErrorModeConfig:
         """
         import logging
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import (
             errored_record_rt15_sa11_us,
             normal_record_rt15_sa11_us,
@@ -752,7 +752,7 @@ class TestErrorModeConfig:
 
         mie = tmp_path / "with_error.mie"
         mie.write_bytes(normal_record_rt15_sa11_us(100) + errored_record_rt15_sa11_us(16100))
-        with caplog.at_level(logging.WARNING, logger="mie_decoder"):
+        with caplog.at_level(logging.WARNING, logger="aero1553"):
             rc = main(["decode", str(mie), "--separate-errors"])
         assert rc == 0
         assert any("forces inline" in r.getMessage() for r in caplog.records), (
@@ -768,7 +768,7 @@ class TestErrorModeConfig:
         still carrying the old flag gets corrected instead of silently relying on
         behaviour that is now the default anyway.
         """
-        from mie_decoder.cli import EXIT_USAGE, main
+        from aero1553.cli import EXIT_USAGE, main
         from tests.conftest import normal_record_rt15_sa11_us
 
         mie = tmp_path / "rec.mie"
@@ -815,7 +815,7 @@ class TestSchemaValidation:
         # TOML supports bool natively. A string here is rejected by
         # tomllib at parse time (TypeError), so we test the dataclass
         # path instead.
-        from mie_decoder.config import _require_bool
+        from aero1553.config import _require_bool
 
         with pytest.raises(ValueError, match="expected boolean"):
             _require_bool("decode", "strict", "yes")
@@ -930,7 +930,7 @@ class TestSchemaValidation:
 
     @pytest.mark.requirement("L2-CFG-010")
     def test_array_splitter_respects_escaped_quotes(self) -> None:
-        from mie_decoder.config import _split_array_items
+        from aero1553.config import _split_array_items
 
         # A comma that follows an escaped quote is *inside* the string, so this
         # array has exactly one element — mirroring the Rust splitter. Before the
@@ -949,7 +949,7 @@ class TestSchemaValidation:
         # too, rather than dropping it silently.
         cfg = tmp_path / "root.toml"
         cfg.write_text("bogus = true\n")
-        with caplog.at_level("WARNING", logger="mie_decoder"):
+        with caplog.at_level("WARNING", logger="aero1553"):
             load_config(cfg)  # accepts (does not raise)
         assert "[] bogus" in caplog.text
 
@@ -1016,7 +1016,7 @@ class TestSchemaValidation:
         cfg.write_text('[output]\nformat = "csv"\nunknown_thing = true\n')
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="mie_decoder.config"):
+        with caplog.at_level(logging.WARNING, logger="aero1553.config"):
             config = load_config(cfg)
         assert config.output_format == "csv"
         # The WARN should mention the offending key.
@@ -1033,7 +1033,7 @@ class TestSchemaValidation:
         cfg.write_text("[filter]\nexclude_subdresses = [0]\n")
         import logging
 
-        with caplog.at_level(logging.WARNING, logger="mie_decoder.config"):
+        with caplog.at_level(logging.WARNING, logger="aero1553.config"):
             config = load_config(cfg)
         assert config.filters.exclude_subaddresses == set()
         assert any("exclude_subdresses" in rec.getMessage() for rec in caplog.records)

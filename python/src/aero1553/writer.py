@@ -4,7 +4,7 @@ Streams rows straight to the output handle through the standard-library
 ``csv`` module — no DataFrame or full-file buffering, so decode memory is
 O(1) in the record count (L3-PY-012). Produces CSV output matching the
 column layout used by DDC's recording software, enabling direct
-comparison between MIE-Decoder output and vendor-generated CSV files.
+comparison between Aero1553 output and vendor-generated CSV files.
 
 Output Column Definitions:
 
@@ -112,14 +112,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Final, TextIO
 
-from mie_decoder.exceptions import (
+from aero1553.exceptions import (
     MieCalendarUnavailableError,
     MieClobberRefusedError,
     MieInputOutputCollisionError,
     MieUnrecoverableSyncLossError,
     MieWriterError,
 )
-from mie_decoder.models import (
+from aero1553.models import (
     DOY_RENDER,
     MAX_DATA_WORDS,
     CalendarUnavailableError,
@@ -137,7 +137,7 @@ logger = logging.getLogger(__name__)
 #: ``BrokenPipeError``; Windows does **not** — writing to a pipe whose read end
 #: has closed comes out of the text layer as a plain ``OSError`` with ``EINVAL``
 #: (22), occasionally ``EPIPE`` (32). A bare ``except BrokenPipeError`` therefore
-#: never fires there, which made ``mie-decoder decode rec.mie | head`` exit 1
+#: never fires there, which made ``aero1553 decode rec.mie | head`` exit 1
 #: with an error on Windows while the Rust CLI exited 0.
 _WINDOWS_BROKEN_PIPE_ERRNOS: Final[frozenset[int]] = frozenset({errno.EINVAL, errno.EPIPE})
 
@@ -414,7 +414,7 @@ _TEMP_MAX_ATTEMPTS = 128
 def _unique_temp_path(final_path: Path) -> Path:
     """A fresh, hard-to-predict temp path beside ``final_path``.
 
-    Pattern: ``<destination>.mie-decoder.tmp.<pid>.<counter>.<nanos>``. Co-located
+    Pattern: ``<destination>.aero1553.tmp.<pid>.<counter>.<nanos>``. Co-located
     so ``os.replace`` is atomic (same filesystem); the per-process counter plus
     wall-clock nanoseconds make each call unique (and unpredictable), so two
     writers targeting the same destination cannot derive the same name. The
@@ -425,7 +425,7 @@ def _unique_temp_path(final_path: Path) -> Path:
         create it exclusively.
     """
     salt = f"{os.getpid()}.{next(_temp_counter)}.{time.time_ns()}"
-    return final_path.with_name(f"{final_path.name}.mie-decoder.tmp.{salt}")
+    return final_path.with_name(f"{final_path.name}.aero1553.tmp.{salt}")
 
 
 #: CSV column definitions in output order. Each entry is (column_name, description).

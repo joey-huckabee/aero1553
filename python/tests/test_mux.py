@@ -12,9 +12,9 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.decode import mux_from_filename
-from mie_decoder.reader import MieFileReader
-from mie_decoder.writer import message_to_row, write_csv
+from aero1553.decode import mux_from_filename
+from aero1553.reader import MieFileReader
+from aero1553.writer import message_to_row, write_csv
 from tests.conftest import RECORD_RT15_SA11_RCV
 
 _OP_NAME = "full_loadout.draw.data.1553.aa.unused.mie_irig"

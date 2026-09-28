@@ -92,14 +92,14 @@ from __future__ import annotations
 from enum import Enum
 from typing import Final
 
-from mie_decoder.decode import (
+from aero1553.decode import (
     MIN_RECORD_WORDS_STANDARD,
     decode_type_word,
     is_terminator_type_word,
     is_valid_message_type,
     read_u16,
 )
-from mie_decoder.models import TIMESTAMP_WORD_COUNTS, ByteSource, TimestampFormat
+from aero1553.models import TIMESTAMP_WORD_COUNTS, ByteSource, TimestampFormat
 
 #: Maximum number of bytes to scan when searching for sync.
 #: 64 KB covers any reasonable header or corruption gap.

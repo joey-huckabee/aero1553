@@ -39,8 +39,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Iterator
 
-from mie_decoder.exceptions import MieDecoderError
-from mie_decoder.models import IrigTimestamp, MieMessage
+from aero1553.exceptions import Aero1553Error
+from aero1553.models import IrigTimestamp, MieMessage
 
 logger = logging.getLogger(__name__)
 
@@ -72,7 +72,7 @@ def _sort_key(msg: MieMessage) -> tuple[int, int, int] | None:
 
     Keying on the decoded fields — not on the rendered ``MSG`` string — is
     deliberate: ``"11R"`` sorts before ``"2R"`` lexicographically, which is not
-    the required order. :class:`~mie_decoder.models.Direction` is an
+    the required order. :class:`~aero1553.models.Direction` is an
     ``IntEnum`` with ``RECEIVE = 0`` and ``TRANSMIT = 1``, so R-before-T falls
     out of the values and cannot drift from Rust's ``#[repr(u8)]``.
 
@@ -172,7 +172,7 @@ def order_rows(
         The same messages, with each equal-timestamp run in canonical order.
 
     Raises:
-        MieDecoderError: re-raised unchanged from the upstream stream, after the
+        Aero1553Error: re-raised unchanged from the upstream stream, after the
             buffered run has been flushed so those rows still reach the writer.
             This generator raises nothing of its own.
     """
@@ -201,7 +201,7 @@ def order_rows(
                 )
                 yield from buf
                 buf = []
-    except MieDecoderError:
+    except Aero1553Error:
         # Flush before re-raising so the rows already decoded reach the writer
         # ahead of the failure (an --allow-partial run commits them).
         if buf:

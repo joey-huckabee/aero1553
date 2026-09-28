@@ -1,6 +1,6 @@
-"""Command-line interface for MIE-Decoder.
+"""Command-line interface for Aero1553.
 
-Provides the ``mie-decoder`` CLI command for decoding DDC MIL-STD-1553
+Provides the ``aero1553`` CLI command for decoding DDC MIL-STD-1553
 MIE binary recording files into CSV format, and for hex-dumping raw
 binary content with record boundary awareness.
 
@@ -10,19 +10,19 @@ CLI arguments. CLI arguments always take precedence.
 Usage::
 
     # Decode to stdout
-    mie-decoder decode recording.mie
+    aero1553 decode recording.mie
 
     # Decode with config file (--config is global: before the subcommand)
-    mie-decoder --config my-config.toml decode recording.mie
+    aero1553 --config my-config.toml decode recording.mie
 
     # Decode excluding spurious data and mode codes
-    mie-decoder decode recording.mie --exclude-types SPURIOUS_DATA,MODE_COMMAND
+    aero1553 decode recording.mie --exclude-types SPURIOUS_DATA,MODE_COMMAND
 
     # Decode only RT 15 (include filter), excluding Bus B
-    mie-decoder decode recording.mie --include-rts 15 --exclude-buses B
+    aero1553 decode recording.mie --include-rts 15 --exclude-buses B
 
     # Hex dump
-    mie-decoder dump recording.mie --records 10
+    aero1553 dump recording.mie --records 10
 """
 
 from __future__ import annotations
@@ -36,11 +36,11 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, NoReturn
 
-from mie_decoder import __version__
-from mie_decoder.exceptions import (
+from aero1553 import __version__
+from aero1553.exceptions import (
+    Aero1553Error,
     MieCalendarUnavailableError,
     MieClobberRefusedError,
-    MieDecoderError,
     MieFileError,
     MieHomogeneousPayloadError,
     MieIncompatibleMergeInputsError,
@@ -51,15 +51,15 @@ from mie_decoder.exceptions import (
     MieUnrecoverableSyncLossError,
     MieWriterError,
 )
-from mie_decoder.logger import configure_logging, set_irig_day_advisory
+from aero1553.logger import configure_logging, set_irig_day_advisory
 
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
-    from mie_decoder.config import DecoderConfig
-    from mie_decoder.models import ErrorMode, MieMessage, TimeRender
-    from mie_decoder.reader import MieFileReader
-    from mie_decoder.writer import WriteOptions, WriteOutcome
+    from aero1553.config import DecoderConfig
+    from aero1553.models import ErrorMode, MieMessage, TimeRender
+    from aero1553.reader import MieFileReader
+    from aero1553.writer import WriteOptions, WriteOutcome
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +147,7 @@ def _parse_year_arg(value: str) -> int:
     Returns:
         The validated year.
     """
-    from mie_decoder.models import YEAR_MAX, YEAR_MIN
+    from aero1553.models import YEAR_MAX, YEAR_MIN
 
     message = f"invalid --year: {value!r}; valid range: [{YEAR_MIN}, {YEAR_MAX}]"
     # Rejected rather than passed to int(): a leading sign or underscore would
@@ -172,7 +172,7 @@ def _parse_utc_offset_arg(value: str) -> int:
     Returns:
         The offset in minutes east of UTC.
     """
-    from mie_decoder.config import parse_utc_offset
+    from aero1553.config import parse_utc_offset
 
     try:
         return parse_utc_offset(value)
@@ -286,7 +286,7 @@ def _normalize_log_level(value: str) -> str:
         ValueError: if ``value`` is not a recognised level. The message lists
             the valid set.
     """
-    from mie_decoder.config import _VALID_LOG_LEVELS
+    from aero1553.config import _VALID_LOG_LEVELS
 
     normalized = value.upper()
     if normalized not in _VALID_LOG_LEVELS:
@@ -304,7 +304,7 @@ def build_parser() -> argparse.ArgumentParser:
         Configured ArgumentParser with ``decode`` and ``dump`` subcommands.
     """
     parser = _UsageErrorParser(
-        prog="mie-decoder",
+        prog="aero1553",
         description=(
             "Decode DDC MIL-STD-1553 MIE binary recording files "
             "into CSV format, or dump raw/record hex content."
@@ -338,7 +338,7 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     # Global option (before the subcommand), matching the Rust CLI:
-    # `mie-decoder --config site.toml decode rec.mie`. Applies to every
+    # `aero1553 --config site.toml decode rec.mie`. Applies to every
     # subcommand (decode/count use the full config; dump uses only
     # [logging] level).
     parser.add_argument(
@@ -784,7 +784,7 @@ def _resolve_decode_inputs(args: argparse.Namespace) -> list[Path]:
         The resolved input paths. Always at least one -- an empty resolution is
         raised as a usage error rather than returned.
     """
-    from mie_decoder.merge import MAX_MERGE_FILES, expand_glob, read_manifest
+    from aero1553.merge import MAX_MERGE_FILES, expand_glob, read_manifest
 
     methods = sum([bool(args.inputs), args.manifest is not None, args.glob is not None])
     if methods == 0:
@@ -849,7 +849,7 @@ def _merge_output_collision(
         The operator-facing error message, or ``None`` when there is no
         collision.
     """
-    from mie_decoder.writer import commit_targets
+    from aero1553.writer import commit_targets
 
     for target in commit_targets(output, split_errors, allow_partial):
         target_resolved = target.resolve()
@@ -934,7 +934,7 @@ def _simple_overrides(args: argparse.Namespace) -> dict[str, object]:
         ValueError: if a flag's value is outside its accepted set. The caller
             maps this to EXIT_USAGE.
     """
-    from mie_decoder.models import (
+    from aero1553.models import (
         ErrorMode,
         parse_output_time_format,
         parse_timestamp_format,
@@ -1005,7 +1005,7 @@ def _filter_overrides(args: argparse.Namespace) -> dict[str, object]:
     Returns:
         The filter override mapping, holding only the filters actually given.
     """
-    from mie_decoder.config import _parse_bus_names, _parse_type_names
+    from aero1553.config import _parse_bus_names, _parse_type_names
 
     overrides: dict[str, object] = {}
     if args.exclude_types is not None:
@@ -1044,17 +1044,17 @@ def _validated_numeric_overrides(args: argparse.Namespace) -> dict[str, object]:
         ValueError: on any out-of-range or malformed value. The caller maps
             this to EXIT_USAGE.
     """
-    from mie_decoder.config import (
+    from aero1553.config import (
         DETECT_RECORDS_MAX,
         DETECT_RECORDS_MIN,
         LOOKAHEAD_RECORDS_MAX,
         LOOKAHEAD_RECORDS_MIN,
     )
-    from mie_decoder.merge import (
+    from aero1553.merge import (
         MAX_COLLAPSE_SURVIVORS_MAX,
         MAX_COLLAPSE_SURVIVORS_MIN,
     )
-    from mie_decoder.order import MAX_SORT_GROUP_MAX, MAX_SORT_GROUP_MIN
+    from aero1553.order import MAX_SORT_GROUP_MAX, MAX_SORT_GROUP_MIN
 
     overrides: dict[str, object] = {}
     if args.detect_records is not None:
@@ -1082,7 +1082,7 @@ def _validated_numeric_overrides(args: argparse.Namespace) -> dict[str, object]:
             raise ValueError("--collapse-window-us must be a non-negative integer")
         overrides["collapse_window_us"] = args.collapse_window_us
     if args.delta_scope is not None:
-        from mie_decoder.models import parse_delta_scope
+        from aero1553.models import parse_delta_scope
 
         overrides["delta_scope"] = parse_delta_scope(args.delta_scope)
     if args.max_collapse_survivors is not None:
@@ -1132,7 +1132,7 @@ def _resolve_time_render(config: DecoderConfig) -> TimeRender:
     Returns:
         The resolved rendering.
     """
-    from mie_decoder.models import TimeRender
+    from aero1553.models import TimeRender
 
     if config.output_time_format.needs_calendar() and config.year is None:
         raise ValueError(
@@ -1156,7 +1156,7 @@ def _open_reader(path: Path, config: DecoderConfig) -> MieFileReader:
     Returns:
         An open :class:`MieFileReader` for ``path``.
     """
-    from mie_decoder.reader import MieFileReader
+    from aero1553.reader import MieFileReader
 
     return MieFileReader(
         path,
@@ -1203,7 +1203,7 @@ def _check_merge_output_collision(
         continue.
     """
     if merge_requested and args.output is not None:
-        from mie_decoder.models import ErrorMode
+        from aero1553.models import ErrorMode
 
         collision = _merge_output_collision(
             args.output,
@@ -1240,9 +1240,9 @@ def _build_message_stream(
         The message stream to hand the writer, already filtered and in
         canonical row order.
     """
-    from mie_decoder.filters import apply_filters
-    from mie_decoder.merge import merge_readers
-    from mie_decoder.order import order_rows
+    from aero1553.filters import apply_filters
+    from aero1553.merge import merge_readers
+    from aero1553.order import order_rows
 
     # L2-WRT-021: canonical row order is the LAST stage before the writer — after
     # the merge and after filtering — so the ordering guarantee holds over exactly
@@ -1295,8 +1295,8 @@ def _write_messages(
     Returns:
         The row counts from the writer, including any ``.partial`` commit.
     """
-    from mie_decoder.models import ErrorMode
-    from mie_decoder.writer import write_csv, write_csv_split
+    from aero1553.models import ErrorMode
+    from aero1553.writer import write_csv, write_csv_split
 
     if error_mode == ErrorMode.SEPARATE and output is None:
         # A stream cannot be split in two, so separate mode degrades to inline.
@@ -1353,7 +1353,7 @@ def _classify_decode_error(exc: Exception) -> int:
         possibilities: a broken pipe and an ``--allow-partial`` sync loss are
         both clean exits.
     """
-    from mie_decoder.writer import is_broken_pipe
+    from aero1553.writer import is_broken_pipe
 
     for exc_types, code, exit_class in _SIMPLE_DECODE_ERRORS:
         if isinstance(exc, exc_types):
@@ -1381,7 +1381,7 @@ def _classify_decode_error(exc: Exception) -> int:
         print(f"Error writing output: {exc}", file=sys.stderr)
         return EXIT_RUNTIME
 
-    # Any remaining MieDecoderError (record errors, generic file errors).
+    # Any remaining Aero1553Error (record errors, generic file errors).
     logger.error("%s", exc)
     print(f"Error: {exc}", file=sys.stderr)
     return EXIT_RUNTIME
@@ -1481,7 +1481,7 @@ def _run_decode(args: argparse.Namespace) -> int:
         :func:`main` — the decode path can produce any class except the
         usage error (4), which is handled during argument parsing.
     """
-    from mie_decoder.config import load_config
+    from aero1553.config import load_config
 
     # ── Load and merge configuration ───────────────────────────────
     try:
@@ -1540,7 +1540,7 @@ def _run_decode(args: argparse.Namespace) -> int:
     if collision_code is not None:
         return collision_code
 
-    from mie_decoder.writer import WriteOptions
+    from aero1553.writer import WriteOptions
 
     # L2-WRT-026 clause 1: a calendar rendering needs a year, and whether one
     # was supplied is a question about the *resolved* pair -- either source may
@@ -1570,7 +1570,7 @@ def _run_decode(args: argparse.Namespace) -> int:
             readers, config, merge_requested=merge_requested, open_dropped=open_dropped
         )
         outcome = _write_messages(messages, args.output, config.error_mode, write_opts)
-    except (MieDecoderError, OSError) as exc:
+    except (Aero1553Error, OSError) as exc:
         # OSError (rather than just BrokenPipeError) so the Windows broken-pipe
         # form reaches the classifier as a clean exit per L2-WRT-018; any other
         # OSError that escapes the writer is classified as a runtime failure
@@ -1593,9 +1593,9 @@ def _run_count(args: argparse.Namespace) -> int:
         :func:`main`: success (0), no valid records (2), runtime error (1),
         or config error (5).
     """
-    from mie_decoder.config import load_config
-    from mie_decoder.filters import apply_filters
-    from mie_decoder.reader import MieFileReader
+    from aero1553.config import load_config
+    from aero1553.filters import apply_filters
+    from aero1553.reader import MieFileReader
 
     try:
         config = load_config(args.config)
@@ -1630,7 +1630,7 @@ def _run_count(args: argparse.Namespace) -> int:
         # the iterator simply yields zero records — so count prints 0 and exits
         # 0 per L1-EXIT-010.)
         return _report_error("Count failed", exc, EXIT_NO_RECORDS)
-    except MieDecoderError as exc:
+    except Aero1553Error as exc:
         # Any other decode error during the count maps to a runtime failure
         # (exit 1), matching the Rust count subcommand.
         return _report_error("Count failed", exc, EXIT_RUNTIME)
@@ -1660,9 +1660,9 @@ def _run_dump(args: argparse.Namespace) -> int:
         Process exit code from the L2-CLI-011 taxonomy documented on
         :func:`main`: success (0), runtime error (1), or config error (5).
     """
-    from mie_decoder.config import load_config
-    from mie_decoder.dump import hex_dump_raw, hex_dump_records
-    from mie_decoder.writer import is_broken_pipe
+    from aero1553.config import load_config
+    from aero1553.dump import hex_dump_raw, hex_dump_records
+    from aero1553.writer import is_broken_pipe
 
     # dump only consumes log_level from config (input_time_format, strict,
     # filters, etc. don't apply to a raw / record hex dump). Load so
@@ -1692,7 +1692,7 @@ def _run_dump(args: argparse.Namespace) -> int:
         print(f"Error: {exc}", file=sys.stderr)
         return EXIT_RUNTIME
     except OSError as exc:
-        # L2-WRT-018: `mie-decoder dump big.mie | head` closes the pipe long
+        # L2-WRT-018: `aero1553 dump big.mie | head` closes the pipe long
         # before the dump finishes. That is a clean termination, not a failure —
         # mirrors `finish_dump` in `rust/src/cli.rs`. Any other output error
         # (disk full, permission) is a runtime failure, as it is for decode.
@@ -1809,7 +1809,7 @@ def main_cli(argv: list[str] | None = None) -> int:
 
 
 def main(argv: list[str] | None = None) -> int:
-    """Entry point for the MIE-Decoder CLI.
+    """Entry point for the Aero1553 CLI.
 
     Args:
         argv: Command-line arguments. If ``None``, uses ``sys.argv[1:]``.
@@ -1847,7 +1847,7 @@ def main(argv: list[str] | None = None) -> int:
     log_level = args.log_level or "WARNING"
     configure_logging(log_level)
 
-    logger.info("MIE-Decoder v%s", __version__)
+    logger.info("aero1553 v%s", __version__)
     logger.debug("Arguments: %s", args)
 
     if args.command == "decode":

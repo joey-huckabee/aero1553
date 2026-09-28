@@ -7,9 +7,9 @@ and byte-level content.
 
 Usage via CLI::
 
-    mie-decoder dump recording.mie
-    mie-decoder dump recording.mie --offset 0x48 --length 256
-    mie-decoder dump recording.mie --records 10
+    aero1553 dump recording.mie
+    aero1553 dump recording.mie --offset 0x48 --length 256
+    aero1553 dump recording.mie --records 10
 """
 
 from __future__ import annotations
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from typing import TextIO
 
-from mie_decoder.decode import (
+from aero1553.decode import (
     MIN_RECORD_BYTES,
     MIN_RECORD_WORDS,
     classify_message_format,
@@ -28,8 +28,8 @@ from mie_decoder.decode import (
     decode_type_word,
     read_u16,
 )
-from mie_decoder.exceptions import MieFileEmptyError, MieFileIoError, MieFileNotFoundError
-from mie_decoder.models import DDC_ERROR_DESCRIPTIONS, MessageType, TypeWord
+from aero1553.exceptions import MieFileEmptyError, MieFileIoError, MieFileNotFoundError
+from aero1553.models import DDC_ERROR_DESCRIPTIONS, MessageType, TypeWord
 
 logger = logging.getLogger(__name__)
 

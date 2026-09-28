@@ -1,12 +1,12 @@
-"""Custom exceptions for the MIE-Decoder package.
+"""Custom exceptions for the Aero1553 package.
 
-All exceptions inherit from :class:`MieDecoderError`, allowing callers
+All exceptions inherit from :class:`Aero1553Error`, allowing callers
 to catch the full family with a single ``except`` clause while still
 being able to discriminate specific failure modes.
 
 Exception hierarchy::
 
-    MieDecoderError
+    Aero1553Error
     ├── MieFileError
     │   ├── MieFileNotFoundError
     │   ├── MieFileEmptyError
@@ -32,7 +32,7 @@ Exception hierarchy::
 from __future__ import annotations
 
 
-class MieDecoderError(Exception):
+class Aero1553Error(Exception):
     """Base exception for every error the decoder *converts*.
 
     Catch it to handle any decoder-level failure with a single handler::
@@ -40,7 +40,7 @@ class MieDecoderError(Exception):
         try:
             for msg in MieFileReader("recording.mie"):
                 process(msg)
-        except MieDecoderError as exc:
+        except Aero1553Error as exc:
             logger.error("Decoder failure: %s", exc)
 
     Input-side failures are all converted, including the ones raised by the
@@ -52,12 +52,12 @@ class MieDecoderError(Exception):
 
     Output-side failures still reach you as ``OSError`` where the standard
     library raises them outside a converted path, so a caller writing to an
-    arbitrary sink may still want ``(MieDecoderError, OSError)`` — which is
+    arbitrary sink may still want ``(Aero1553Error, OSError)`` — which is
     what the CLI uses, chiefly so a broken pipe on stdout stays a clean exit.
     """
 
 
-class MieFileError(MieDecoderError):
+class MieFileError(Aero1553Error):
     """Base exception for file-level errors.
 
     Never raised directly — it exists to be caught, and every file-level
@@ -213,7 +213,7 @@ class MieIncompatibleMergeInputsError(MieFileError):
         )
 
 
-class MieNonMonotonicInputError(MieDecoderError):
+class MieNonMonotonicInputError(Aero1553Error):
     """Raised in strict mode when a merge input is not internally time-sorted.
 
     Per L2-MRG-006 the time-merge assumes each input file's records are in
@@ -243,7 +243,7 @@ class MieNonMonotonicInputError(MieDecoderError):
         )
 
 
-class MieRecordError(MieDecoderError):
+class MieRecordError(Aero1553Error):
     """Base exception for record-level decoding errors.
 
     Raised when an individual binary record within a valid file cannot
@@ -497,7 +497,7 @@ class MiePayloadError(MieRecordError):
     """
 
 
-class MieWriterError(MieDecoderError):
+class MieWriterError(Aero1553Error):
     """Raised when CSV or other output writing fails.
 
     Wraps underlying I/O errors with decoder-specific context.
@@ -541,7 +541,7 @@ class MieUnrecoverableSyncLossError(MieRecordError):
 class MieUnknownErrorCodeError(MieRecordError):
     """Raised when an errored record contains an unrecognized error code.
 
-    DDC hardware error codes occupy the 0x01xx range. MIE-Decoder custom
+    DDC hardware error codes occupy the 0x01xx range. Aero1553 custom
     codes occupy the 0x20xx range. Any error code outside these known
     sets indicates either an undocumented DDC firmware version or file
     corruption.

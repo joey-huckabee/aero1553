@@ -1,4 +1,4 @@
-"""Unit tests for mie_decoder.decode module.
+"""Unit tests for aero1553.decode module.
 
 All expected values are derived from empirically validated binary data
 cross-referenced against vendor-generated CSV output.
@@ -11,7 +11,7 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.decode import (
+from aero1553.decode import (
     classify_message_format,
     decode_command_word,
     decode_irig_timestamp,
@@ -20,7 +20,7 @@ from mie_decoder.decode import (
     read_u16,
     read_u16_array,
 )
-from mie_decoder.models import Bus, Direction
+from aero1553.models import Bus, Direction
 
 
 class TestDecodeTypeWord:
@@ -231,7 +231,7 @@ class TestIsValidMessageType:
 class TestClassifyMessageFormat:
     """Tests for classify_message_format."""
 
-    from mie_decoder.models import MessageFormat
+    from aero1553.models import MessageFormat
 
     # Non-mode-code formats are direct type mappings; the timestamp word count
     # (last arg) is irrelevant to them — pass 3 (IRIG).
@@ -347,7 +347,7 @@ class TestDecodeStandardTimestamp:
 
     @pytest.mark.requirement("L2-DEC-007")
     def test_basic_decode(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0001, 0x86A0)
         assert ts.raw_value == 0x000186A0
@@ -357,28 +357,28 @@ class TestDecodeStandardTimestamp:
 
     @pytest.mark.requirement("L2-DEC-007")
     def test_zero(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0000, 0x0000)
         assert ts.raw_value == 0
 
     @pytest.mark.requirement("L2-DEC-007")
     def test_max_value(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0xFFFF, 0xFFFF)
         assert ts.raw_value == 0xFFFFFFFF
 
     @pytest.mark.requirement("L2-DEC-007")
     def test_format(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0001, 0x86A0)
         assert ts.format() == "0x000186A0"
 
     @pytest.mark.requirement("L2-DEC-007")
     def test_raw_ticks_returns_counter_value(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0001, 0x86A0)
         # Raw 32-bit counter value. Tick rate is card-dependent and not
@@ -388,7 +388,7 @@ class TestDecodeStandardTimestamp:
     @pytest.mark.requirement("L2-RDR-019")
     @pytest.mark.requirement("L2-DEC-017")
     def test_to_microseconds_returns_none(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0001, 0x86A0)
         # Uncalibrated (no tick rate) Standard timestamps have no known
@@ -413,7 +413,7 @@ class TestDecodeStandardTimestamp:
         from an out-of-range double was undefined behaviour. All three now
         decline, which is what keeps them byte-identical.
         """
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0001, 0x86A0)  # 100000 ticks
         assert ts.to_microseconds(1e-300) is None
@@ -426,7 +426,7 @@ class TestDecodeStandardTimestamp:
 
     @pytest.mark.requirement("L2-DEC-017")
     def test_to_microseconds_calibrated(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         ts = decode_standard_timestamp(0x0001, 0x86A0)  # 100000 ticks
         # At 1 MHz, one tick == one microsecond.
@@ -434,7 +434,7 @@ class TestDecodeStandardTimestamp:
 
     @pytest.mark.requirement("L2-DEC-017")
     def test_to_microseconds_rounds_half_away_from_zero(self) -> None:
-        from mie_decoder.decode import decode_standard_timestamp
+        from aero1553.decode import decode_standard_timestamp
 
         # 3 ticks at 2 MHz = 1.5 us -> rounds up to 2 (half-away-from-zero,
         # matching the Rust f64::round). 1 tick = 0.5 us -> 1.
@@ -458,8 +458,8 @@ class TestDetectTimestampFormat:
     @pytest.mark.requirement("L2-DEC-015")
     def test_detects_irig_from_known_data(self) -> None:
         """Known IRIG record should detect as IRIG."""
-        from mie_decoder.decode import probe_timestamp_format
-        from mie_decoder.models import TimestampFormat
+        from aero1553.decode import probe_timestamp_format
+        from aero1553.models import TimestampFormat
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         outcome = probe_timestamp_format(RECORD_RT15_SA11_RCV, 0, 1)
@@ -469,8 +469,8 @@ class TestDetectTimestampFormat:
     @pytest.mark.requirement("L2-DEC-015")
     def test_detects_irig_from_transmit(self) -> None:
         """Known IRIG transmit record should detect as IRIG."""
-        from mie_decoder.decode import probe_timestamp_format
-        from mie_decoder.models import TimestampFormat
+        from aero1553.decode import probe_timestamp_format
+        from aero1553.models import TimestampFormat
         from tests.conftest import RECORD_RT15_SA22_XMT
 
         outcome = probe_timestamp_format(RECORD_RT15_SA22_XMT, 0, 1)
@@ -479,8 +479,8 @@ class TestDetectTimestampFormat:
     @pytest.mark.requirement("L2-DEC-013")
     def test_forced_irig(self, tmp_mie_file: Path) -> None:
         """Forcing IRIG should still decode correctly."""
-        from mie_decoder.models import TimestampFormat
-        from mie_decoder.reader import MieFileReader
+        from aero1553.models import TimestampFormat
+        from aero1553.reader import MieFileReader
 
         reader = MieFileReader(tmp_mie_file, input_time_format=TimestampFormat.IRIG)
         messages = list(reader)
@@ -490,7 +490,7 @@ class TestDetectTimestampFormat:
     @pytest.mark.requirement("L2-DEC-013")
     def test_cli_input_time_format_irig(self, tmp_mie_file: Path, tmp_path: Path) -> None:
         """CLI --input-time-format irig should work."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "irig.csv"
         rc = main(["decode", str(tmp_mie_file), "-o", str(out), "--input-time-format", "irig"])
@@ -506,7 +506,7 @@ class TestScoreSingleRecord:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_irig_receive_record_scores_irig_max(self) -> None:
-        from mie_decoder.decode import _score_single_record, decode_type_word, read_u16
+        from aero1553.decode import _score_single_record, decode_type_word, read_u16
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         tw = decode_type_word(read_u16(RECORD_RT15_SA11_RCV, 0))
@@ -517,7 +517,7 @@ class TestScoreSingleRecord:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_irig_transmit_record_scores_irig_max(self) -> None:
-        from mie_decoder.decode import _score_single_record, decode_type_word, read_u16
+        from aero1553.decode import _score_single_record, decode_type_word, read_u16
         from tests.conftest import RECORD_RT15_SA22_XMT
 
         tw = decode_type_word(read_u16(RECORD_RT15_SA22_XMT, 0))
@@ -528,7 +528,7 @@ class TestScoreSingleRecord:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_returns_pair_of_ints(self) -> None:
-        from mie_decoder.decode import _score_single_record, decode_type_word, read_u16
+        from aero1553.decode import _score_single_record, decode_type_word, read_u16
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         tw = decode_type_word(read_u16(RECORD_RT15_SA11_RCV, 0))
@@ -543,7 +543,7 @@ class TestStructuralInvariants:
 
     @staticmethod
     def _tw(message_type: int, word_count: int):
-        from mie_decoder.models import Bus, TypeWord
+        from aero1553.models import Bus, TypeWord
 
         return TypeWord(
             message_type=message_type,
@@ -555,7 +555,7 @@ class TestStructuralInvariants:
 
     @staticmethod
     def _cmd(direction, dwc: int):
-        from mie_decoder.models import CommandWord
+        from aero1553.models import CommandWord
 
         return CommandWord(
             rt=15,
@@ -567,8 +567,8 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-020")
     def test_canonical_bc_to_rt_passes(self) -> None:
-        from mie_decoder.decode import validate_structural_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_structural_invariants
+        from aero1553.models import Direction, MessageFormat
 
         result = validate_structural_invariants(
             self._tw(0x02, 36),
@@ -580,8 +580,8 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-021")
     def test_canonical_rt_to_bc_passes(self) -> None:
-        from mie_decoder.decode import validate_structural_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_structural_invariants
+        from aero1553.models import Direction, MessageFormat
 
         result = validate_structural_invariants(
             self._tw(0x04, 36),
@@ -593,11 +593,11 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-020")
     def test_bc_to_rt_with_transmit_cmd_rejected(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             WhichInvariant,
             validate_structural_invariants,
         )
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.models import Direction, MessageFormat
 
         result = validate_structural_invariants(
             self._tw(0x02, 36),
@@ -610,11 +610,11 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-021")
     def test_rt_to_bc_with_receive_cmd_rejected(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             WhichInvariant,
             validate_structural_invariants,
         )
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.models import Direction, MessageFormat
 
         result = validate_structural_invariants(
             self._tw(0x04, 36),
@@ -627,11 +627,11 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-022")
     def test_capacity_short_rejected(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             WhichInvariant,
             validate_structural_invariants,
         )
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.models import Direction, MessageFormat
 
         # wc=5 too small for Receive with dwc=30 (needs 1+3+1+31=36)
         result = validate_structural_invariants(
@@ -645,8 +645,8 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-022")
     def test_capacity_exact_accepted(self) -> None:
-        from mie_decoder.decode import validate_structural_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_structural_invariants
+        from aero1553.models import Direction, MessageFormat
 
         # wc=36 is exactly minimum for Receive with dwc=30
         result = validate_structural_invariants(
@@ -659,8 +659,8 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-022")
     def test_spurious_skips_capacity_check(self) -> None:
-        from mie_decoder.decode import validate_structural_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_structural_invariants
+        from aero1553.models import Direction, MessageFormat
 
         # SpuriousData has variable payload — capacity check skipped
         result = validate_structural_invariants(
@@ -673,8 +673,8 @@ class TestStructuralInvariants:
 
     @pytest.mark.requirement("L2-SYN-020")
     def test_mode_code_directions_not_constrained(self) -> None:
-        from mie_decoder.decode import validate_structural_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_structural_invariants
+        from aero1553.models import Direction, MessageFormat
 
         tw = self._tw(0x01, 7)
         # Mode codes accept either direction.
@@ -698,7 +698,7 @@ class TestPostExtractInvariants:
 
     @staticmethod
     def _cmd(direction, raw: int = 0):
-        from mie_decoder.models import CommandWord
+        from aero1553.models import CommandWord
 
         return CommandWord(
             rt=5,
@@ -710,8 +710,8 @@ class TestPostExtractInvariants:
 
     @pytest.mark.requirement("L2-SYN-023")
     def test_rt_to_rt_cmd2_receive_passes(self) -> None:
-        from mie_decoder.decode import validate_post_extract_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_post_extract_invariants
+        from aero1553.models import Direction, MessageFormat
 
         # Cmd1 and Cmd2 agree on data_word_count (both 3, L2-SYN-027) and
         # Cmd2 is Receive (L2-SYN-023) → no violation.
@@ -724,12 +724,12 @@ class TestPostExtractInvariants:
 
     @pytest.mark.requirement("L2-SYN-023")
     def test_rt_to_rt_cmd2_transmit_rejected(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             InvariantSeverity,
             WhichInvariant,
             validate_post_extract_invariants,
         )
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.models import Direction, MessageFormat
 
         result = validate_post_extract_invariants(
             MessageFormat.RT_TO_RT,
@@ -742,11 +742,11 @@ class TestPostExtractInvariants:
 
     @pytest.mark.requirement("L2-SYN-023")
     def test_rt_to_rt_broadcast_also_checked(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             WhichInvariant,
             validate_post_extract_invariants,
         )
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.models import Direction, MessageFormat
 
         result = validate_post_extract_invariants(
             MessageFormat.RT_TO_RT_BROADCAST,
@@ -758,8 +758,8 @@ class TestPostExtractInvariants:
 
     @pytest.mark.requirement("L2-SYN-023")
     def test_non_rt_to_rt_is_noop(self) -> None:
-        from mie_decoder.decode import validate_post_extract_invariants
-        from mie_decoder.models import Direction, MessageFormat
+        from aero1553.decode import validate_post_extract_invariants
+        from aero1553.models import Direction, MessageFormat
 
         # No cmd2 for non-RT-to-RT
         assert (
@@ -782,12 +782,12 @@ class TestPostExtractInvariants:
 
     @pytest.mark.requirement("L2-SYN-027")
     def test_rt_to_rt_cmd_word_count_mismatch_rejected(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             InvariantSeverity,
             WhichInvariant,
             validate_post_extract_invariants,
         )
-        from mie_decoder.models import (
+        from aero1553.models import (
             CommandWord,
             Direction,
             MessageFormat,
@@ -821,7 +821,7 @@ class TestRecordAnomalies:
 
     @staticmethod
     def _tw(raw: int, message_type: int = 0x02, wc: int = 36):
-        from mie_decoder.models import Bus, TypeWord
+        from aero1553.models import Bus, TypeWord
 
         return TypeWord(
             message_type=message_type,
@@ -833,7 +833,7 @@ class TestRecordAnomalies:
 
     @staticmethod
     def _cmd(rt: int = 15):
-        from mie_decoder.models import CommandWord, Direction
+        from aero1553.models import CommandWord, Direction
 
         return CommandWord(
             rt=rt,
@@ -845,7 +845,7 @@ class TestRecordAnomalies:
 
     @pytest.mark.requirement("L2-SYN-024")
     def test_status_rt_match_no_violation(self) -> None:
-        from mie_decoder.decode import detect_record_anomalies
+        from aero1553.decode import detect_record_anomalies
 
         # RT=15 in Cmd; Status raw 0x7800 → bits 15-11 = 15
         anomalies = detect_record_anomalies(self._tw(0x2402), self._cmd(15), 0x7800)
@@ -853,7 +853,7 @@ class TestRecordAnomalies:
 
     @pytest.mark.requirement("L2-SYN-024")
     def test_status_rt_mismatch_anomaly(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             InvariantSeverity,
             WhichInvariant,
             detect_record_anomalies,
@@ -867,14 +867,14 @@ class TestRecordAnomalies:
 
     @pytest.mark.requirement("L2-SYN-024")
     def test_no_status_no_violation(self) -> None:
-        from mie_decoder.decode import detect_record_anomalies
+        from aero1553.decode import detect_record_anomalies
 
         anomalies = detect_record_anomalies(self._tw(0x2402), self._cmd(15), None)
         assert anomalies == []
 
     @pytest.mark.requirement("L2-SYN-025")
     def test_type_word_reserved_bit_anomaly(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             InvariantSeverity,
             WhichInvariant,
             detect_record_anomalies,
@@ -887,7 +887,7 @@ class TestRecordAnomalies:
 
     @pytest.mark.requirement("L2-SYN-025")
     def test_multiple_anomalies_can_fire_on_one_record(self) -> None:
-        from mie_decoder.decode import detect_record_anomalies
+        from aero1553.decode import detect_record_anomalies
 
         # Both status RT mismatch AND TW bit 15 set: 2 anomalies
         anomalies = detect_record_anomalies(self._tw(0xA402), self._cmd(15), 0x2800)
@@ -904,8 +904,8 @@ class TestProbeTimestampFormat:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_single_irig_record_picks_irig(self) -> None:
-        from mie_decoder.decode import probe_timestamp_format
-        from mie_decoder.models import TimestampFormat
+        from aero1553.decode import probe_timestamp_format
+        from aero1553.models import TimestampFormat
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         outcome = probe_timestamp_format(RECORD_RT15_SA11_RCV, 0, 8)
@@ -915,11 +915,11 @@ class TestProbeTimestampFormat:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_eight_irig_records_aggregates_decisively(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             DetectionConfidence,
             probe_timestamp_format,
         )
-        from mie_decoder.models import TimestampFormat
+        from aero1553.models import TimestampFormat
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         data = RECORD_RT15_SA11_RCV * 8
@@ -934,11 +934,11 @@ class TestProbeTimestampFormat:
     @pytest.mark.requirement("L2-DEC-012")
     @pytest.mark.requirement("L2-DEC-015")
     def test_zero_score_ties_to_irig(self) -> None:
-        from mie_decoder.decode import (
+        from aero1553.decode import (
             DetectionConfidence,
             probe_timestamp_format,
         )
-        from mie_decoder.models import TimestampFormat
+        from aero1553.models import TimestampFormat
 
         # All-zero buffer — neither format scores anything. IRIG wins
         # the tie per L2-DEC-012; AMBIGUOUS by definition of L2-DEC-016.
@@ -948,7 +948,7 @@ class TestProbeTimestampFormat:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_max_records_zero_clamps_to_one(self) -> None:
-        from mie_decoder.decode import probe_timestamp_format
+        from aero1553.decode import probe_timestamp_format
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         out_zero = probe_timestamp_format(RECORD_RT15_SA11_RCV, 0, 0)

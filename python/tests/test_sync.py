@@ -1,4 +1,4 @@
-"""Tests for mie_decoder.sync module.
+"""Tests for aero1553.sync module.
 
 Tests cover header detection, record validation, sync loss recovery,
 and interaction with the reader.
@@ -10,8 +10,8 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.models import TimestampFormat
-from mie_decoder.sync import (
+from aero1553.models import TimestampFormat
+from aero1553.sync import (
     ValidationFailure,
     find_first_record,
     recover_sync,
@@ -285,7 +285,7 @@ class TestFindFirstRecord:
     @pytest.mark.requirement("L2-SYN-006")
     def test_reader_skips_header(self, tmp_path: Path, single_receive_record: bytes) -> None:
         """MieFileReader should skip headers and decode records after."""
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         header = b"\x00" * 20
         fpath = tmp_path / "headed.mie"
@@ -296,7 +296,7 @@ class TestFindFirstRecord:
     @pytest.mark.requirement("L2-SYN-006")
     def test_reader_real_header(self, tmp_path: Path, multi_record_data: bytes) -> None:
         """Simulate a file header (non-record data before first record)."""
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         # Build a header using 0xFF bytes (type 0x7F = invalid)
         # so find_first_record will skip past it
@@ -331,7 +331,7 @@ class TestRecoverSync:
         self, tmp_path: Path, single_receive_record: bytes
     ) -> None:
         """Reader should skip corruption and continue decoding."""
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         # 2 good records, corruption, 2 more good records
         good = single_receive_record * 2
@@ -362,7 +362,7 @@ class TestRecoverSync:
         corruption region). Mirrors the Rust
         recovery_scan_is_forward_only_and_bounded integration test.
         """
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         block = single_receive_record * 2  # two records pass look-ahead
         garbage = b"\xff" * 16
@@ -388,8 +388,8 @@ class TestRecoverSync:
         self, tmp_path: Path, single_receive_record: bytes
     ) -> None:
         """Strict mode should raise on sync loss."""
-        from mie_decoder.exceptions import MieUnknownTypeWordError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MieUnknownTypeWordError
+        from aero1553.reader import MieFileReader
 
         good = single_receive_record * 2
         corruption = b"\x03\x00" * 5  # invalid type 0x03
@@ -413,13 +413,13 @@ class TestRecoverSync:
         """DEBUG diagnostics include one bounded context line."""
         import logging
 
-        from mie_decoder.exceptions import MieUnknownTypeWordError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MieUnknownTypeWordError
+        from aero1553.reader import MieFileReader
 
         fpath = tmp_path / "strict_corrupt.mie"
         fpath.write_bytes(single_receive_record * 2 + b"\x03\x00" * 5)
         with (
-            caplog.at_level(logging.DEBUG, logger="mie_decoder.reader"),
+            caplog.at_level(logging.DEBUG, logger="aero1553.reader"),
             pytest.raises(MieUnknownTypeWordError),
         ):
             list(MieFileReader(fpath, strict=True, input_time_format=TimestampFormat.IRIG))
@@ -439,8 +439,8 @@ class TestRecoverSync:
         tmp_path: Path,
         single_receive_record: bytes,
     ) -> None:
-        from mie_decoder.exceptions import MiePayloadError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MiePayloadError
+        from aero1553.reader import MieFileReader
 
         invalid_day = bytearray(single_receive_record)
         invalid_day[2:4] = (0x000F).to_bytes(2, "little")
@@ -458,7 +458,7 @@ class TestSyncBoundsAndLogging:
     def test_find_first_record_capped_at_max_scan(self) -> None:
         """L2-SYN-007: header detection SHALL cap its scan at 64 KB. A valid
         record placed past that cap SHALL NOT be found."""
-        from mie_decoder.sync import MAX_SCAN_BYTES, find_first_record
+        from aero1553.sync import MAX_SCAN_BYTES, find_first_record
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         garbage = b"\xff" * (MAX_SCAN_BYTES + 1024)
@@ -483,12 +483,12 @@ class TestSyncBoundsAndLogging:
         """
         import logging
 
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         header = b"\x00" * 24
         fpath = tmp_path / "headered.mie"
         fpath.write_bytes(header + single_receive_record * 2)
-        with caplog.at_level(logging.INFO, logger="mie_decoder"):
+        with caplog.at_level(logging.INFO, logger="aero1553"):
             messages = list(MieFileReader(fpath, input_time_format=TimestampFormat.IRIG))
         assert len(messages) == 2
         info_msgs = [r.getMessage() for r in caplog.records if r.levelno == logging.INFO]
@@ -513,15 +513,15 @@ class TestSyncBoundsAndLogging:
         """
         import logging
 
-        from mie_decoder.sync import find_first_record, recover_sync
+        from aero1553.sync import find_first_record, recover_sync
 
         data = b"\x00" * 24 + single_receive_record * 2
-        with caplog.at_level(logging.DEBUG, logger="mie_decoder"):
+        with caplog.at_level(logging.DEBUG, logger="aero1553"):
             assert find_first_record(data, len(data), TimestampFormat.IRIG) == 24
             # A scan that finds nothing must be just as quiet.
             assert find_first_record(b"\xff" * 64, 64, TimestampFormat.IRIG) is None
             recover_sync(data, 0, len(data), TimestampFormat.IRIG)
-        sync_records = [r for r in caplog.records if r.name.startswith("mie_decoder.sync")]
+        sync_records = [r for r in caplog.records if r.name.startswith("aero1553.sync")]
         assert sync_records == [], (
             f"sync helpers must not log; got {[r.getMessage() for r in sync_records]}"
         )
@@ -543,11 +543,11 @@ class TestSyncBoundsAndLogging:
         """
         import logging
 
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         fpath = tmp_path / "empty_recording.mie"
         fpath.write_bytes(b"\x00\x00")
-        with caplog.at_level(logging.DEBUG, logger="mie_decoder"):
+        with caplog.at_level(logging.DEBUG, logger="aero1553"):
             assert list(MieFileReader(fpath)) == []
         messages = [r.getMessage().lower() for r in caplog.records]
         assert not any("no valid record" in m for m in messages), (
@@ -567,8 +567,8 @@ class TestSyncBoundsAndLogging:
         MieHomogeneousPayloadError rather than emit a torrent of
         synthetic SPURIOUS_DATA frames.
         """
-        from mie_decoder.exceptions import MieHomogeneousPayloadError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MieHomogeneousPayloadError
+        from aero1553.reader import MieFileReader
 
         # 0x20-fill, 1 KB — enough for 4 candidate records of 64 bytes each.
         fpath = tmp_path / "all_spaces.mie"
@@ -583,7 +583,7 @@ class TestSyncBoundsAndLogging:
         """L2-SYN-018: the defense SHALL NOT false-positive on legitimate
         recordings whose payload bytes vary between records — i.e. real
         MIE files don't trip the homogeneous-payload guard."""
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         # Two copies of RECORD_RT15_SA11_RCV (the canonical valid record).
         # Only 2 records is below the N=4 sample, so the check is
@@ -627,14 +627,14 @@ class TestSyncBoundsAndLogging:
         successful recovery at INFO."""
         import logging
 
-        from mie_decoder.reader import MieFileReader
+        from aero1553.reader import MieFileReader
 
         good = single_receive_record * 2
         corruption = b"\xff\xff" * 10
         data = good + corruption + single_receive_record * 2
         fpath = tmp_path / "sync_logging.mie"
         fpath.write_bytes(data)
-        with caplog.at_level(logging.INFO, logger="mie_decoder.reader"):
+        with caplog.at_level(logging.INFO, logger="aero1553.reader"):
             messages = list(MieFileReader(fpath))
         assert len(messages) >= 1
         warn_msgs = [r.getMessage() for r in caplog.records if r.levelno >= logging.WARNING]
@@ -663,7 +663,7 @@ class TestNRecordLookahead:
 
     @pytest.mark.requirement("L2-SYN-026")
     def test_n1_skips_lookahead(self) -> None:
-        from mie_decoder.sync import validate_record
+        from aero1553.sync import validate_record
 
         # Valid record + 4 bytes of plausible-looking but invalid
         # Type-Word garbage. N=1 must not peek; N=2 must reject.
@@ -673,7 +673,7 @@ class TestNRecordLookahead:
 
     @pytest.mark.requirement("L2-SYN-026")
     def test_n4_catches_second_corruption(self) -> None:
-        from mie_decoder.sync import validate_record
+        from aero1553.sync import validate_record
 
         # Two valid records + invalid Type Word at the third record's
         # position. N=2 (default) only checks records 1 and 2 (both
@@ -684,7 +684,7 @@ class TestNRecordLookahead:
 
     @pytest.mark.requirement("L2-SYN-026")
     def test_eof_terminates_gracefully(self) -> None:
-        from mie_decoder.sync import validate_record
+        from aero1553.sync import validate_record
 
         # Single valid record with no follower. Any N >= 1 must accept —
         # EOF mid-walk is not a rejection.
@@ -708,7 +708,7 @@ class TestEndOfRecordsTerminator:
 
     @pytest.mark.requirement("L2-SYN-028")
     def test_lookahead_terminator_confirms_last_record(self) -> None:
-        from mie_decoder.sync import validate_record
+        from aero1553.sync import validate_record
 
         # A valid record whose look-ahead boundary is the 0x0000 terminator is
         # confirmed as the last record — not dropped. Without this the final
@@ -718,7 +718,7 @@ class TestEndOfRecordsTerminator:
 
     @pytest.mark.requirement("L2-SYN-028")
     def test_recover_sync_does_not_honor_terminator(self) -> None:
-        from mie_decoder.sync import recover_sync, validate_record
+        from aero1553.sync import recover_sync, validate_record
 
         # [2 bytes garbage][valid record][0x0000]. Recovery must NOT validate
         # the record off its terminator follower (a mis-aligned candidate could

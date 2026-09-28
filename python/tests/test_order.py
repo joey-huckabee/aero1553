@@ -12,10 +12,10 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder import cli
-from mie_decoder.cli import EXIT_USAGE
-from mie_decoder.exceptions import MieDecoderError, MieUnrecoverableSyncLossError
-from mie_decoder.models import (
+from aero1553 import cli
+from aero1553.cli import EXIT_USAGE
+from aero1553.exceptions import Aero1553Error, MieUnrecoverableSyncLossError
+from aero1553.models import (
     Bus,
     CommandWord,
     Direction,
@@ -25,7 +25,7 @@ from mie_decoder.models import (
     StandardTimestamp,
     TypeWord,
 )
-from mie_decoder.order import (
+from aero1553.order import (
     DEFAULT_MAX_SORT_GROUP,
     MAX_SORT_GROUP_MAX,
     MAX_SORT_GROUP_MIN,
@@ -211,7 +211,7 @@ class TestCap:
 
     @pytest.mark.requirement("L2-WRT-022")
     def test_cap_warns_once_per_capped_run(self, caplog: pytest.LogCaptureFixture) -> None:
-        with caplog.at_level(logging.WARNING, logger="mie_decoder.order"):
+        with caplog.at_level(logging.WARNING, logger="aero1553.order"):
             ordered([rec(10, 9, 1), rec(10, 8, 1)], cap=2)
         warnings = [r for r in caplog.records if "max_sort_group" in r.getMessage()]
         assert len(warnings) == 1, f"expected exactly one WARN, got {len(warnings)}"
@@ -265,7 +265,7 @@ class TestStreamEdges:
             raise MieUnrecoverableSyncLossError(0, 0)
 
         ordered_stream = order_rows(stream(), DEFAULT_MAX_SORT_GROUP)  # type: ignore[arg-type]
-        with pytest.raises(MieDecoderError):
+        with pytest.raises(Aero1553Error):
             list(ordered_stream)
 
     @pytest.mark.requirement("L3-PY-016")

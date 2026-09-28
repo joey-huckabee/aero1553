@@ -1,7 +1,7 @@
 """Sequential reader for DDC MIE binary recording files.
 
 This module provides :class:`MieFileReader`, an iterator that reads an
-MIE binary file and yields fully decoded :class:`~mie_decoder.models.MieMessage`
+MIE binary file and yields fully decoded :class:`~aero1553.models.MieMessage`
 instances in file order. It handles:
 
 - **Header detection**: Automatically finds the first valid record,
@@ -20,12 +20,12 @@ instances in file order. It handles:
 Sync Recovery:
 
     The reader maintains sync through a validate-then-decode approach.
-    At each record boundary, :func:`~mie_decoder.sync.validate_record`
+    At each record boundary, :func:`~aero1553.sync.validate_record`
     confirms the Type Word is valid, the word count is plausible, and
     the next record's Type Word also looks valid (look-ahead).
 
     If validation fails, the reader calls
-    :func:`~mie_decoder.sync.recover_sync` which scans forward in
+    :func:`~aero1553.sync.recover_sync` which scans forward in
     2-byte steps until it finds a valid record. If recovery fails
     (no valid record within the scan window), iteration stops.
 
@@ -44,7 +44,7 @@ from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
-from mie_decoder.decode import (
+from aero1553.decode import (
     DEFAULT_DETECT_RECORDS,
     DEFAULT_MUX_DELIMITER,
     DEFAULT_MUX_ENABLED,
@@ -65,8 +65,8 @@ from mie_decoder.decode import (
     validate_post_extract_invariants,
     validate_structural_invariants,
 )
-from mie_decoder.delta import DeltaKind, DeltaTracker
-from mie_decoder.exceptions import (
+from aero1553.delta import DeltaKind, DeltaTracker
+from aero1553.exceptions import (
     MieFileEmptyError,
     MieFileIoError,
     MieFileNotFoundError,
@@ -81,8 +81,8 @@ from mie_decoder.exceptions import (
     MieUnknownTypeWordError,
     MieUnrecoverableSyncLossError,
 )
-from mie_decoder.logger import irig_day_advisory
-from mie_decoder.models import (
+from aero1553.logger import irig_day_advisory
+from aero1553.models import (
     ERROR_SPURIOUS_CONTINUATION,
     ERROR_SPURIOUS_STANDALONE,
     KNOWN_DDC_ERROR_CODES,
@@ -95,7 +95,7 @@ from mie_decoder.models import (
     TimestampFormat,
     TypeWord,
 )
-from mie_decoder.sync import (
+from aero1553.sync import (
     DEFAULT_LOOKAHEAD_RECORDS,
     ValidationFailure,
     find_first_record,
@@ -119,7 +119,7 @@ class _DecodeState:
     prev_was_error: bool
     warned_irig_day: bool
     #: Per-RT/MSG DELTA state (L2-RDR-009/010/017/018/019). Owned by
-    #: :mod:`mie_decoder.delta`, which is also what the merge uses for
+    #: :mod:`aero1553.delta`, which is also what the merge uses for
     #: ``--delta-scope global`` -- before that extraction the key was spelled
     #: three different ways across two modules.
     delta_tracker: DeltaTracker
@@ -150,7 +150,7 @@ class MieFileReader:
     """Memory-mapped sequential reader for MIE binary files.
 
     Reads a DDC MIE binary recording file and yields decoded
-    :class:`~mie_decoder.models.MieMessage` instances. Uses
+    :class:`~aero1553.models.MieMessage` instances. Uses
     ``mmap`` for efficient access to large files without loading
     the entire file into memory.
 
@@ -476,7 +476,7 @@ class MieFileReader:
         # declared extent runs past EOF". The latter gets
         # MieFirstRecordTruncatedError in strict mode and
         # terminates cleanly with zero records in lenient.
-        from mie_decoder.sync import (
+        from aero1553.sync import (
             MAX_SCAN_BYTES,
             diagnose_header_scan_failure,
         )
@@ -533,7 +533,7 @@ class MieFileReader:
                 outside the timestamp triple, which means the input is padding
                 rather than a recording.
         """
-        from mie_decoder.sync import (
+        from aero1553.sync import (
             HOMOGENEITY_SAMPLE_RECORDS,
             is_homogeneous_payload,
         )
@@ -884,7 +884,7 @@ class MieFileReader:
             #   cleanly.
             # - Corruption → L1-EXIT-004: raise so the CLI maps to exit 3 (or
             #   `.partial` + exit 0 with --allow-partial).
-            from mie_decoder.sync import MAX_SCAN_BYTES
+            from aero1553.sync import MAX_SCAN_BYTES
 
             bytes_remaining = file_len - offset
             if bytes_remaining < MAX_SCAN_BYTES:
@@ -1288,7 +1288,7 @@ def _decode_error_record(
     except ValueError:
         msg_fmt = MessageFormat.RECEIVE
 
-    from mie_decoder.models import DDC_ERROR_DESCRIPTIONS
+    from aero1553.models import DDC_ERROR_DESCRIPTIONS
 
     desc = DDC_ERROR_DESCRIPTIONS.get(error_code, "Unknown")
     logger.info(
@@ -1326,7 +1326,7 @@ def _narrate_delta(
     """Return this record's DELTA, emitting the WARN that sometimes goes with it.
 
     The arithmetic and the per-key state belong to
-    :class:`~mie_decoder.delta.DeltaTracker`; what is left here is narration,
+    :class:`~aero1553.delta.DeltaTracker`; what is left here is narration,
     which is the reader's job and nobody else's. The tracker deliberately does
     not log: it cannot know that a backward step is worth a line in a
     single-file decode and merely noise in a merge that already reports
