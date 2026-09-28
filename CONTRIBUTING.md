@@ -1,6 +1,6 @@
-# Contributing to MIE-Decoder
+# Contributing to Aero1553
 
-Thanks for working on MIE-Decoder. This repository contains maintained Rust
+Thanks for working on Aero1553. This repository contains maintained Rust
 and Python implementations. This document covers local setup, the pre-commit
 workflow, and commit conventions.
 
@@ -249,12 +249,12 @@ Python:
 ```bash
 poetry -C python sync
 poetry -C python run pytest
-poetry -C python run pylint src/mie_decoder   # lint (CI-gated, must stay 10/10)
+poetry -C python run pylint src/aero1553      # lint (CI-gated, must stay 10/10)
 poetry -C python run ruff check               # ruff lint (CI-gated)
 poetry -C python run ruff format              # auto-format (CI runs ruff format --check)
 poetry -C python run vulture                  # dead-code scan (CI-gated)
-poetry -C python run bandit -r src/mie_decoder  # security scan / SAST (CI-gated)
-poetry -C python run mie-decoder --help
+poetry -C python run bandit -r src/aero1553     # security scan / SAST (CI-gated)
+poetry -C python run aero1553 --help
 poetry -P python build   # -P (not -C): -C doubles the src path on Windows; -P needs Poetry >= 2.0
 ```
 
@@ -273,7 +273,7 @@ build step had quietly failed.
 Run it **through Poetry**. The runner drives the Python CLI with
 `sys.executable` — the interpreter it is itself running under — so a bare
 `python tests/conformance/run.py` uses your system Python, which does not
-have `mie_decoder` after a `poetry -C python sync` (Poetry installs into its
+have `aero1553` after a `poetry -C python sync` (Poetry installs into its
 own virtualenv). It fails fast and tells you so, but the Poetry form is the
 one that works. CI runs the bare form only because it does
 `pip install -e ./python` into the runner's system interpreter first.
@@ -346,7 +346,7 @@ What the settings do:
 - `Rust: dump <file>`
 - `Rust: debug library unit tests`
 
-Each uses CodeLLDB's cargo integration — it builds the `mie-decoder` bin from
+Each uses CodeLLDB's cargo integration — it builds the `aero1553` bin from
 `rust/Cargo.toml` and launches it under the debugger, so no `tasks.json` is
 needed.
 
@@ -354,17 +354,17 @@ needed.
 
 - `Python: decode <file> -> CSV`
 - `Python: count <file>`
-- `Python: dump <file>` (these run `python -m mie_decoder`)
+- `Python: dump <file>` (these run `python -m aero1553`)
 - `Python: pytest (current file)`
 - `Python: pytest (all)`
 
-The Python configs set `justMyCode: false` (so you can step into `mie_decoder`),
+The Python configs set `justMyCode: false` (so you can step into `aero1553`),
 run from `python/` for pytest, and rely on the interpreter selected in VS Code.
 
 Two things to know:
 
 - **Python interpreter** — run **"Python: Select Interpreter"** and pick the
-  Poetry venv at `python/.venv` so `mie_decoder` is importable. The config uses
+  Poetry venv at `python/.venv` so `aero1553` is importable. The config uses
   the *selected* interpreter rather than a hardcoded path, so it stays portable
   across Windows / macOS / Linux.
 - **Input prompts** — the `decode` / `count` / `dump` configs prompt for the
@@ -376,7 +376,7 @@ Two things to know:
 
 Each implementation carries a deterministic fuzz harness asserting the
 **L1-ROB-001** robustness contract: arbitrary input bytes must never panic
-(Rust) or raise anything other than a documented `MieDecoderError` / `MieError`
+(Rust) or raise anything other than a documented `Aero1553Error` / `MieError`
 (Python, C++). All of them are seeded from the same `xorshift64` PRNG, with the
 same seed, size bands and draw order, so iteration N is the same bytes in every
 implementation.
@@ -704,7 +704,7 @@ TEST_CASE("AtomicFile replaces an existing destination", "[atomic][L3-CPP-006]")
 ```
 
 ```bash
-./build/<toolchain>/mie_decoder_tests "[L3-CPP-006]"
+./build/<toolchain>/aero1553_tests "[L3-CPP-006]"
 python scripts/build-trace-matrix.py --check
 ```
 

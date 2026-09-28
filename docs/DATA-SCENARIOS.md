@@ -1,4 +1,4 @@
-# MIE-Decoder Data Scenarios
+# Aero1553 Data Scenarios
 
 **What this page is.** A plain-language map of *every kind of data condition* the
 decoder can meet — clean records, error records, odd timestamps, corruption,

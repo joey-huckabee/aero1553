@@ -1,4 +1,4 @@
-# MIE-Decoder Fuzzing
+# Aero1553 Fuzzing
 
 **What this page is.** The single map of *what is fuzzed*, *by which
 implementation*, *under which driver*, and *what is deliberately not fuzzed yet*.
@@ -47,7 +47,7 @@ process did not crash*:
 - Rust: `std::panic::catch_unwind` — panic / no panic. That nothing but a
   `MieError` escapes is a compile-time guarantee of the `Result<T, MieError>`
   signature, so the harness does not need to check it.
-- Python: `except MieDecoderError: pass` ahead of a bare `except Exception:`
+- Python: `except Aero1553Error: pass` ahead of a bare `except Exception:`
   that fails the test — a runtime assertion that the exception *type* is
   documented.
 - C++: `catch (const mie::MieError&)` with an empty body; any other exception
@@ -180,7 +180,7 @@ reserved bits and structural-invariant rejection all fire in volume. They are a
 
 One claim the harnesses' own comments make that a burn-in does not bear out: the
 `max_sort_group` cap branch is described as "reached often". Across a full
-burn-in the Rust log contains no `mie_decoder::order` diagnostics at all. Random
+burn-in the Rust log contains no `aero1553::order` diagnostics at all. Random
 bytes essentially never produce enough consecutive records with an equal decoded
 timestamp to hit a small cap. `record_fuzz.py`'s duplicated-slice mutation is the
 generator that actually reaches it.
@@ -395,7 +395,7 @@ recording — and only then decide which side is wrong. The comparator
 deliberately does not tell you; that judgement should be recorded in the fix.
 
 **When a fuzz finding is not a bug.** Random input legitimately produces
-`MieError` / `MieDecoderError` in volume; that is the documented response and is
+`MieError` / `Aero1553Error` in volume; that is the documented response and is
 what the harnesses are written to accept. A finding is a bug when the escape is
 an *undocumented* exception type, a panic, a hang, or — for the differential
 drivers and the summary comparison — an *agreement* failure, regardless of

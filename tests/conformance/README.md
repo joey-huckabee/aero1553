@@ -21,7 +21,7 @@ poetry -C python run python ../tests/conformance/run.py
 
 The runner drives the Python CLI with `sys.executable` — the interpreter it is
 itself running under. A bare `python tests/conformance/run.py` therefore uses
-your system Python, which does not have `mie_decoder` after `poetry -C python
+your system Python, which does not have `aero1553` after `poetry -C python
 sync` installs it into Poetry's virtualenv. The runner probes for the import and
 fails fast with the fix, but the form above is the one that works. (CI uses the
 bare form because it `pip install -e ./python` into its system interpreter
@@ -30,7 +30,7 @@ first.) `--python-bin <path>` overrides the interpreter explicitly.
 To use an already-built Rust binary:
 
 ```bash
-poetry -C python run python ../tests/conformance/run.py --rust-bin ../rust/target/debug/mie-decoder
+poetry -C python run python ../tests/conformance/run.py --rust-bin ../rust/target/debug/aero1553
 ```
 
 Two path traps here, both easy to hit:
@@ -40,7 +40,7 @@ Two path traps here, both easy to hit:
   the script and `--rust-bin`.
 - `--rust-bin` is used exactly as given; the runner only appends `.exe` when it
   locates the binary itself. On Windows pass
-  `../rust/target/debug/mie-decoder.exe`, or omit the flag and let the runner
+  `../rust/target/debug/aero1553.exe`, or omit the flag and let the runner
   find it. A path that does not exist is reported as `failed to build the Rust
   CLI`, which names the symptom rather than the cause.
 
@@ -54,7 +54,7 @@ held to the same byte-exact oracle.
 
 ```bash
 poetry -C python run python ../tests/conformance/run.py --python-only   # no cargo needed
-python tests/conformance/run.py --rust-only --rust-bin <path>           # no mie_decoder package needed
+python tests/conformance/run.py --rust-only --rust-bin <path>           # no aero1553 package needed
 ```
 
 (`--update-expected` still requires both implementations, since it regenerates

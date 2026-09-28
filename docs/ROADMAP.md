@@ -1,4 +1,4 @@
-# MIE-Decoder Roadmap
+# Aero1553 Roadmap
 
 > **This roadmap is forward-looking only.** Completed work is not tracked here —
 > it lives in `CHANGELOG.md` (release history), `docs/L1-REQ.md` /
@@ -190,7 +190,7 @@ so the request isn't folded into the time-merge contract without separate design
 **Resolved.** `main` failed the SonarCloud quality gate from the v2.12.0 cut
 until this was taken. One condition was failing — `new_security_rating` 5 where
 the gate requires 1 — driven by exactly two vulnerabilities, both on the
-`open(self._path, "rb")` in `python/src/mie_decoder/reader.py`:
+`open(self._path, "rb")` in `python/src/aero1553/reader.py`:
 
 - **`pythonsecurity:S2083`** (blocker) — "Change this code to not construct the
   path from user-controlled data."
@@ -332,8 +332,8 @@ three causes below are now resolved, and the remaining one is the reason
 staleness detection is still deferred rather than merely unfinished.
 
 - **PlantUML names its output after the diagram, not the source file.** Every
-  source opens `@startuml MIE-Decoder Class Diagram`, so `-o docs/diagrams`
-  writes `MIE-Decoder Class Diagram.svg` and never touches the tracked
+  source opens `@startuml Aero1553 Class Diagram`, so `-o docs/diagrams`
+  writes `Aero1553 Class Diagram.svg` and never touches the tracked
   `class.svg`. `git diff --exit-code` only inspects tracked files, so the
   untracked renders are invisible and the step passes unconditionally.
   **Moot for the current job**, which renders into a scratch directory and
@@ -424,12 +424,12 @@ keep the two parsers byte-for-byte aligned via the parity corpus.
 
 ## Out of Scope (Pinned)
 
-### IRIG 106 1553 decode support is out of scope for MIE Decoder
+### IRIG 106 1553 decode support is out of scope for Aero1553
 
 See `docs/L1-REQ.md` NR-001. MIE files use a DDC proprietary
 record format that is distinct from IRIG 106 Chapter 10 1553 packet
 formats. Adding IRIG 106 1553 decode is a new capability — separate
 requirements, design analysis, architecture review, and approval —
-not an incremental extension of MIE-Decoder. Any inbound feature
+not an incremental extension of Aero1553. Any inbound feature
 request that says "just add IRIG 106 support" SHALL be redirected
 to a new requirements + design review.

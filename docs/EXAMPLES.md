@@ -1,4 +1,4 @@
-# MIE-Decoder — Examples
+# Aero1553 — Examples
 
 Runnable cookbook for the common operator tasks. Each example is a self-contained recipe: the setup, the exact command, the expected output, and what to do if something deviates.
 
@@ -13,7 +13,7 @@ All examples work identically with the Rust and Python CLIs — both ship the sa
 You have `flight.mie` from a DDC recording card. You want CSV.
 
 ```bash
-mie-decoder decode flight.mie -o flight.csv
+aero1553 decode flight.mie -o flight.csv
 ```
 
 That's the whole command. Auto-detect picks the timestamp format from the first few records; the header (if any) is skipped automatically; output is written atomically (no half-written file on crash).
@@ -21,7 +21,7 @@ That's the whole command. Auto-detect picks the timestamp format from the first 
 Add `--log-level INFO` to see what happened:
 
 ```bash
-$ mie-decoder --log-level INFO decode flight.mie -o flight.csv
+$ aero1553 --log-level INFO decode flight.mie -o flight.csv
 INFO  beginning decode of flight.mie
 INFO  auto-detected timestamp format: Irig (Decisive: IRIG=40 STD=0 over 8 record(s))
 INFO  decode complete: 14523 messages, 0 sync recoveries, format=Irig, file=flight.mie
@@ -50,12 +50,12 @@ See [`USER-GUIDE.md`](USER-GUIDE.md) §7 or [`MIE-FORMAT.md`](MIE-FORMAT.md) for
 For multi-GB recordings, you may want to know the message count before committing to a full decode.
 
 ```bash
-$ mie-decoder count flight.mie
+$ aero1553 count flight.mie
 14523
 # (stderr, always emitted: "counted 14523 messages in flight.mie")
 ```
 
-Both implementations follow the same two-channel contract (L3-RS-008 / L3-PY-010): only the integer goes to stdout (so `n=$(mie-decoder count flight.mie)` works cleanly), while the human-readable status line goes to stderr.
+Both implementations follow the same two-channel contract (L3-RS-008 / L3-PY-010): only the integer goes to stdout (so `n=$(aero1553 count flight.mie)` works cleanly), while the human-readable status line goes to stderr.
 
 The count walks the entire file but doesn't write CSV — much faster than a full decode, useful for sanity checks (does this file have the ~15K records I expect, or is something off?). Filters apply if configured, so a config-file `exclude_types = ["SPURIOUS_DATA"]` would count only non-spurious records.
 
@@ -63,10 +63,10 @@ The count walks the entire file but doesn't write CSV — much faster than a ful
 
 ## 3. Error output (inline by default) and the separate-file option
 
-DDC vendor CSV mixes errored, SPURIOUS, and clean records into one file, and so does MIE-Decoder by default — no flag needed, which is what makes a default decode directly diffable against vendor output:
+DDC vendor CSV mixes errored, SPURIOUS, and clean records into one file, and so does Aero1553 by default — no flag needed, which is what makes a default decode directly diffable against vendor output:
 
 ```bash
-mie-decoder decode flight.mie -o flight.csv
+aero1553 decode flight.mie -o flight.csv
 ```
 
 Errored records appear in `flight.csv` with the `ERROR` column set to `ERROR` and `ERROR_CODE` carrying the DDC hardware code:
@@ -82,7 +82,7 @@ See [`ERROR-CATALOG.md`](ERROR-CATALOG.md) §6 for the DDC code reference and §
 If you would rather keep the main CSV clean, pull the errored and spurious rows into a sibling file:
 
 ```bash
-mie-decoder decode flight.mie --separate-errors -o flight.csv
+aero1553 decode flight.mie --separate-errors -o flight.csv
 # -> flight.csv (clean rows) + flight_errors.csv (errored + SPURIOUS rows)
 ```
 
@@ -96,7 +96,7 @@ You're investigating a specific Remote Terminal. Drop everything else:
 
 ```bash
 # Keep only RT 15 by excluding all other RTs (comma-separated list):
-mie-decoder decode flight.mie \
+aero1553 decode flight.mie \
     --exclude-rts 0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,16,17,18,19,20,21,22,23,24,25,26,27,28,29,30,31 \
     -o rt15.csv
 ```
@@ -104,14 +104,14 @@ mie-decoder decode flight.mie \
 Awkward. Both CLIs provide `--include-rts` for the positive form:
 
 ```bash
-mie-decoder decode flight.mie --include-rts 15 -o rt15.csv
+aero1553 decode flight.mie --include-rts 15 -o rt15.csv
 ```
 
 For drop-by-type / drop-by-bus / drop-by-subaddress, both CLIs share the same exclusion flags:
 
 ```bash
 # Drop spurious noise, drop mode codes, keep only Bus A:
-mie-decoder decode flight.mie \
+aero1553 decode flight.mie \
     --exclude-types SPURIOUS_DATA,MODE_COMMAND \
     --exclude-buses B \
     -o focused.csv
@@ -126,14 +126,14 @@ Filter axes use **OR logic** (a message is dropped if it matches ANY criterion) 
 Your recording uses the Standard (free-running counter) timestamp format, not IRIG. Decoded as-is, `TIME_STAMP` is a raw hex counter and `DELTA` is empty for every row — the counter's tick rate isn't stored in the file, so the decoder won't guess at elapsed time:
 
 ```bash
-mie-decoder decode counter.mie --input-time-format standard -o out.csv
+aero1553 decode counter.mie --input-time-format standard -o out.csv
 # DELTA column blank on every row
 ```
 
 You know from the card's configuration that the counter runs at 1 MHz. Supply it and `DELTA` comes to life:
 
 ```bash
-mie-decoder decode counter.mie --input-time-format standard --standard-tick-rate-hz 1000000 -o out.csv
+aero1553 decode counter.mie --input-time-format standard --standard-tick-rate-hz 1000000 -o out.csv
 ```
 
 Now each RT/MSG key gets `0.000000` on first sight and real elapsed seconds thereafter — e.g. two records of the same key 16 ticks apart show `DELTA = 0.000016`. The conversion is `round(raw_ticks × 1_000_000 / rate)`; the rate must be `> 0`.
@@ -148,7 +148,7 @@ standard_tick_rate_hz = 1000000.0
 ```
 
 ```bash
-mie-decoder --config counter-card.toml decode counter.mie -o out.csv
+aero1553 --config counter-card.toml decode counter.mie -o out.csv
 ```
 
 The flag overrides the config value if both are present (CLI > config > default). The setting is a no-op on IRIG recordings. See [`USER-GUIDE.md` → Calibrating Standard timestamps](USER-GUIDE.md#calibrating-standard-timestamps) for background on where the rate comes from.
@@ -161,7 +161,7 @@ The analytics platform ingesting your CSVs wants calendar dates, not
 day-of-year. The recording is from **11 July 2026**:
 
 ```bash
-mie-decoder decode flight.mie -o out.csv --output-time-format iso --year 2026
+aero1553 decode flight.mie -o out.csv --output-time-format iso --year 2026
 ```
 
 ```
@@ -175,7 +175,7 @@ day-of-year but **not the year**, and day 192 is July 10 in a leap year and July
 refuses rather than guessing:
 
 ```bash
-mie-decoder decode flight.mie -o out.csv --output-time-format iso
+aero1553 decode flight.mie -o out.csv --output-time-format iso
 # Error: --output-time-format iso needs a calendar year, and an MIE recording
 #   does not carry one: IRIG-B encodes day-of-year but not the year.
 #   Set [output] year = YYYY in a config file or pass --year YYYY.
@@ -186,7 +186,7 @@ If your site's IRIG source is not UTC, say so; the offset is appended as a
 designator and never shifts the time fields:
 
 ```bash
-mie-decoder decode flight.mie -o out.csv \
+aero1553 decode flight.mie -o out.csv \
     --output-time-format iso --year 2026 --utc-offset -05:00
 # 2026-07-11T15:54:50.456225-05:00,15,11R,...
 ```
@@ -202,7 +202,7 @@ utc_offset = "Z"
 ```
 
 ```bash
-mie-decoder --config site-iso.toml decode flight.mie -o out.csv
+aero1553 --config site-iso.toml decode flight.mie -o out.csv
 ```
 
 **Two things to know before you turn this on.** It voids a vendor-CSV diff —
@@ -219,7 +219,7 @@ as a fact rather than printed as a day number. See
 The recording has unrecoverable mid-file corruption. Default behavior exits 3 with no output (so you can't mistake a partial result for a complete one). To preserve what was decoded before the corruption:
 
 ```bash
-mie-decoder decode corrupt.mie --allow-partial -o decoded.csv
+aero1553 decode corrupt.mie --allow-partial -o decoded.csv
 ```
 
 On unrecoverable sync loss:
@@ -229,7 +229,7 @@ On unrecoverable sync loss:
 - The CLI exits 0 with a WARN summary naming the sync-loss count.
 
 ```bash
-$ mie-decoder --log-level INFO decode corrupt.mie --allow-partial -o decoded.csv
+$ aero1553 --log-level INFO decode corrupt.mie --allow-partial -o decoded.csv
 INFO  beginning decode of corrupt.mie
 INFO  auto-detected timestamp format: Irig (Decisive: IRIG=40 STD=0 over 8 record(s))
 WARN  sync lost at 0x12340 (type=0x7F wc=0); scanning forward
@@ -265,17 +265,17 @@ print(df.groupby("RT").size().sort_values(ascending=False))
 ```
 
 ```bash
-mie-decoder decode flight.mie | python count_by_rt.py
+aero1553 decode flight.mie | python count_by_rt.py
 ```
 
 ### Pipe into awk for quick counts
 
 ```bash
 # Count rows per Remote Terminal:
-mie-decoder decode flight.mie | awk -F, 'NR > 1 { c[$2]++ } END { for (rt in c) print rt, c[rt] }'
+aero1553 decode flight.mie | awk -F, 'NR > 1 { c[$2]++ } END { for (rt in c) print rt, c[rt] }'
 
 # Sum data word 1 across all RT15/SA11 receives (e.g. a counter field):
-mie-decoder decode flight.mie | \
+aero1553 decode flight.mie | \
     awk -F, 'NR>1 && $2=="15" && $3=="11R" { sum += strtonum("0x" $4) } END { print sum }'
 ```
 
@@ -283,7 +283,7 @@ mie-decoder decode flight.mie | \
 
 ```bash
 # First 100 records, no error if the decoder is still running:
-mie-decoder decode flight.mie | head -100
+aero1553 decode flight.mie | head -100
 ```
 
 The decoder's writer detects the broken pipe and exits 0 silently. You won't see a `BrokenPipeError` or a non-zero exit.
@@ -295,7 +295,7 @@ The decoder's writer detects the broken pipe and exits 0 silently. You won't see
 Site-wide defaults in TOML, per-invocation tweaks on the CLI. CLI arguments win on conflict (L2-CFG-003); filter arrays merge (L2-CFG-004).
 
 ```toml
-# /etc/mie-decoder/site.toml — read by every analyst on this host
+# /etc/aero1553/site.toml — read by every analyst on this host
 [logging]
 level = "INFO"
 
@@ -310,14 +310,14 @@ exclude_rts   = [31]                # we never look at broadcast
 Daily use:
 
 ```bash
-mie-decoder --config /etc/mie-decoder/site.toml decode flight.mie -o flight.csv
+aero1553 --config /etc/aero1553/site.toml decode flight.mie -o flight.csv
 ```
 
 Override for a specific investigation that needs the broadcast traffic:
 
 ```bash
-mie-decoder decode flight.mie \
-    --config /etc/mie-decoder/site.toml \
+aero1553 decode flight.mie \
+    --config /etc/aero1553/site.toml \
     -o investigation.csv
 # RT 31 is still filtered (config). To bring it back in this run, you'd
 # need a different config; CLI cannot "un-exclude" something the config
@@ -327,8 +327,8 @@ mie-decoder decode flight.mie \
 Per-invocation merge (CLI filter adds to config filter):
 
 ```bash
-mie-decoder decode flight.mie \
-    --config /etc/mie-decoder/site.toml \
+aero1553 decode flight.mie \
+    --config /etc/aero1553/site.toml \
     --exclude-rts 0 \
     -o flight.csv
 # Effective: SPURIOUS_DATA filtered (config), RT 31 filtered (config), RT 0 filtered (CLI merge).
@@ -350,7 +350,7 @@ set -u   # NOT set -e — we want to inspect the exit code ourselves
 input="$1"
 output="$2"
 
-mie-decoder decode "$input" -o "$output"
+aero1553 decode "$input" -o "$output"
 rc=$?
 
 case $rc in
@@ -374,7 +374,7 @@ case $rc in
         # Unrecoverable mid-file sync loss without --allow-partial.
         # Retry with --allow-partial to preserve what was decoded.
         echo "PARTIAL: $input has unrecoverable corruption; retrying with --allow-partial"
-        mie-decoder decode "$input" --allow-partial -o "$output"
+        aero1553 decode "$input" --allow-partial -o "$output"
         if [ -f "${output}.partial" ]; then
             echo "  recovered $(wc -l < "${output}.partial") rows to ${output}.partial"
         fi
@@ -382,13 +382,13 @@ case $rc in
     4)
         # Usage error: the command line itself is wrong (bad flag, etc.).
         # This is a bug in the batch script, not a data problem — abort.
-        echo "BUG: bad mie-decoder invocation for $input" >&2
+        echo "BUG: bad aero1553 invocation for $input" >&2
         exit 2
         ;;
     5)
         # Configuration error: the --config TOML is missing or invalid.
         # Fix the config; don't keep looping over inputs.
-        echo "BUG: invalid mie-decoder config" >&2
+        echo "BUG: invalid aero1553 config" >&2
         exit 2
         ;;
     6)
@@ -426,7 +426,7 @@ The CLI exited 2 with `No valid MIE records found` or `Pathological homogeneous-
 
 ```bash
 # Raw hex dump of the first 256 bytes:
-mie-decoder dump suspect.mie --raw --length 256
+aero1553 dump suspect.mie --raw --length 256
 ```
 
 ```
@@ -444,7 +444,7 @@ For files that DO look like MIE but still fail, use record-aware mode:
 
 ```bash
 # Parse the first N records and show each one's decoded header + bytes:
-mie-decoder dump suspect.mie --records 3
+aero1553 dump suspect.mie --records 3
 ```
 
 ```
@@ -470,14 +470,14 @@ See [`USER-GUIDE.md`](USER-GUIDE.md) §5 for the full `dump` subcommand referenc
 
 ## 11. Diff against vendor CSV
 
-You want to validate that MIE-Decoder reproduces vendor output for a known-good recording.
+You want to validate that Aero1553 reproduces vendor output for a known-good recording.
 
 ```bash
 # 1. Generate both CSVs from the same input file.
 #    --no-mux leaves the MUX column empty like the vendor's other placeholders;
 #    --max-sort-group 1 disables canonical row ordering so rows stay in the
 #    vendor's capture order. Both are needed for a byte-for-byte diff.
-mie-decoder decode flight.mie -o mie.csv --no-mux --max-sort-group 1
+aero1553 decode flight.mie -o mie.csv --no-mux --max-sort-group 1
 # Vendor tool produces flight-vendor.csv via whatever process you normally use.
 
 # 2. Normalize line endings if your platforms differ.
@@ -514,22 +514,22 @@ If you see differences:
 
 ## 12. One-off ad-hoc filters with shell tools
 
-The shell composes well with MIE-Decoder output. Some recipes that come up:
+The shell composes well with Aero1553 output. Some recipes that come up:
 
 ```bash
 # Histogram of message types across the recording:
-mie-decoder decode flight.mie | awk -F, 'NR>1 { print substr($3, length($3), 1) }' | sort | uniq -c
+aero1553 decode flight.mie | awk -F, 'NR>1 { print substr($3, length($3), 1) }' | sort | uniq -c
 
 # Find any transactions on RT 0 (often unused, so finding traffic there is interesting):
-mie-decoder decode flight.mie | awk -F, 'NR>1 && $2=="0"' | head
+aero1553 decode flight.mie | awk -F, 'NR>1 && $2=="0"' | head
 
 # Inter-arrival histogram for one RT/MSG (DELTA distribution):
-mie-decoder decode flight.mie | \
+aero1553 decode flight.mie | \
     awk -F, 'NR>1 && $2=="15" && $3=="11R" { print int($41 * 1000) }' | \
     sort -n | uniq -c    # bucketed to milliseconds
 
 # Quick "is there any traffic on Bus B?" check:
-mie-decoder decode flight.mie | awk -F, 'NR>1 && $40=="B"' | head -1
+aero1553 decode flight.mie | awk -F, 'NR>1 && $40=="B"' | head -1
 ```
 
 Column indices reference the spec column order (1 = TIME_STAMP, 2 = RT, 3 = MSG, 4–35 = WD01–WD32, 36 = STAT, 37 = CMD, 38 = MUX, 39 = TERM_NAME, 40 = BUS, 41 = DELTA, 42 = IM_GAP, 43 = RCV_GAP, 44 = XMT_GAP, 45 = ERROR, 46 = ERROR_CODE). Indices 1–44 are the DDC vendor layout and match a vendor CSV position-for-position; 45–46 are decoder additions.
@@ -544,7 +544,7 @@ A session split across several IRIG recordings, combined into one timeline:
 
 ```bash
 # Ad-hoc: a few files by name.
-mie-decoder decode run-a.mie run-b.mie run-c.mie -o session.csv
+aero1553 decode run-a.mie run-b.mie run-c.mie -o session.csv
 
 # Many files: list them in a manifest (one path per line; # comments ok).
 cat > session.txt <<'EOF'
@@ -553,16 +553,16 @@ cat > session.txt <<'EOF'
 /data/4471/recorder-2.mie
 /data/4471/recorder-3.mie
 EOF
-mie-decoder decode --manifest session.txt -o session.csv
+aero1553 decode --manifest session.txt -o session.csv
 
 # A whole directory (the tool expands the glob — works in cmd.exe/PowerShell too):
-mie-decoder decode --glob '/data/4471/*.mie' -o session.csv
+aero1553 decode --glob '/data/4471/*.mie' -o session.csv
 ```
 
 Robust batch that tolerates one corrupt recorder and reports cleanly:
 
 ```bash
-mie-decoder decode --glob '/data/4471/*.mie' -o session.csv --allow-partial
+aero1553 decode --glob '/data/4471/*.mie' -o session.csv --allow-partial
 case $? in
   0) [ -f session.csv.partial ] && echo "merged (partial — one input failed): session.csv.partial" \
                                 || echo "merged cleanly: session.csv" ;;
@@ -576,7 +576,7 @@ Filter the merged stream just like a single decode — filters apply across all
 inputs:
 
 ```bash
-mie-decoder decode run-a.mie run-b.mie -o rt15.csv --include-rts 15
+aero1553 decode run-a.mie run-b.mie -o rt15.csv --include-rts 15
 ```
 
 If several recorders overlap (they all heard the same bus), collapse each
@@ -585,10 +585,10 @@ default, so you opt in only when you want it:
 
 ```bash
 # Two recorders on the same bus → one row per transaction, not two.
-mie-decoder decode recorder-1.mie recorder-2.mie -o session.csv --collapse-duplicates
+aero1553 decode recorder-1.mie recorder-2.mie -o session.csv --collapse-duplicates
 
 # Recorders whose IRIG clocks drift a little: allow a 200µs tolerance.
-mie-decoder decode --manifest recorders.txt -o session.csv \
+aero1553 decode --manifest recorders.txt -o session.csv \
   --collapse-duplicates --collapse-window-us 200
 ```
 

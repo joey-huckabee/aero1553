@@ -1,7 +1,7 @@
 # Aero1553 (Python)
 
 The Python implementation of Aero1553: a decoder for DDC MIL-STD-1553 MIE
-binary recording files, exposing both a `aero1553` CLI and an importable
+binary recording files, exposing both an `aero1553` CLI and an importable
 `aero1553` package. Supports Python 3.10–3.14.
 
 Shared documentation — the project overview, CLI reference, configuration

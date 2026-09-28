@@ -1,10 +1,10 @@
-# MIE-Decoder — CLI Reference
+# Aero1553 — CLI Reference
 
 Complete reference for every command-line flag the decoder accepts. Use this when:
 
 - You need the full flag surface for a subcommand, with defaults and value ranges.
-- You're scripting `mie-decoder` and want the exact semantics of a flag.
-- You're mapping a CLI flag to its `mie-decoder.toml` equivalent (or vice-versa).
+- You're scripting `aero1553` and want the exact semantics of a flag.
+- You're mapping a CLI flag to its `aero1553.toml` equivalent (or vice-versa).
 
 The **Rust and Python builds expose an identical flag surface** — every flag below
 works the same in both. That parity is enforced, not merely intended: the
@@ -29,7 +29,7 @@ built-in default**.
 ## Invocation
 
 ```
-mie-decoder [global options] <subcommand> [subcommand options]
+aero1553 [global options] <subcommand> [subcommand options]
 ```
 
 Subcommands: [`decode`](#decode) (binary → CSV), [`count`](#count) (print a record
@@ -41,8 +41,8 @@ Every flag that takes a value accepts **both** spellings, in all three
 implementations, for global and subcommand flags alike:
 
 ```bash
-mie-decoder decode rec.mie -o out.csv --exclude-rts 3,7     # separated
-mie-decoder decode rec.mie -o out.csv --exclude-rts=3,7     # joined
+aero1553 decode rec.mie -o out.csv --exclude-rts 3,7        # separated
+aero1553 decode rec.mie -o out.csv --exclude-rts=3,7        # joined
 ```
 
 They are the same invocation and produce byte-identical output. Use whichever
@@ -63,9 +63,9 @@ Three details are worth stating, because each has a defensible opposite:
   looks like an option, it is a usage error (exit `4`) rather than a value:
 
   ```bash
-  mie-decoder decode rec.mie --mux-delimiter --no-mux    # error: --mux-delimiter
+  aero1553 decode rec.mie --mux-delimiter --no-mux       # error: --mux-delimiter
                                                          # requires a value
-  mie-decoder decode rec.mie --mux-delimiter=--no-mux    # fine: the delimiter
+  aero1553 decode rec.mie --mux-delimiter=--no-mux       # fine: the delimiter
                                                          # is the string "--no-mux"
   ```
 
@@ -113,9 +113,9 @@ the CLI would read it as a flag. `--` marks the end of the options; every token
 after it is a path, whatever it looks like:
 
 ```bash
-mie-decoder decode -- -weird-name.mie -o out.csv    # WRONG: -o and out.csv
+aero1553 decode -- -weird-name.mie -o out.csv       # WRONG: -o and out.csv
                                                      # are also paths now
-mie-decoder decode -o out.csv -- -weird-name.mie    # right: flags first
+aero1553 decode -o out.csv -- -weird-name.mie       # right: flags first
 ```
 
 Put the flags **before** the separator. That is the whole rule, and the first
@@ -161,7 +161,7 @@ Global options are placed **before** the subcommand.
 Decode one or more MIE binary files to CSV.
 
 ```
-mie-decoder decode <INPUT>... [options]
+aero1553 decode <INPUT>... [options]
 ```
 
 ### Input selection
@@ -299,7 +299,7 @@ policy as a single decode. Rust and Python produce byte-identical merged output.
 Print the number of valid records, without producing a CSV.
 
 ```
-mie-decoder count <INPUT>
+aero1553 count <INPUT>
 ```
 
 | Argument | Value | Description |
@@ -318,7 +318,7 @@ Hex dump of the binary, with optional per-record annotations. A diagnostic tool
 for inspecting a corrupt or unusual file.
 
 ```
-mie-decoder dump <INPUT> [options]
+aero1553 dump <INPUT> [options]
 ```
 
 | Flag | Value | Default | Description |
@@ -338,35 +338,35 @@ mie-decoder dump <INPUT> [options]
 
 ```bash
 # Decode to CSV
-mie-decoder decode recording.mie -o decoded.csv
+aero1553 decode recording.mie -o decoded.csv
 
 # Drop spurious + broadcast traffic
-mie-decoder decode rec.mie -o clean.csv \
+aero1553 decode rec.mie -o clean.csv \
   --exclude-types SPURIOUS_DATA,BROADCAST_BC_TO_RT
 
 # Only Bus A, only RT 15 (positive filters)
-mie-decoder decode rec.mie -o rt15.csv --include-buses A --include-rts 15
+aero1553 decode rec.mie -o rt15.csv --include-buses A --include-rts 15
 
 # Split errored/spurious records into a sibling _errors.csv
-mie-decoder decode rec.mie -o clean.csv --separate-errors
+aero1553 decode rec.mie -o clean.csv --separate-errors
 
 # Force Standard timestamp format with a known counter rate (enables DELTA)
-mie-decoder decode rec.mie -o decoded.csv \
+aero1553 decode rec.mie -o decoded.csv \
   --input-time-format standard --standard-tick-rate-hz 1000000
 
 # Multi-file, time-sorted merge; de-dup overlapping recorders
-mie-decoder decode a.mie b.mie c.mie -o merged.csv --collapse-duplicates
-mie-decoder decode --glob 'recordings/*.mie' -o merged.csv
-mie-decoder decode --manifest files.txt -o merged.csv
+aero1553 decode a.mie b.mie c.mie -o merged.csv --collapse-duplicates
+aero1553 decode --glob 'recordings/*.mie' -o merged.csv
+aero1553 decode --manifest files.txt -o merged.csv
 
 # Custom / disabled MUX
-mie-decoder decode rec.mie --mux-delimiter _ --mux-field 1 -o out.csv
-mie-decoder decode rec.mie --no-mux -o out.csv          # vendor-exact empty MUX
+aero1553 decode rec.mie --mux-delimiter _ --mux-field 1 -o out.csv
+aero1553 decode rec.mie --no-mux -o out.csv             # vendor-exact empty MUX
 
 # Count records; annotated hex dump
-mie-decoder count recording.mie
-mie-decoder dump recording.mie --records 10
+aero1553 count recording.mie
+aero1553 dump recording.mie --records 10
 
 # Debug logging (global flag precedes the subcommand)
-mie-decoder --log-level DEBUG decode rec.mie -o decoded.csv
+aero1553 --log-level DEBUG decode rec.mie -o decoded.csv
 ```
