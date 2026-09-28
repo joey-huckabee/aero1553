@@ -13,7 +13,7 @@
 // makes it liftable into another project, and what keeps this file readable as
 // a statement of the schema rather than a mix of grammar and policy.
 //
-// Mirrors `rust/src/config.rs` and `python/src/mie_decoder/config.py`.
+// Mirrors `rust/src/config.rs` and `python/src/aero1553/config.py`.
 // `docs/CONFIG-REFERENCE.md` is the normative description of every key.
 //
 // PRECEDENCE is CLI > config file > default, applied by `with_overrides`.

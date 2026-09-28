@@ -2,7 +2,7 @@
 //
 // Memory-mapped sequential reader: the module that turns a file into records.
 //
-// Mirrors `rust/src/reader.rs` and `python/src/mie_decoder/reader.py`. It maps
+// Mirrors `rust/src/reader.rs` and `python/src/aero1553/reader.py`. It maps
 // the input, finds the first record (skipping any leading bytes), resolves the
 // timestamp format once, and then walks the record chain yielding decoded
 // MieMessages in file order.

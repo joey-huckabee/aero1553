@@ -1,4 +1,4 @@
-# mie-decoder — C++ implementation
+# Aero1553 — C++ implementation
 
 The third implementation of the MIE decoder, alongside the Rust crate in
 `../rust/` and the Python package in `../python/`. It exists so that

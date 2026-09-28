@@ -145,7 +145,7 @@ class MieError : public std::exception {
     Optional<uint64_t> sync_losses() const { return sync_losses_; }
 
     /// True when this wraps a broken-pipe condition. L2-WRT-018 makes that
-    /// exit 0 with no error -- `mie-decoder decode x.mie | head` is a normal
+    /// exit 0 with no error -- `aero1553 decode x.mie | head` is a normal
     /// thing to type, not a failure.
     bool is_broken_pipe() const { return broken_pipe_; }
 

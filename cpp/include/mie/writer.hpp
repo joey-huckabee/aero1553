@@ -2,7 +2,7 @@
 //
 // Streaming CSV output.
 //
-// Mirrors `rust/src/writer.rs` and `python/src/mie_decoder/writer.py`.
+// Mirrors `rust/src/writer.rs` and `python/src/aero1553/writer.py`.
 //
 // TWO PROPERTIES DEFINE THIS MODULE, and both are easy to break by accident.
 //
@@ -90,7 +90,7 @@ class CsvSink {
 /// Never split (there is only one stdout) and never `.partial` (a truncated
 /// stream is what the consumer would have seen anyway). A closed downstream
 /// pipe surfaces as a broken-pipe MieError, which L2-WRT-018 turns into exit 0
-/// -- `mie-decoder decode x.mie | head` is a normal thing to type.
+/// -- `aero1553 decode x.mie | head` is a normal thing to type.
 class StdoutCsvSink : public CsvSink {
   public:
     /// Writes to the process's own stdout.

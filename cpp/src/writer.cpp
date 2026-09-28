@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#define MIE_LOG_MODULE "mie_decoder::writer"
+#define MIE_LOG_MODULE "aero1553::writer"
 
 #include "mie/writer.hpp"
 

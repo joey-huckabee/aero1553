@@ -19,7 +19,7 @@ in this tree specifically.
 | Source | `https://github.com/catchorg/Catch2/releases/download/v2.13.10/catch.hpp` |
 | SHA-256 | `3725c0f0a75f376a5005dde31ead0feb8f7da7507644c201b814443de8355170` |
 | License | Boost Software License 1.0 — `LICENSES/BSL-1.0-Catch2.txt` |
-| Scope | Test binary only. Never linked into `mie-decoder`. |
+| Scope | Test binary only. Never linked into `aero1553`. |
 
 ### Why v2 and not v3
 

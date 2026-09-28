@@ -42,7 +42,7 @@ namespace {
 // tier has to prove.
 unsigned long long g_temp_counter = 0;
 
-const char kTempInfix[] = ".mie-decoder.tmp.";
+const char kTempInfix[] = ".aero1553.tmp.";
 
 std::string to_decimal(unsigned long long value) {
     // Hand-rolled rather than std::to_string(unsigned long long), which is
@@ -70,7 +70,7 @@ std::string to_decimal(unsigned long long value) {
 
 std::string make_temp_name(const std::string& final_path) {
     // Shape and field order are pinned to the Rust and Python implementations:
-    //   <destination-filename>.mie-decoder.tmp.<pid>.<counter>.<nanos>
+    //   <destination-filename>.aero1553.tmp.<pid>.<counter>.<nanos>
     // placed in the destination's own directory. Same-directory placement is
     // what makes the later rename a single-filesystem operation, and therefore
     // atomic. Uniqueness is belt-and-braces -- the caller still creates the

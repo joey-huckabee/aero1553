@@ -2,7 +2,7 @@
 //
 // Hex dump: the diagnostic view of a recording (L2-CLI-009, L2-CLI-013).
 //
-// Mirrors `rust/src/dump.rs` and `python/src/mie_decoder/dump.py`, closely
+// Mirrors `rust/src/dump.rs` and `python/src/aero1553/dump.py`, closely
 // enough that the three outputs diff cleanly.
 //
 // Two modes:

@@ -215,7 +215,7 @@ TEST_CASE("sync losses are retained only where they mean something", "[error]") 
 }
 
 TEST_CASE("a broken pipe is recognised from the OS code", "[error][L2-WRT-018]") {
-    // `mie-decoder decode x.mie | head` is a normal thing to type, and
+    // `aero1553 decode x.mie | head` is a normal thing to type, and
     // L2-WRT-018 makes it exit 0. The OS code is the only reliable signal --
     // the message text is localised by the OS and cannot be matched on.
 #if defined(_WIN32)

@@ -162,7 +162,7 @@ TEST_CASE("make_temp_name sits beside the destination and never repeats",
     }
 
     SECTION("it is recognisable in a directory listing") {
-        CHECK(plat::path_filename(first).find("out.csv.mie-decoder.tmp.") == 0);
+        CHECK(plat::path_filename(first).find("out.csv.aero1553.tmp.") == 0);
     }
 
     SECTION("two calls in one process cannot collide") {
@@ -176,7 +176,7 @@ TEST_CASE("make_temp_name handles a destination with no directory",
           "[platform][atomic][L3-CPP-004]") {
     const std::string name = plat::make_temp_name("out.csv");
     CHECK(plat::path_parent(name).empty());
-    CHECK(name.find("out.csv.mie-decoder.tmp.") == 0);
+    CHECK(name.find("out.csv.aero1553.tmp.") == 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -771,7 +771,7 @@ TEST_CASE("temp names stay unique across many consecutive calls",
     // Every one of them is still beside the destination and still recognisable.
     for (std::size_t i = 0; i < names.size(); ++i) {
         REQUIRE(plat::path_parent(names[i]) == plat::path_parent(destination));
-        REQUIRE(plat::path_filename(names[i]).find("out.csv.mie-decoder.tmp.") == 0);
+        REQUIRE(plat::path_filename(names[i]).find("out.csv.aero1553.tmp.") == 0);
     }
 }
 

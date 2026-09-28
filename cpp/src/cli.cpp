@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#define MIE_LOG_MODULE "mie_decoder::cli"
+#define MIE_LOG_MODULE "aero1553::cli"
 
 #include "mie/cli.hpp"
 
@@ -28,10 +28,10 @@ namespace {
 const char* const kVersion = "3.0.0";
 
 const char* const kHelp =
-    "mie-decoder -- DDC MIL-STD-1553 MIE binary decoder\n"
+    "aero1553 -- DDC MIL-STD-1553 MIE binary decoder\n"
     "\n"
     "USAGE:\n"
-    "    mie-decoder [GLOBAL] <COMMAND> [OPTIONS]\n"
+    "    aero1553 [GLOBAL] <COMMAND> [OPTIONS]\n"
     "\n"
     "COMMANDS:\n"
     "    decode <FILE>...  Decode a recording to CSV; 2+ inputs are merged\n"
@@ -1084,7 +1084,7 @@ int classify_decode_exit(const WriteOutcome& outcome, uint64_t sync_losses, bool
 /// Report a decode failure and choose its exit class.
 int report_decode_failure(const Streams& streams, const MieError& error, uint64_t sync_losses) {
     if (error.is_broken_pipe()) {
-        // L2-WRT-018: `mie-decoder decode x.mie | head` is a normal thing to
+        // L2-WRT-018: `aero1553 decode x.mie | head` is a normal thing to
         // type, not a failure.
         MIE_LOG_INFO("decode exit class: complete (broken-pipe on stdout)");
         return EXIT_OK;
@@ -1326,7 +1326,7 @@ int run_count(const Streams& streams, const GlobalArgs& globals, const std::stri
     }
 
     // The integer alone on stdout -- that is the machine-readable answer, and
-    // a script doing `n=$(mie-decoder count x.mie)` must not have to strip
+    // a script doing `n=$(aero1553 count x.mie)` must not have to strip
     // prose. The human sentence goes to stderr, ungated by --log-level so an
     // interactive operator sees it without opting into INFO.
     (void)write_out(streams.out, text::decimal(count) + "\n");
@@ -1345,7 +1345,7 @@ int run_count(const Streams& streams, const GlobalArgs& globals, const std::stri
 
 const char* help_text() { return kHelp; }
 
-std::string version_line() { return std::string("mie-decoder ") + kVersion; }
+std::string version_line() { return std::string("aero1553 ") + kVersion; }
 
 Streams::Streams() : out(stdout), err(stderr) {}
 

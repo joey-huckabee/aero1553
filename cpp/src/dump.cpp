@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#define MIE_LOG_MODULE "mie_decoder::dump"
+#define MIE_LOG_MODULE "aero1553::dump"
 
 #include "mie/dump.hpp"
 
@@ -103,7 +103,7 @@ std::vector<uint8_t> read_whole_file(const std::string& path) {
 
 /// Write `text`, raising a writer error on failure.
 ///
-/// Every write is checked. `mie-decoder dump x.mie | head` closes the pipe
+/// Every write is checked. `aero1553 dump x.mie | head` closes the pipe
 /// mid-report, and a dump that ignored the failure would exit 0 having produced
 /// a truncated view -- indistinguishable, to a script, from a short file.
 void emit(std::FILE* out, const std::string& text) {

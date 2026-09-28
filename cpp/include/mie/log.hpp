@@ -106,7 +106,7 @@ void set_sink(SinkFn sink);
 }  // namespace mie
 
 // Each translation unit that logs defines MIE_LOG_MODULE before its first use,
-// e.g. `#define MIE_LOG_MODULE "mie_decoder::reader"`. Deliberately not given
+// e.g. `#define MIE_LOG_MODULE "aero1553::reader"`. Deliberately not given
 // a default here: a missing definition is a compile error naming the file that
 // forgot, which is better than a log line that silently says "mie".
 //

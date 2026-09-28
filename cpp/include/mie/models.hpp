@@ -2,7 +2,7 @@
 //
 // Core data structures for decoded MIL-STD-1553 MIE binary records.
 //
-// Mirrors `rust/src/models.rs` and `python/src/mie_decoder/models.py`. The three
+// Mirrors `rust/src/models.rs` and `python/src/aero1553/models.py`. The three
 // are kept deliberately similar in shape -- same field names, same enum
 // discriminants, same helper names -- because the shared conformance oracles
 // can only hold them to account if a reader can put them side by side.
