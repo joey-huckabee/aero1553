@@ -188,12 +188,15 @@ class TestRefusals:
     @pytest.mark.requirement("L2-WRT-026")
     @pytest.mark.parametrize("fmt", [OutputTimeFormat.ISO, OutputTimeFormat.DOM])
     def test_missing_year_and_impossible_day_are_refused(self, fmt: OutputTimeFormat) -> None:
+        sample = _sample_irig()
+        no_year = TimeRender(format=fmt, year=None)
         with pytest.raises(CalendarUnavailableError, match="no year"):
-            _sample_irig().format_with(TimeRender(format=fmt, year=None))
+            sample.format_with(no_year)
 
         leap_day = _sample_irig(day=366)
+        non_leap = TimeRender(format=fmt, year=2026)
         with pytest.raises(CalendarUnavailableError, match="does not exist in 2026"):
-            leap_day.format_with(TimeRender(format=fmt, year=2026))
+            leap_day.format_with(non_leap)
 
         # The same record renders once the year actually has that day.
         assert leap_day.format_with(TimeRender(format=fmt, year=2024))
@@ -209,8 +212,9 @@ class TestRefusals:
         ts = StandardTimestamp(raw_value=100_000, upper_word=0x0001, lower_word=0x86A0)
         assert ts.format_with(DOY_RENDER) == "0x000186A0"
         for fmt in (OutputTimeFormat.ISO, OutputTimeFormat.DOM):
+            render = TimeRender(format=fmt, year=2026)
             with pytest.raises(CalendarUnavailableError, match="free-running counter"):
-                ts.format_with(TimeRender(format=fmt, year=2026))
+                ts.format_with(render)
 
     @pytest.mark.requirement("L2-WRT-026")
     def test_freerun_irig_refuses_calendar_renderings(self) -> None:
@@ -219,11 +223,12 @@ class TestRefusals:
         freerun = _sample_irig(freerun=True)
         assert freerun.format_with(DOY_RENDER) == "192:15:54:50.456225"
         for fmt in (OutputTimeFormat.ISO, OutputTimeFormat.DOM):
+            render = TimeRender(format=fmt, year=2026)
             with pytest.raises(CalendarUnavailableError, match="freerun"):
-                freerun.format_with(TimeRender(format=fmt, year=2026))
+                freerun.format_with(render)
             # Calendar-locked, the same instant renders fine -- so the refusal
             # is about the freerun bit and nothing else.
-            assert _sample_irig().format_with(TimeRender(format=fmt, year=2026))
+            assert _sample_irig().format_with(render)
 
 
 class TestCliSurface:

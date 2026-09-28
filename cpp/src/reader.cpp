@@ -721,7 +721,7 @@ bool RecordIter::decode_timestamp_at(TimestampFormat resolved, Timestamp& out) {
     // because sync-loss corruption produces this same signal, and advancing the
     // year on corrupt data would be a worse error than the one it fixed.
     if (calendar_year_.has_value() && !irig.freerun) {
-        const int day = static_cast<int>(irig.day);
+        const auto day = static_cast<int>(irig.day);
         if (last_irig_day_.has_value() && day < last_irig_day_.value() && !warned_day_rollover_) {
             warned_day_rollover_ = true;
             MIE_LOG_WARN(

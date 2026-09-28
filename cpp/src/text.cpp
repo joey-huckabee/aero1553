@@ -10,15 +10,23 @@ namespace text {
 
 namespace {
 
-const char kHexDigits[] = "0123456789ABCDEF";
+/// The ASCII character for one digit, 0..15, upper-case past 9.
+///
+/// Computed rather than looked up in a "0123456789ABCDEF" table: `d` derives
+/// from recording bytes, and an index into a table is a bound a reader (and a
+/// taint analyser) has to prove from the caller's `base`. Arithmetic has no
+/// bound to prove.
+char digit_char(unsigned d) {
+    return d < 10 ? static_cast<char>('0' + d) : static_cast<char>('A' + (d - 10));
+}
 
 /// Render `value` into `out` (most-significant digit first), padding with
 /// leading zeros to at least `width` characters.
 ///
-/// Shared by decimal_padded and hex_upper because the two differ only in base
-/// and digit alphabet, and a second hand-rolled digit loop is a second place to
-/// get the zero case wrong.
-std::string render_unsigned(uint64_t value, unsigned base, std::size_t width, bool hex) {
+/// Shared by decimal_padded and hex_upper because the two differ only in base,
+/// and a second hand-rolled digit loop is a second place to get the zero case
+/// wrong.
+std::string render_unsigned(uint64_t value, unsigned base, std::size_t width) {
     // 64 binary digits is the widest any supported base can produce, so no
     // input can overflow this buffer.
     char digits[64];
@@ -27,8 +35,7 @@ std::string render_unsigned(uint64_t value, unsigned base, std::size_t width, bo
         digits[n++] = '0';
     }
     while (value > 0) {
-        const auto d = static_cast<unsigned>(value % base);
-        digits[n++] = hex ? kHexDigits[d] : static_cast<char>('0' + d);
+        digits[n++] = digit_char(static_cast<unsigned>(value % base));
         value /= base;
     }
 
@@ -137,25 +144,25 @@ bool is_valid_utf8(const std::string& s) {
     return true;
 }
 
-std::string decimal(uint64_t value) { return render_unsigned(value, 10, 0, false); }
+std::string decimal(uint64_t value) { return render_unsigned(value, 10, 0); }
 
 std::string decimal_signed(int64_t value) {
     if (value >= 0) {
-        return render_unsigned(static_cast<uint64_t>(value), 10, 0, false);
+        return render_unsigned(static_cast<uint64_t>(value), 10, 0);
     }
     // Negate in the unsigned domain. `-value` on INT64_MIN is undefined
     // behaviour, and UBSan is switched on in one of the CI tiers, so this is a
     // real failure rather than a theoretical one.
     const uint64_t magnitude = ~static_cast<uint64_t>(value) + 1u;
-    return "-" + render_unsigned(magnitude, 10, 0, false);
+    return "-" + render_unsigned(magnitude, 10, 0);
 }
 
 std::string decimal_padded(uint64_t value, std::size_t width) {
-    return render_unsigned(value, 10, width, false);
+    return render_unsigned(value, 10, width);
 }
 
 std::string hex_upper(uint64_t value, std::size_t width) {
-    return render_unsigned(value, 16, width, true);
+    return render_unsigned(value, 16, width);
 }
 
 std::string fixed6(double value) {

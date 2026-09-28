@@ -143,9 +143,6 @@ struct DecoderConfig {
     DecoderConfig();
 };
 
-/// CLI-supplied overrides. Absent means "not supplied", which is why every
-/// field is an Optional rather than carrying a sentinel: `--strict=false` and
-/// "no --strict flag" are different instructions.
 /// Parse a UTC offset designator into minutes east of UTC (L2-CFG-012).
 ///
 /// Accepts `Z` (case-insensitively), or a signed `+HH:MM` / `-HH:MM`. Shared by
@@ -153,6 +150,9 @@ struct DecoderConfig {
 /// two spellings cannot drift. Returns false for anything else.
 bool parse_utc_offset(const std::string& text, int& out);
 
+/// CLI-supplied overrides. Absent means "not supplied", which is why every
+/// field is an Optional rather than carrying a sentinel: `--strict=false` and
+/// "no --strict flag" are different instructions.
 struct ConfigOverrides {
     Optional<std::string> log_level;
     Optional<bool> irig_day_advisory;
