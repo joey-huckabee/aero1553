@@ -1,1 +1,604 @@
-<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" data-diagram-type="DESCRIPTION" style="width:3370px;height:1537px;background:#FFFFFF;" width="3370px" height="1537px" viewBox="0 0 3370 1537" zoomAndPan="magnify" preserveAspectRatio="none" contentStyleType="text/css"><?plantuml 1.2026.8beta1?><defs/><g font-family="sans-serif" lengthAdjust="spacing"><g class="title" data-source-line="6"><text x="1336.526" y="37.118" fill="#000" font-size="22" textLength="695.567" font-weight="700" font-family="Verdana">MIE-Decoder - Component Architecture (Rust + Python)</text></g><!--cluster CLI Layer--><g class="cluster" data-qualified-name="CLI Layer" id="ent0001" data-source-line="17"><rect x="1177" y="57.737" width="388" height="570" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1333.44" y="73.813" fill="#000" font-size="14" textLength="75.12" font-weight="700" font-family="Verdana">CLI Layer</text></g><!--cluster Core Decode Pipeline--><g class="cluster" data-qualified-name="Core Decode Pipeline" id="ent0006" data-source-line="24"><rect x="775" y="776.737" width="552" height="720" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="967.803" y="792.813" fill="#000" font-size="14" textLength="166.394" font-weight="700" font-family="Verdana">Core Decode Pipeline</text></g><!--cluster Multi-file Merge--><g class="cluster" data-qualified-name="Multi-file Merge" id="ent0011" data-source-line="31"><rect x="1803" y="460.237" width="222" height="176" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1851.957" y="476.313" fill="#000" font-size="14" textLength="124.086" font-weight="700" font-family="Verdana">Multi-file Merge</text></g><!--cluster Filtering and Ordering--><g class="cluster" data-qualified-name="Filtering and Ordering" id="ent0013" data-source-line="35"><rect x="2626" y="468.737" width="407" height="159" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2742.502" y="484.813" fill="#000" font-size="14" textLength="173.995" font-weight="700" font-family="Verdana">Filtering and Ordering</text></g><!--cluster Data Model--><g class="cluster" data-qualified-name="Data Model" id="ent0016" data-source-line="40"><rect x="1702" y="1337.737" width="389" height="176" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1852.381" y="1353.813" fill="#000" font-size="14" textLength="88.238" font-weight="700" font-family="Verdana">Data Model</text></g><!--cluster Output Layer--><g class="cluster" data-qualified-name="Output Layer" id="ent0019" data-source-line="45"><rect x="2302" y="468.737" width="308" height="475.5" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2404.59" y="484.813" fill="#000" font-size="14" textLength="102.819" font-weight="700" font-family="Verdana">Output Layer</text></g><!--cluster External--><g class="cluster" data-qualified-name="External" id="ent0023" data-source-line="51"><rect x="2225" y="1045.237" width="618" height="159" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2501.164" y="1061.313" fill="#000" font-size="14" textLength="65.673" font-weight="700" font-family="Verdana">External</text></g><g class="entity" data-qualified-name="GMN61" id="ent0062" data-source-line="120"><path d="M11,1060.737 L11,1244.53 A0,0 0 0 0 11,1244.53 L401.281,1244.53 A0,0 0 0 0 401.281,1244.53 L401.281,1070.737 L391.281,1060.737 L317.762,1060.737 L1057.812,1117.235 L309.762,1060.737 L11,1060.737 A0,0 0 0 0 11,1060.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M391.281,1060.737 L391.281,1070.737 L401.281,1070.737 L391.281,1060.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="17" y="1078.807" fill="#000" font-size="13" textLength="120.25" font-weight="700" font-family="Verdana">Four-phase sync</text><text x="141.82" y="1078.807" fill="#000" font-size="13" textLength="244.461" font-family="Verdana">(docs/ARCHITECTURE.md section 3):</text><text x="17" y="1094.606" fill="#000" font-size="13" textLength="212.088" font-family="Verdana">1. find_first_record: header skip</text><text x="17" y="1110.406" fill="#000" font-size="13" textLength="281.176" font-family="Verdana">2. validate_record: five-check shape probe</text><text x="17" y="1126.205" fill="#000" font-size="13" textLength="299.552" font-family="Verdana">3. look-ahead: next record must also validate</text><text x="30.711" y="1142.004" fill="#000" font-size="13" textLength="253.195" font-family="Verdana">(Check 6, inside validate_record itself)</text><text x="17" y="1157.804" fill="#000" font-size="13" textLength="293.592" font-family="Verdana">4. recover_sync: 2-byte step scan, &lt;=64 KB</text><text x="17" y="1173.603" fill="#000" font-size="13" font-family="Verdana"> </text><text x="17" y="1189.402" fill="#000" font-size="13" textLength="214.265" font-weight="700" font-family="Verdana">Homogeneity defense (v2.0):</text><text x="17" y="1205.202" fill="#000" font-size="13" textLength="293.065" font-family="Verdana">Reject homogeneous payloads (e.g. all-zero,</text><text x="17" y="1221.001" fill="#000" font-size="13" textLength="285.194" font-family="Verdana">all-0xFFFF) that would otherwise spuriously</text><text x="17" y="1236.8" fill="#000" font-size="13" textLength="295.902" font-family="Verdana">pass validation. Emits HomogeneousPayload.</text></g><g class="entity" data-qualified-name="GMN64" id="ent0065" data-source-line="134"><path d="M419,1076.737 L419,1228.931 A0,0 0 0 0 419,1228.931 L758.976,1228.931 A0,0 0 0 0 758.976,1228.931 L758.976,1086.737 L748.976,1076.737 L668.8,1076.737 L1221.273,1108.481 L660.8,1076.737 L419,1076.737 A0,0 0 0 0 419,1076.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M748.976,1076.737 L748.976,1086.737 L758.976,1086.737 L748.976,1076.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="425" y="1094.807" fill="#000" font-size="13" textLength="206.502" font-weight="700" font-family="Verdana">Structural invariants (v2.0):</text><text x="425" y="1110.606" fill="#000" font-size="13" textLength="312.381" font-family="Verdana">Six rules (L2-SYN-020..025) check the decoded</text><text x="425" y="1126.406" fill="#000" font-size="13" textLength="318.976" font-family="Verdana">record against MIL-STD-1553 transaction shape.</text><text x="425" y="1142.205" fill="#000" font-size="13" font-family="Verdana"> </text><text x="425" y="1158.004" fill="#000" font-size="13" textLength="217.293" font-family="Verdana">Severity::Reject: MieRecordError</text><text x="425" y="1173.804" fill="#000" font-size="13" textLength="284.223" font-family="Verdana">Severity::AnomalyWarn: log + keep record</text><text x="425" y="1189.603" fill="#000" font-size="13" font-family="Verdana"> </text><text x="425" y="1205.402" fill="#000" font-size="13" textLength="242.938" font-family="Verdana">Errored records skip invariant checks</text><text x="425" y="1221.202" fill="#000" font-size="13" textLength="235.168" font-family="Verdana">(payload is truncated by definition).</text></g><g class="entity" data-qualified-name="GMN67" id="ent0068" data-source-line="146"><path d="M373,800.237 L373,968.23 A0,0 0 0 0 373,968.23 L759.365,968.23 A0,0 0 0 0 759.365,968.23 L759.365,810.237 L749.365,800.237 L674.282,800.237 L2320.371,866.76 L666.282,800.237 L373,800.237 A0,0 0 0 0 373,800.237" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M749.365,800.237 L749.365,810.237 L759.365,810.237 L749.365,800.237" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="379" y="818.307" fill="#000" font-size="13" textLength="252.63" font-weight="700" font-family="Verdana">Output safety (v2.0, L1-OUT-002):</text><text x="379" y="834.106" fill="#000" font-size="13" textLength="295.185" font-family="Verdana">1. Reject input == output       (L2-WRT-016)</text><text x="379" y="849.906" fill="#000" font-size="13" textLength="365.365" font-family="Verdana">2. Reject existing output + --no-clobber  (L2-WRT-014)</text><text x="379" y="865.705" fill="#000" font-size="13" textLength="204.483" font-family="Verdana">3. Write to &lt;stem>.&lt;pid>.tmp</text><text x="379" y="881.504" fill="#000" font-size="13" textLength="265.281" font-family="Verdana">4. On clean exit: rename to &lt;stem>.csv</text><text x="379" y="897.304" fill="#000" font-size="13" textLength="263.123" font-family="Verdana">5. On error + --allow-partial: rename to</text><text x="392.711" y="913.103" fill="#000" font-size="13" textLength="281.722" font-family="Verdana">&lt;output>.partial                 (L2-WRT-015)</text><text x="392.711" y="928.902" fill="#000" font-size="13" textLength="205.683" font-family="Verdana">(out.csv -> out.csv.partial, and</text><text x="397.281" y="944.702" fill="#000" font-size="13" textLength="265.205" font-family="Verdana">out_errors.csv.partial in separate mode)</text><text x="379" y="960.501" fill="#000" font-size="13" textLength="324.067" font-family="Verdana">6. On error otherwise: unlink tmp  (L2-WRT-017)</text></g><g class="entity" data-qualified-name="GMN70" id="ent0071" data-source-line="159"><path d="M395,444.737 L395,707.526 A0,0 0 0 0 395,707.526 L750.756,707.526 A0,0 0 0 0 750.756,707.526 L750.756,454.737 L740.756,444.737 L698.276,444.737 L1848.337,532.202 L690.276,444.737 L395,444.737 A0,0 0 0 0 395,444.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M740.756,444.737 L740.756,454.737 L750.756,454.737 L740.756,444.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="401" y="462.807" fill="#000" font-size="13" textLength="334.756" font-weight="700" font-family="Verdana">Multi-file merge (v2.6, L1-MRG-*/L2-MRG-*):</text><text x="401" y="478.606" fill="#000" font-size="13" textLength="325.057" font-family="Verdana">Min-heap keyed (IRIG microseconds, input index,</text><text x="401" y="494.406" fill="#000" font-size="13" textLength="297.477" font-family="Verdana">within-file sequence); at most one record per</text><text x="401" y="510.205" fill="#000" font-size="13" textLength="323.496" font-family="Verdana">open input, so memory is O(files) (L2-MRG-002).</text><text x="401" y="526.004" fill="#000" font-size="13" font-family="Verdana"> </text><text x="401" y="541.804" fill="#000" font-size="13" textLength="279.64" font-family="Verdana">Every input must be calendar-locked IRIG.</text><text x="401" y="557.603" fill="#000" font-size="13" textLength="317.046" font-family="Verdana">Standard-format, freerun-leading, or mixed sets</text><text x="401" y="573.402" fill="#000" font-size="13" textLength="252.808" font-family="Verdana">are rejected before any output (exit 6,</text><text x="401" y="589.202" fill="#000" font-size="13" textLength="92.809" font-family="Verdana">L2-MRG-003).</text><text x="401" y="605.001" fill="#000" font-size="13" font-family="Verdana"> </text><text x="401" y="620.8" fill="#000" font-size="13" textLength="290.208" font-family="Verdana">DELTA is measured per input file by default;</text><text x="401" y="636.6" fill="#000" font-size="13" textLength="297.127" font-family="Verdana">--delta-scope global recomputes it across the</text><text x="401" y="652.399" fill="#000" font-size="13" textLength="209.917" font-family="Verdana">merged timeline (L2-MRG-005).</text><text x="401" y="668.198" fill="#000" font-size="13" font-family="Verdana"> </text><text x="401" y="683.998" fill="#000" font-size="13" textLength="286.159" font-family="Verdana">Optional cross-recorder duplicate collapsing</text><text x="401" y="699.797" fill="#000" font-size="13" textLength="243.725" font-family="Verdana">(--collapse-duplicates, L2-MRG-007).</text></g><g class="entity" data-qualified-name="GMN73" id="ent0074" data-source-line="178"><path d="M769.5,436.737 L769.5,715.326 A0,0 0 0 0 769.5,715.326 L1160.6,715.326 A0,0 0 0 0 1160.6,715.326 L1160.6,446.737 L1150.6,436.737 L1116.631,436.737 L2904.764,540.532 L1108.631,436.737 L769.5,436.737 A0,0 0 0 0 769.5,436.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M1150.6,436.737 L1150.6,446.737 L1160.6,446.737 L1150.6,436.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="775.5" y="454.807" fill="#000" font-size="13" textLength="300.111" font-weight="700" font-family="Verdana">Canonical row order (v2.9, L1-OUT-003):</text><text x="775.5" y="470.606" fill="#000" font-size="13" textLength="349.692" font-family="Verdana">Buffers one run of CONSECUTIVE equal-TIME_STAMP</text><text x="775.5" y="486.406" fill="#000" font-size="13" textLength="307.893" font-family="Verdana">records and stable-sorts it by (RT, subaddress,</text><text x="775.5" y="502.205" fill="#000" font-size="13" textLength="327.215" font-family="Verdana">direction), receive before transmit (L2-WRT-021).</text><text x="775.5" y="518.004" fill="#000" font-size="13" textLength="301.418" font-family="Verdana">Never reorders across a timestamp boundary.</text><text x="775.5" y="533.804" fill="#000" font-size="13" font-family="Verdana"> </text><text x="775.5" y="549.603" fill="#000" font-size="13" textLength="370.1" font-family="Verdana">Records with no Command Word (SPURIOUS_DATA) are</text><text x="775.5" y="565.402" fill="#000" font-size="13" textLength="303.621" font-family="Verdana">pinned to the record they followed, preserving</text><text x="775.5" y="581.202" fill="#000" font-size="13" textLength="272.778" font-family="Verdana">the 0x2000 error-continuation adjacency.</text><text x="775.5" y="597.001" fill="#000" font-size="13" font-family="Verdana"> </text><text x="775.5" y="612.8" fill="#000" font-size="13" textLength="317.376" font-family="Verdana">Run length is capped by output.max_sort_group</text><text x="775.5" y="628.6" fill="#000" font-size="13" textLength="309.017" font-family="Verdana">(default 4096); at the cap the run is emitted in</text><text x="775.5" y="644.399" fill="#000" font-size="13" textLength="289.682" font-family="Verdana">arrival order with one WARN (L2-WRT-022).</text><text x="775.5" y="660.198" fill="#000" font-size="13" textLength="254.103" font-family="Verdana">A cap of 1 disables reordering entirely.</text><text x="775.5" y="675.998" fill="#000" font-size="13" font-family="Verdana"> </text><text x="775.5" y="691.797" fill="#000" font-size="13" textLength="290.907" font-family="Verdana">Runs last on BOTH the single-file and merge</text><text x="775.5" y="707.596" fill="#000" font-size="13" textLength="300.993" font-family="Verdana">paths. Not applied to the dump subcommand.</text></g><g class="entity" data-qualified-name="GMN76" id="ent0077" data-source-line="198"><path d="M61,531.737 L61,620.734 A0,0 0 0 0 61,620.734 L377.236,620.734 A0,0 0 0 0 377.236,620.734 L377.236,541.737 L367.236,531.737 L252.088,531.737 L1245.538,540.459 L244.088,531.737 L61,531.737 A0,0 0 0 0 61,531.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M367.236,531.737 L367.236,541.737 L377.236,541.737 L367.236,531.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="67" y="549.807" fill="#000" font-size="13" textLength="196.771" font-weight="700" font-family="Verdana">Precedence (highest first):</text><text x="67" y="565.606" fill="#000" font-size="13" textLength="278.059" font-family="Verdana">1. CLI flags  (--no-clobber, --allow-partial,</text><text x="135.555" y="581.406" fill="#000" font-size="13" textLength="226.681" font-family="Verdana">--separate-errors, --include-rt, ...)</text><text x="67" y="597.205" fill="#000" font-size="13" textLength="121.716" font-family="Verdana">2. TOML config file</text><text x="67" y="613.004" fill="#000" font-size="13" textLength="121.139" font-family="Verdana">3. Built-in defaults</text></g><g class="entity" data-qualified-name="GMN79" id="ent0080" data-source-line="206"><path d="M821,56.737 L821,256.329 A0,0 0 0 0 821,256.329 L1161.478,256.329 A0,0 0 0 0 1161.478,256.329 L1161.478,160.737 L1218.896,156.737 L1161.478,152.737 L1161.478,66.737 L1151.478,56.737 L821,56.737 A0,0 0 0 0 821,56.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M1151.478,56.737 L1151.478,66.737 L1161.478,66.737 L1151.478,56.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="827" y="74.807" fill="#000" font-size="13" textLength="319.478" font-weight="700" font-family="Verdana">Exit codes (L1-EXIT-001..010, L2-CLI-011):</text><text x="827" y="90.606" fill="#000" font-size="13" textLength="216.049" font-family="Verdana">0: complete / partial-recovered /</text><text x="840.711" y="106.406" fill="#000" font-size="13" textLength="202.363" font-family="Verdana">broken-pipe / empty-recording</text><text x="827" y="122.205" fill="#000" font-size="13" textLength="165.395" font-family="Verdana">1: record or file I/O error</text><text x="827" y="138.004" fill="#000" font-size="13" textLength="249.736" font-family="Verdana">2: no records / homogeneous payload</text><text x="827" y="153.804" fill="#000" font-size="13" textLength="288.539" font-family="Verdana">3: partial-unrecoverable (no --allow-partial)</text><text x="827" y="169.603" fill="#000" font-size="13" textLength="94.237" font-family="Verdana">4: usage error</text><text x="827" y="185.402" fill="#000" font-size="13" textLength="141.102" font-family="Verdana">5: configuration error</text><text x="827" y="201.202" fill="#000" font-size="13" textLength="194.118" font-family="Verdana">6: merge-incompatible inputs</text><text x="827" y="217.001" fill="#000" font-size="13" font-family="Verdana"> </text><text x="827" y="232.8" fill="#000" font-size="13" textLength="315.485" font-family="Verdana">See docs/ERROR-CATALOG.md section 1 for the</text><text x="827" y="248.6" fill="#000" font-size="13" textLength="61.572" font-family="Verdana">full table.</text></g><!--entity main--><g class="entity" data-qualified-name="CLI Layer.main" id="ent0002" data-source-line="18"><rect x="1219" y="129.737" width="194.433" height="54.029" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1229" y="153.813" fill="#000" font-size="14" textLength="72.413" font-family="Verdana">entrypoint</text><text x="1229" y="170.827" fill="#000" font-size="14" textLength="174.433" font-family="Verdana">(main.rs / __main__.py)</text></g><!--entity cli--><g class="entity" data-qualified-name="CLI Layer.cli" id="ent0003" data-source-line="19"><rect x="1369" y="311.737" width="179.906" height="54.029" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1379" y="335.813" fill="#000" font-size="14" textLength="14.978" font-family="Verdana">cli</text><text x="1379" y="352.827" fill="#000" font-size="14" textLength="159.906" font-family="Verdana">(hand-rolled argparse)</text></g><!--entity logmod--><g class="entity" data-qualified-name="CLI Layer.logmod" id="ent0004" data-source-line="20"><rect x="1331.5" y="549.237" width="169.297" height="54.029" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1341.5" y="573.313" fill="#000" font-size="14" textLength="21.062" font-family="Verdana">log</text><text x="1341.5" y="590.327" fill="#000" font-size="14" textLength="149.297" font-family="Verdana">(stderr, atomic level)</text></g><!--entity config--><g class="entity" data-qualified-name="CLI Layer.config" id="ent0005" data-source-line="21"><rect x="1193" y="540.737" width="120.01" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1203" y="564.813" fill="#000" font-size="14" textLength="42.137" font-family="Verdana">config</text><text x="1203" y="581.827" fill="#000" font-size="14" textLength="99.395" font-family="Verdana">(TOML loader,</text><text x="1203" y="598.842" fill="#000" font-size="14" textLength="100.01" font-family="Verdana">CLI overrides)</text></g><!--entity reader--><g class="entity" data-qualified-name="Core Decode Pipeline.reader" id="ent0007" data-source-line="25"><rect x="1181.5" y="848.737" width="129.02" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1191.5" y="872.813" fill="#000" font-size="14" textLength="45.76" font-family="Verdana">reader</text><text x="1191.5" y="889.827" fill="#000" font-size="14" textLength="109.02" font-family="Verdana">(MieFileReader,</text><text x="1191.5" y="906.842" fill="#000" font-size="14" textLength="107.714" font-family="Verdana">mmap iterator)</text></g><!--entity decode--><g class="entity" data-qualified-name="Core Decode Pipeline.decode" id="ent0008" data-source-line="26"><rect x="984.5" y="1426.737" width="133.477" height="54.029" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="994.5" y="1450.813" fill="#000" font-size="14" textLength="49.916" font-family="Verdana">decode</text><text x="994.5" y="1467.827" fill="#000" font-size="14" textLength="113.477" font-family="Verdana">(pure functions)</text></g><!--entity sync--><g class="entity" data-qualified-name="Core Decode Pipeline.sync" id="ent0009" data-source-line="27"><rect x="996.5" y="1117.237" width="147.142" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1006.5" y="1141.313" fill="#000" font-size="14" textLength="31.732" font-family="Verdana">sync</text><text x="1006.5" y="1158.327" fill="#000" font-size="14" textLength="127.142" font-family="Verdana">(validate/recover/</text><text x="1006.5" y="1175.342" fill="#000" font-size="14" textLength="69.043" font-family="Verdana">diagnose)</text></g><!--entity invariants--><g class="entity" data-qualified-name="Core Decode Pipeline.invariants" id="ent0010" data-source-line="28"><rect x="1161.5" y="1108.737" width="149.479" height="88.059" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1171.5" y="1132.813" fill="#000" font-size="14" textLength="67.539" font-family="Verdana">structural</text><text x="1171.5" y="1149.827" fill="#000" font-size="14" textLength="69.289" font-family="Verdana">invariants</text><text x="1171.5" y="1166.842" fill="#000" font-size="14" textLength="129.479" font-family="Verdana">(WhichInvariant +</text><text x="1171.5" y="1183.856" fill="#000" font-size="14" textLength="64.511" font-family="Verdana">Severity)</text></g><!--entity merge--><g class="entity" data-qualified-name="Multi-file Merge.merge" id="ent0012" data-source-line="32"><rect x="1819.5" y="532.237" width="188.991" height="88.059" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1829.5" y="556.313" fill="#000" font-size="14" textLength="44.994" font-family="Verdana">merge</text><text x="1829.5" y="573.327" fill="#000" font-size="14" textLength="168.991" font-family="Verdana">(streaming k-way heap,</text><text x="1829.5" y="590.342" fill="#000" font-size="14" textLength="167.371" font-family="Verdana">manifest / glob resolve,</text><text x="1829.5" y="607.356" fill="#000" font-size="14" textLength="144.149" font-family="Verdana">duplicate collapsing)</text></g><!--entity filters--><g class="entity" data-qualified-name="Filtering and Ordering.filters" id="ent0014" data-source-line="36"><rect x="2642.5" y="540.737" width="157.457" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2652.5" y="564.813" fill="#000" font-size="14" textLength="32.437" font-family="Verdana">filter</text><text x="2652.5" y="581.827" fill="#000" font-size="14" textLength="137.457" font-family="Verdana">(include + exclude:</text><text x="2652.5" y="598.842" fill="#000" font-size="14" textLength="118.672" font-family="Verdana">type/RT/bus/SA)</text></g><!--entity order--><g class="entity" data-qualified-name="Filtering and Ordering.order" id="ent0015" data-source-line="37"><rect x="2817.5" y="540.737" width="198.876" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2827.5" y="564.813" fill="#000" font-size="14" textLength="37.509" font-family="Verdana">order</text><text x="2827.5" y="581.827" fill="#000" font-size="14" textLength="150.035" font-family="Verdana">(canonical row order,</text><text x="2827.5" y="598.842" fill="#000" font-size="14" textLength="178.876" font-family="Verdana">equal-TIME_STAMP runs)</text></g><!--entity models--><g class="entity" data-qualified-name="Data Model.models" id="ent0017" data-source-line="41"><rect x="1877.5" y="1409.737" width="196.654" height="88.059" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1887.5" y="1433.813" fill="#000" font-size="14" textLength="50.313" font-family="Verdana">models</text><text x="1887.5" y="1450.827" fill="#000" font-size="14" textLength="176.654" font-family="Verdana">(MieMessage, TypeWord,</text><text x="1887.5" y="1467.842" fill="#000" font-size="14" textLength="152.476" font-family="Verdana">DataWords inline buf,</text><text x="1887.5" y="1484.856" fill="#000" font-size="14" textLength="148.046" font-family="Verdana">Irig/Std timestamps)</text></g><!--entity errors--><g class="entity" data-qualified-name="Data Model.errors" id="ent0018" data-source-line="42"><rect x="1718.5" y="1418.237" width="141.488" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="1728.5" y="1442.313" fill="#000" font-size="14" textLength="34.761" font-family="Verdana">error</text><text x="1728.5" y="1459.327" fill="#000" font-size="14" textLength="121.488" font-family="Verdana">(MieError enum /</text><text x="1728.5" y="1476.342" fill="#000" font-size="14" textLength="107.604" font-family="Verdana">Mie*Error tree)</text></g><!--entity writer--><g class="entity" data-qualified-name="Output Layer.writer" id="ent0020" data-source-line="46"><rect x="2318.5" y="540.737" width="141.146" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2328.5" y="564.813" fill="#000" font-size="14" textLength="41.104" font-family="Verdana">writer</text><text x="2328.5" y="581.827" fill="#000" font-size="14" textLength="115.862" font-family="Verdana">(streaming CSV,</text><text x="2328.5" y="598.842" fill="#000" font-size="14" textLength="121.146" font-family="Verdana">separate / inline)</text></g><!--entity outsafe--><g class="entity" data-qualified-name="Output Layer.outsafe" id="ent0021" data-source-line="47"><rect x="2320.5" y="840.237" width="133.47" height="88.059" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2330.5" y="864.313" fill="#000" font-size="14" textLength="93.659" font-family="Verdana">output safety</text><text x="2330.5" y="881.327" fill="#000" font-size="14" textLength="109.211" font-family="Verdana">(AtomicCsvFile,</text><text x="2330.5" y="898.342" fill="#000" font-size="14" textLength="80.199" font-family="Verdana">no-clobber,</text><text x="2330.5" y="915.356" fill="#000" font-size="14" textLength="113.47" font-family="Verdana">.partial commit)</text></g><!--entity dump--><g class="entity" data-qualified-name="Output Layer.dump" id="ent0022" data-source-line="48"><rect x="2478" y="540.737" width="116.004" height="71.044" fill="#FFF" style="stroke:#000;stroke-width:1;" rx="2.5" ry="2.5"/><text x="2488" y="564.813" fill="#000" font-size="14" textLength="39.922" font-family="Verdana">dump</text><text x="2488" y="581.827" fill="#000" font-size="14" textLength="81.778" font-family="Verdana">(hex dump,</text><text x="2488" y="598.842" fill="#000" font-size="14" textLength="96.004" font-family="Verdana">record dump)</text></g><!--entity mie_file--><g class="entity" data-qualified-name="External.mie_file" id="ent0024" data-source-line="52"><path d="M2241,1131.237 C2241,1121.237 2289.216,1121.237 2289.216,1121.237 C2289.216,1121.237 2337.433,1121.237 2337.433,1131.237 L2337.433,1174.267 C2337.433,1184.267 2289.216,1184.267 2289.216,1184.267 C2289.216,1184.267 2241,1184.267 2241,1174.267 L2241,1131.237" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M2241,1131.237 C2241,1141.237 2289.216,1141.237 2289.216,1141.237 C2289.216,1141.237 2337.433,1141.237 2337.433,1131.237" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2251" y="1159.313" fill="#000" font-size="14" textLength="76.433" font-family="Verdana">MIE Binary</text><text x="2251" y="1176.327" fill="#000" font-size="14" textLength="72.598" font-family="Verdana">File (.mie)</text></g><!--entity csv_file--><g class="entity" data-qualified-name="External.csv_file" id="ent0025" data-source-line="53"><path d="M2709,1128.237 L2709,1177.267 A2.5,2.5 0 0 0 2711.5,1179.767 L2824.862,1179.767 A2.5,2.5 0 0 0 2827.362,1177.267 L2827.362,1135.737 L2817.362,1125.737 L2711.5,1125.737 A2.5,2.5 0 0 0 2709,1128.237" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M2817.362,1125.737 L2817.362,1133.237 A2.5,2.5 0 0 0 2819.862,1135.737 L2827.362,1135.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="2719" y="1149.813" fill="#000" font-size="14" textLength="82.332" font-family="Verdana">CSV Output</text><text x="2719" y="1166.827" fill="#000" font-size="14" textLength="98.362" font-family="Verdana">(&lt;stem>.csv)</text></g><!--entity err_file--><g class="entity" data-qualified-name="External.err_file" id="ent0026" data-source-line="54"><path d="M2355,1119.737 L2355,1185.781 A2.5,2.5 0 0 0 2357.5,1188.281 L2520.553,1188.281 A2.5,2.5 0 0 0 2523.053,1185.781 L2523.053,1127.237 L2513.053,1117.237 L2357.5,1117.237 A2.5,2.5 0 0 0 2355,1119.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M2513.053,1117.237 L2513.053,1124.737 A2.5,2.5 0 0 0 2515.553,1127.237 L2523.053,1127.237" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="2365" y="1141.313" fill="#000" font-size="14" textLength="76.405" font-family="Verdana">Errors CSV</text><text x="2365" y="1158.327" fill="#000" font-size="14" textLength="148.053" font-family="Verdana">(&lt;stem>_errors.csv,</text><text x="2365" y="1175.342" fill="#000" font-size="14" textLength="111.46" font-family="Verdana">separate mode)</text></g><!--entity partial_file--><g class="entity" data-qualified-name="External.partial_file" id="ent0027" data-source-line="55"><path d="M2541,1119.737 L2541,1185.781 A2.5,2.5 0 0 0 2543.5,1188.281 L2688.643,1188.281 A2.5,2.5 0 0 0 2691.143,1185.781 L2691.143,1127.237 L2681.143,1117.237 L2543.5,1117.237 A2.5,2.5 0 0 0 2541,1119.737" style="stroke:#000;stroke-width:1;" fill="#FFF"/><path d="M2681.143,1117.237 L2681.143,1124.737 A2.5,2.5 0 0 0 2683.643,1127.237 L2691.143,1127.237" style="stroke:#000;stroke-width:1;" fill="#FFF"/><text x="2551" y="1141.313" fill="#000" font-size="14" textLength="78.271" font-family="Verdana">Partial CSV</text><text x="2551" y="1158.327" fill="#000" font-size="14" textLength="130.143" font-family="Verdana">(&lt;output>.partial,</text><text x="2551" y="1175.342" fill="#000" font-size="14" textLength="106.189" font-family="Verdana">--allow-partial)</text></g><g class="link" data-entity-1="ent0002" data-entity-2="ent0003" id="lnk28" data-link-type="dependency"><polygon points="1438.181,311.532,1435.715,301.997,1435.071,307.617,1429.451,306.973,1438.181,311.532" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1336.793,183.911 C1363.905,218.038 1407.947,273.475 1435.071,307.617" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1423" y="289.807" fill="#000" font-size="13" textLength="202.313" font-family="Verdana">dispatch (decode/count/dump)</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0004" id="lnk29" data-link-type="dependency"><polygon points="1419.696,549.096,1424.95,540.766,1420.416,544.149,1417.033,539.614,1419.696,549.096" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1452.027,366.184 C1450.608,371.95 1449.188,378.033 1448,383.737 C1435.77,442.477 1425.797,507.166 1420.416,544.149" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1450" y="406.807" fill="#000" font-size="13" textLength="98.128" font-family="Verdana">set global level</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0005" id="lnk30" data-link-type="dependency"><polygon points="1233.657,540.547,1233.3,530.705,1231.462,536.055,1226.112,534.217,1233.657,540.547" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1368.85,345.023 C1310.995,350.514 1243.375,361.585 1225,383.737 C1188.318,427.96 1210.939,494.055 1231.462,536.055" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1227" y="406.807" fill="#000" font-size="13" textLength="209.644" font-family="Verdana">load_config then with_overrides</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0007" id="lnk31" data-link-type="dependency"><polygon points="1310.643,860.52,1320.488,860.809,1315.27,858.624,1317.455,853.406,1310.643,860.52" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1533.161,365.862 C1539.777,370.846 1545.617,376.75 1550,383.737 C1558.266,396.915 1551.066,403.218 1550,418.737 C1545.434,485.207 1544.978,659.661 1509,715.737 C1462.521,788.181 1376.95,833.355 1315.27,858.624" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1551" y="581.807" fill="#000" font-size="13" textLength="246.962" font-family="Verdana">open(path, input_time_format, strict)</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0012" id="lnk32" data-link-type="dependency"><polygon points="1846.255,532.233,1840.707,524.096,1842.003,529.602,1836.497,530.899,1846.255,532.233" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1535.306,365.837 C1549.663,371.34 1564.424,377.411 1578,383.737 C1674.157,428.548 1775.357,488.36 1842.003,529.602" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1694.131" y="398.807" fill="#000" font-size="13" textLength="124.643" font-family="Verdana">two or more inputs</text><text x="1647" y="414.606" fill="#000" font-size="13" textLength="218.905" font-family="Verdana">(positionals / --manifest / --glob)</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0014" id="lnk33" data-link-type="dependency"><polygon points="2719.802,540.445,2723.063,531.152,2719.399,535.461,2715.089,531.797,2719.802,540.445" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1549.242,340.311 C1819.864,342.392 2608.713,351.229 2653,383.737 C2702.629,420.167 2715.791,490.927 2719.399,535.461" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2685" y="406.807" fill="#000" font-size="13" textLength="85.014" font-family="Verdana">wrap iterator</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0015" id="lnk34" data-link-type="dependency"><polygon points="2902.959,540.355,2902.922,530.506,2900.912,535.794,2895.624,533.783,2902.959,540.355" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1549.09,340.596 C1837.408,343.626 2721.838,355.211 2776,383.737 C2840.109,417.502 2880.537,490.411 2900.912,535.794" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2825" y="406.807" fill="#000" font-size="13" textLength="156.762" font-family="Verdana">final stage before writer</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0020" id="lnk35" data-link-type="dependency"><polygon points="2376.836,540.713,2377.132,530.869,2374.943,536.085,2369.727,533.896,2376.836,540.713" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1549.215,341.86 C1669.343,345.676 1888.168,356.079 2073,383.737 C2099.044,387.634 2282.613,421.374 2304,436.737 C2339.974,462.579 2361.901,504.188 2374.943,536.085" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2247" y="406.807" fill="#000" font-size="13" textLength="174.688" font-family="Verdana">write_csv / write_csv_split</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0022" id="lnk36" data-link-type="dependency"><polygon points="2528.434,540.697,2529.994,530.972,2527.153,535.864,2522.261,533.023,2528.434,540.697" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1549.011,339.55 C1774.379,339.682 2350.388,343.96 2427,383.737 C2487.094,414.939 2514.914,489.707 2527.153,535.864" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2470" y="406.807" fill="#000" font-size="13" textLength="177.741" font-family="Verdana">count/dump subcommands</text></g><g class="link" data-entity-1="ent0003" data-entity-2="ent0021" id="lnk37" data-link-type="dependency"><polygon points="2320.269,867.653,2312.702,861.349,2315.459,866.289,2310.519,869.045,2320.269,867.653" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1549,341.38 C1694.011,346.155 1969.199,364.725 2029,436.737 C2108.989,533.061 1995.957,613.335 2068,715.737 C2128.197,801.303 2241.086,845.194 2315.459,866.289" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2070" y="581.807" fill="#000" font-size="13" textLength="237.847" font-family="Verdana">checks --no-clobber / --allow-partial</text></g><g class="link" data-entity-1="ent0007" data-entity-2="ent0009" id="lnk38" data-link-type="dependency"><polygon points="1075.762,1116.923,1081.46,1108.89,1076.749,1112.021,1073.618,1107.31,1075.762,1116.923" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1192.132,919.965 C1168.706,937.408 1142.64,960.344 1125,986.237 C1097.554,1026.524 1083.863,1076.695 1076.749,1112.021" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1127" y="1001.307" fill="#000" font-size="13" textLength="108.177" font-family="Verdana">find_first_record</text><text x="1130.45" y="1017.106" fill="#000" font-size="13" textLength="101.277" font-family="Verdana">validate_record</text><text x="1137.753" y="1032.906" fill="#000" font-size="13" textLength="86.671" font-family="Verdana">recover_sync</text></g><g class="link" data-entity-1="ent0007" data-entity-2="ent0008" id="lnk39" data-link-type="dependency"><polygon points="984.426,1440.802,976.631,1434.782,979.568,1439.617,974.734,1442.554,984.426,1440.802" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1181.359,888.857 C1084.996,898.041 905.647,930.509 818,1045.237 C779.525,1095.601 764.381,1276.011 798,1329.737 C838.545,1394.531 919.211,1424.887 979.568,1439.617" style="stroke:#000;stroke-width:1;" fill="none"/><text x="840.754" y="1134.307" fill="#000" font-size="13" textLength="123.716" font-family="Verdana">decode_type_word</text><text x="840.541" y="1150.106" fill="#000" font-size="13" textLength="124.141" font-family="Verdana">decode_timestamp</text><text x="823.041" y="1165.906" fill="#000" font-size="13" textLength="159.142" font-family="Verdana">decode_command_word</text><text x="820" y="1181.705" fill="#000" font-size="13" textLength="165.223" font-family="Verdana">classify_message_format</text></g><g class="link" data-entity-1="ent0007" data-entity-2="ent0010" id="lnk40" data-link-type="dependency"><polygon points="1237.626,1108.4,1241.961,1099.556,1237.814,1103.404,1233.966,1099.256,1237.626,1108.4" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1244.703,919.804 C1242.89,968.111 1239.788,1050.788 1237.814,1103.404" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1254.623" y="1009.307" fill="#000" font-size="13" textLength="194.994" font-family="Verdana">validate_structural_invariants</text><text x="1245" y="1025.106" fill="#000" font-size="13" textLength="214.24" font-family="Verdana">validate_post_extract_invariants</text></g><g class="link" data-entity-1="ent0007" data-entity-2="ent0017" id="lnk41" data-link-type="dependency"><polygon points="1975.431,1409.418,1978.793,1400.161,1975.082,1404.43,1970.812,1400.719,1975.431,1409.418" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1310.575,911.84 C1406.583,951.004 1582.756,1021.276 1649,1037.237 C1664.436,1040.956 1707.495,1035.454 1720,1045.237 C1794.483,1103.511 1720.458,1185.281 1794,1244.737 C1837.306,1279.749 1875.744,1226.466 1918,1262.737 C1960.395,1299.128 1972.011,1360.56 1975.082,1404.43" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1796" y="1158.307" fill="#000" font-size="13" textLength="120.18" font-family="Verdana">yields MieMessage</text></g><g class="link" data-entity-1="ent0007" data-entity-2="ent0018" id="lnk42" data-link-type="dependency"><polygon points="1752.69,1418.143,1749.222,1408.925,1749.18,1414.582,1743.524,1414.541,1752.69,1418.143" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1310.946,902.144 C1358.624,917.386 1422.261,944.008 1465,986.237 C1555.505,1075.662 1490.722,1162.731 1588,1244.737 C1610.592,1263.782 1629.875,1243.153 1652,1262.737 C1676.166,1284.128 1662.843,1302.402 1680,1329.737 C1700.477,1362.363 1726.159,1391.222 1749.18,1414.582" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1590" y="1158.307" fill="#000" font-size="13" textLength="128.445" font-family="Verdana">raises (strict mode)</text></g><g class="link" data-entity-1="ent0009" data-entity-2="ent0008" id="lnk43" data-link-type="dependency"><polygon points="984.373,1430.848,977.296,1423.999,979.678,1429.13,974.547,1431.512,984.373,1430.848" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1046.04,1188.581 C1030.293,1208.542 1007.856,1232.074 982,1244.737 C948.875,1260.96 841.626,1235.278 817,1262.737 C754.197,1332.764 890.257,1396.407 979.678,1429.13" style="stroke:#000;stroke-width:1;" fill="none"/><text x="841.737" y="1285.807" fill="#000" font-size="13" textLength="123.716" font-family="Verdana">decode_type_word</text><text x="827.538" y="1301.606" fill="#000" font-size="13" textLength="152.115" font-family="Verdana">is_valid_message_type</text><text x="819" y="1317.406" fill="#000" font-size="13" textLength="169.19" font-family="Verdana">is_homogeneous_payload</text></g><g class="link" data-entity-1="ent0009" data-entity-2="ent0018" id="lnk44" data-link-type="dependency"><polygon points="1718.164,1429.766,1710.756,1423.276,1713.389,1428.282,1708.383,1430.915,1718.164,1429.766" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1043.134,1188.283 C1015.926,1227.667 982.754,1291.521 1020,1329.737 C1032.063,1342.115 1313.876,1335.396 1331,1337.737 C1470.507,1356.808 1624.197,1400.568 1713.389,1428.282" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1022" y="1277.807" fill="#000" font-size="13" textLength="198.783" font-family="Verdana">diagnose_header_scan_failure</text><text x="1039.57" y="1293.606" fill="#000" font-size="13" textLength="163.643" font-family="Verdana">returns NoValidRecords /</text><text x="1051.158" y="1309.406" fill="#000" font-size="13" textLength="149.608" font-family="Verdana">FirstRecordTruncated /</text><text x="1054.16" y="1325.205" fill="#000" font-size="13" textLength="143.603" font-family="Verdana">HomogeneousPayload</text></g><g class="link" data-entity-1="ent0008" data-entity-2="ent0017" id="lnk45" data-link-type="dependency"><polygon points="1946.501,1409.478,1944.216,1399.898,1943.465,1405.505,1937.859,1404.754,1946.501,1409.478" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1098.292,1426.628 C1164.089,1390.63 1288.14,1328.902 1403,1305.737 C1504.533,1285.26 1776.307,1289.563 1868,1337.737 C1899.788,1354.439 1924.197,1380.283 1943.465,1405.505" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1405" y="1285.807" fill="#000" font-size="13" textLength="244.474" font-family="Verdana">produces TypeWord, CommandWord,</text><text x="1406.666" y="1301.606" fill="#000" font-size="13" textLength="241.141" font-family="Verdana">IrigTimestamp, StandardTimestamp,</text><text x="1469.238" y="1317.406" fill="#000" font-size="13" textLength="115.997" font-family="Verdana">InvariantViolation</text></g><g class="link" data-entity-1="ent0010" data-entity-2="ent0017" id="lnk46" data-link-type="dependency"><polygon points="1948.242,1409.556,1946.081,1399.947,1945.258,1405.544,1939.662,1404.722,1948.242,1409.556" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1310.747,1177.722 C1374.407,1197.555 1468.555,1225.49 1552,1244.737 C1597.283,1255.182 1613.531,1241.763 1655,1262.737 C1693.43,1282.174 1685.499,1312.583 1725,1329.737 C1754.194,1342.415 1839.155,1324.286 1868,1337.737 C1901.139,1353.19 1926.101,1379.788 1945.258,1405.544" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1727" y="1301.807" fill="#000" font-size="13" textLength="189.846" font-family="Verdana">MieMessage, MessageFormat</text></g><g class="link" data-entity-1="ent0010" data-entity-2="ent0018" id="lnk47" data-link-type="dependency"><polygon points="1718.348,1431.24,1710.844,1424.86,1713.551,1429.827,1708.584,1432.534,1718.348,1431.24" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1230.17,1196.808 C1225.027,1242.664 1220.746,1311.148 1238,1329.737 C1245.056,1337.339 1320.771,1336.024 1331,1337.737 C1470.073,1361.025 1624.219,1403.52 1713.551,1429.827" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1240" y="1293.807" fill="#000" font-size="13" textLength="157.39" font-family="Verdana">Reject: MieRecordError;</text><text x="1242.13" y="1309.606" fill="#000" font-size="13" textLength="153.131" font-family="Verdana">AnomalyWarn: log only</text></g><g class="link" data-entity-1="ent0014" data-entity-2="ent0017" id="lnk48" data-link-type="dependency"><polygon points="2074.602,1443.994,2083.938,1447.131,2079.58,1443.524,2083.186,1439.166,2074.602,1443.994" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2741.898,611.747 C2759.185,639.988 2784.608,680.824 2808,715.737 C2890.203,838.431 2955.966,845.585 3001,986.237 C3039.796,1107.41 2961.192,1148.472 2878,1244.737 C2838.741,1290.165 2827.9,1305.429 2773,1329.737 C2649.462,1384.436 2264.179,1426.099 2079.58,1443.524" style="stroke:#000;stroke-width:1;" fill="none"/><text x="3013" y="1017.307" fill="#000" font-size="13" textLength="157.6" font-family="Verdana">reads MieMessage fields</text></g><g class="link" data-entity-1="ent0012" data-entity-2="ent0007" id="lnk49" data-link-type="dependency"><polygon points="1310.719,870.374,1320.403,872.168,1315.582,869.209,1318.541,864.388,1310.719,870.374" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1819.25,603.521 C1744.065,627.951 1639.566,670.23 1565,733.737 C1550.829,745.806 1556.482,757.044 1542,768.737 C1473.408,824.12 1379.794,853.837 1315.582,869.209" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1567" y="748.807" fill="#000" font-size="13" textLength="104.838" font-family="Verdana">pulls one record</text><text x="1571.551" y="764.606" fill="#000" font-size="13" textLength="95.735" font-family="Verdana">per open input</text></g><g class="link" data-entity-1="ent0012" data-entity-2="ent0017" id="lnk50" data-link-type="dependency"><polygon points="1971.652,1409.644,1974.691,1400.276,1971.13,1404.671,1966.735,1401.11,1971.652,1409.644" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1911.853,620.467 C1908.317,702.101 1902.883,884.465 1916,1037.237 C1924.694,1138.5 1939.706,1162.112 1954,1262.737 C1961.146,1313.038 1967.087,1366.108 1971.13,1404.671" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1918" y="1017.307" fill="#000" font-size="13" textLength="120.18" font-family="Verdana">yields MieMessage</text></g><g class="link" data-entity-1="ent0012" data-entity-2="ent0018" id="lnk51" data-link-type="dependency"><polygon points="1804.919,1418.178,1812.644,1412.068,1807.243,1413.751,1805.56,1408.35,1804.919,1418.178" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1879.916,620.263 C1825.95,691.438 1723.058,840.365 1685,986.237 C1679.278,1008.17 1669.304,1020.884 1685,1037.237 C1700.016,1052.882 1864.524,1030.048 1880,1045.237 C1902.584,1067.403 1911.657,1304.178 1893,1329.737 C1886.122,1339.16 1877.362,1330.777 1868,1337.737 C1839.911,1358.62 1820.686,1388.141 1807.243,1413.751" style="stroke:#000;stroke-width:1;" fill="none"/><text x="1688" y="1009.307" fill="#000" font-size="13" textLength="220.365" font-family="Verdana">IncompatibleMergeInputs (exit 6)</text><text x="1689.301" y="1025.106" fill="#000" font-size="13" textLength="217.763" font-family="Verdana">NonMonotonicInput (strict mode)</text></g><g class="link" data-entity-1="ent0015" data-entity-2="ent0017" id="lnk52" data-link-type="dependency"><polygon points="2074.52,1452.61,2083.598,1456.43,2079.519,1452.51,2083.439,1448.431,2074.52,1452.61" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2948.812,611.824 C3007.519,678.285 3130.996,831.051 3176,986.237 C3217.779,1130.305 3075.975,1150.834 2959,1244.737 C2906.035,1287.256 2895.415,1305.413 2832,1329.737 C2571.267,1429.748 2242.534,1449.262 2079.519,1452.51" style="stroke:#000;stroke-width:1;" fill="none"/><text x="3216.411" y="1009.307" fill="#000" font-size="13" textLength="114.797" font-family="Verdana">reads timestamp,</text><text x="3185" y="1025.106" fill="#000" font-size="13" textLength="177.62" font-family="Verdana">RT / subaddress / direction</text></g><g class="link" data-entity-1="ent0020" data-entity-2="ent0017" id="lnk53" data-link-type="dependency"><polygon points="2074.87,1443.53,2084.234,1446.58,2079.843,1443.014,2083.409,1438.623,2074.87,1443.53" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2401.936,611.95 C2414.878,642.647 2437.412,686.912 2469,715.737 C2483.102,728.606 2491.484,724.164 2508,733.737 C2675.51,830.836 2774.232,814.168 2863,986.237 C2878.079,1015.467 2896.995,1186.178 2847,1244.737 C2747.127,1361.718 2286.242,1421.613 2079.843,1443.014" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2877" y="1017.307" fill="#000" font-size="13" textLength="118.708" font-family="Verdana">reads MieMessage</text></g><g class="link" data-entity-1="ent0020" data-entity-2="ent0021" id="lnk54" data-link-type="dependency"><polygon points="2387.282,840.028,2391.341,831.054,2387.315,835.028,2383.341,831.002,2387.282,840.028" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2388.774,611.745 C2388.408,667.857 2387.716,773.758 2387.315,835.028" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2390" y="756.807" fill="#000" font-size="13" textLength="112.899" font-family="Verdana">delegates file I/O</text></g><g class="link" data-entity-1="ent0020" data-entity-2="ent0018" id="lnk55" data-link-type="dependency"><polygon points="1803.644,1418.198,1811.217,1411.901,1805.859,1413.716,1804.045,1408.358,1803.644,1418.198" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2372.991,611.975 C2358.961,640.895 2337.088,682.555 2313,715.737 C2216.119,849.197 2145.941,846.1 2059,986.237 C2046.248,1006.792 2058.71,1021.907 2040,1037.237 C2022.592,1051.5 2006.756,1030.214 1990,1045.237 C1892.381,1132.762 2008.686,1241.183 1912,1329.737 C1897.343,1343.162 1884.687,1326.939 1868,1337.737 C1838.208,1357.017 1818.858,1387.409 1805.859,1413.716" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2061" y="1017.307" fill="#000" font-size="13" textLength="138.188" font-family="Verdana">raises MieWriterError</text></g><g class="link" data-entity-1="ent0021" data-entity-2="ent0018" id="lnk56" data-link-type="dependency"><polygon points="1802.704,1418.111,1810.151,1411.665,1804.83,1413.586,1802.909,1408.265,1802.704,1418.111" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2320.257,919.286 C2290.989,936.518 2257.744,959.474 2233,986.237 C2215.446,1005.224 2226.95,1023.569 2205,1037.237 C2188.288,1047.643 2042.721,1032.166 2028,1045.237 C1932.169,1130.331 2075.738,1243.428 1981,1329.737 C1962.391,1346.691 1889.849,1325.234 1868,1337.737 C1836.886,1355.543 1817.468,1386.671 1804.83,1413.586" style="stroke:#000;stroke-width:1;" fill="none"/><text x="2030" y="1150.307" fill="#000" font-size="13" textLength="189.325" font-family="Verdana">MieInputOutputCollisionError</text><text x="2046.041" y="1166.106" fill="#000" font-size="13" textLength="157.244" font-family="Verdana">MieClobberRefusedError</text></g><g class="link" data-entity-1="ent0007" data-entity-2="ent0024" id="lnk57" data-link-type="dependency"><polygon points="2283.358,1121.159,2285.238,1111.492,2282.237,1116.287,2277.442,1113.285,2283.358,1121.159" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M1310.664,888.418 C1514.509,898.937 2134.538,934.88 2208,986.237 C2253.488,1018.038 2273.403,1077.879 2282.237,1116.287" style="stroke:#000;stroke-width:1;stroke-dasharray:7,7;" fill="none"/><text x="2253" y="1017.307" fill="#000" font-size="13" textLength="108.247" font-family="Verdana">mmap read-only</text></g><g class="link" data-entity-1="ent0021" data-entity-2="ent0025" id="lnk58" data-link-type="dependency"><polygon points="2754.766,1125.31,2754.038,1115.488,2752.403,1120.904,2746.988,1119.269,2754.766,1125.31" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2453.581,894.264 C2515.468,905.82 2606.766,931.36 2666,986.237 C2684.24,1003.136 2673.31,1017.947 2689,1037.237 C2692.814,1041.927 2695.857,1040.835 2700,1045.237 C2722.854,1069.518 2740.178,1098.104 2752.403,1120.904" style="stroke:#000;stroke-width:1;stroke-dasharray:7,7;" fill="none"/><text x="2692" y="1017.307" fill="#000" font-size="13" textLength="170.162" font-family="Verdana">atomic temp then rename</text></g><g class="link" data-entity-1="ent0021" data-entity-2="ent0026" id="lnk59" data-link-type="dependency"><polygon points="2418.965,1116.932,2418.34,1107.103,2416.649,1112.501,2411.251,1110.809,2418.965,1116.932" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2382.624,928.337 C2380.629,959.052 2380.197,1001.125 2388,1037.237 C2394.067,1065.314 2405.12,1090.448 2416.649,1112.501" style="stroke:#000;stroke-width:1;stroke-dasharray:7,7;" fill="none"/><text x="2390" y="1017.307" fill="#000" font-size="13" textLength="109.402" font-family="Verdana">(separate mode)</text></g><g class="link" data-entity-1="ent0021" data-entity-2="ent0027" id="lnk60" data-link-type="dependency"><polygon points="2590.135,1116.851,2587.872,1107.265,2587.109,1112.871,2581.504,1112.107,2590.135,1116.851" fill="#000" style="stroke:#000;stroke-width:1;stroke-linejoin:miter;stroke-miterlimit:10;"/><path d="M2444.938,928.324 C2464.496,944.876 2485.321,964.945 2501,986.237 C2515.744,1006.259 2509.867,1016.779 2524,1037.237 C2526.858,1041.374 2528.659,1041.479 2532,1045.237 C2552.494,1068.294 2570.984,1091.661 2587.109,1112.871" style="stroke:#000;stroke-width:1;stroke-dasharray:7,7;" fill="none"/><text x="2527" y="1017.307" fill="#000" font-size="13" textLength="138.334" font-family="Verdana">(--allow-partial path)</text></g><?plantuml-src jLdRSXit4dtdLtJyigJD8IdPLYgCrrMoJ2UibImNHTkxjTfYWJCWYMXk0MOaSRUIRz_J0ER2aPBAWwK7rN2ckz4uVGU-AtOoaPJ7GgMzxt8jjecWMEopiY2Jo4AaecT24KjAn3szcamcp_bVpzoeD1TQ91HcIPwbCYskYZt8j0p1j8rbYoGNuOtOoYv1eGhylfZFWlSop2AfAQ2pIXgTwd2d2X2NMb9_KPg2Nj2dVR7Bqa6lzpVw-pVyWpXQtcMaaZm676aX2fMbPaXGXKHBaM-_xknMwdq38gKYaH6jPPpTaRnNfZ2aKdftkVoPO2goE8HQ5C14utbiT3X-Fj9cG2AD88-974eLxDJFxMzBcYYvYXpQOCltWn4jmH5cwIRJYKX3IQR4RY6fJDaaXOGAuzRtCUsoE3AyK495Hkjz8GDvByA2vA-bkeMli1IiVtRr1MBWINbPZEXAIegoq8nF5sS_pvUpi-NdnMoKH6G0BT2c8y8ILlzD6SUKP54PisPQImDm8XOx-jO6w5KWFJixdzEvs4lzZFxN8_pz6-RG-pnJQN6TzXC4262cCVs-Ml6FrOhX-my9G_pJiOIn0kqEfWXq5iUmfD1R186HZXBV7M6SRK5e2a2iXoIAB54XnV9MneuGtm605mhm5PClBo_EyKM0QNYTii8Pl4UhI1eltbBsVcjlAqFukFYYJogNiKfblKCjMHOaNoZvGSLo8Rti914vmGtWQ9bsiXsjutCU1BwSWtDJfjQ2NWdtqH6QVHg234wX8lZi6C7FAe-lqqY9RPfLk32TvoXqoQ4cukjKfRT2Av4M1ZA-xbIucrTlwCLrUWMuj2gy4HhYW_rVb76XWetYJ2Frjjbxmh-i3R2pHALRkWdkn9vsKkICW4ZL1huFWs_ZR8tjcoo-bVWIbNciGex042OMkG6lzmCMUR0wG0M8B1mkGPSwiZzg7JRsCvHGQHYNiD0BnBnzcbwdnJwNuyLol2xD-EhKhU0OZEFEj3DUAD8iXKOnQIGD-nPg8XX572pd5xFLrVBquXFfihAG9JdGyxqe15t0R7633_yopZSkf36W6z8IEdq5E-Gp2pyoyknKj2utU3tNQZk-AY8gL0BuH9BxHPqy7rbQPzxjPln8CYqJWbVWnNFt1bRnlc693urwQNDA9rplj79WDXP51e9AHd8PWht6NbKdrz5xA9r08pQos4F4gGt8CtFBKG4HQHQ4y8ArHNO4SOK2tCZQYIeyfcN1t3u-oYJdF23lYH_1muwl8_lBHmcU3lOqkuSsgQWDW7WHQs7OXUSpUgTIeQ4PwqFz4TBuu1dLVmml4ZjxkUMrxiv_pu00ERIWpnjJoEJjA3ItBMPE6-RsCLvh2CCWrhmhPmmMqGQMRGkHpbYFYVha4VEo7DnlAo0XwlSW435gNk1VEMd-XvFusrDKVKwYTug3ybiBvwBW40w2jvpugVKtfKYPN1JXZlekNwB4bcanjWxIQwYPrzM25g-HXKrA0DIMZ0wzgm8jUYuPA_yMzJN5ZelTgguT7NQNw5liMIwHwKMn6o9-OBSLX_RAzWF5a11jAYowEjjKsDvlWVOAOPrmER9IEBNacL5SEKHi2siGjB8kVl4Uku9z1cm4t-bMgUeGsqJNrcA3C8gXCaVSMcvO6Py63XdTIsglWXShk3qqgvzN1fMWwB2o1GyitHWMhTMQSmPgGHTqdpvQN3iPtXX6eSaz3fM3E7cAcF3TGkwxXIUAZyRDUF_S0537KX7YNfjYvNBdTLfr4VKBtqsiRFTmACy5LJlUx8iL5zNLdUMktbHrgdxZJUJ9mbWOepRxLUAAe7VypdfDz-7NgvLj6ffLkv-floC6YfMyBpGww1P5Hxwhdgtzx9NaBhmfpXq6bwXR35ee8mtrNRowbDthDRZ_HTIKMLdLQpZuctszov9iArEPbMQLYpqddOxu1pfLJU1gPtLVOT9CLnkXOhILR5x0bXhwc7tX5HVMweRR1A8Fx1dkpHAD3RTZaVloSwF69wz5hzdNerZc6hD6273gzeRdKFO1t-jmKxEi_6H8LnXW8u6LwrSWgIptHMMn7HzxlPPJF5ntIkt6oZzySBxLOJp4RKeB-Gjc9Yl0GM0hzO_NwMcQ9IBUVnKwvQo_nHGMxtkz9cS-kdrsdBOd8VROjvuYjTWM76aiyvtmKzNUkleyMj1op9V6plPL9idndSkSAqqT_hyGUuSC3_nydlA03wzOnz92CBSLaFgOy0iw6Lod7xFq8akpWXjv-x4Rg4qf-nCR5Ys7N2o1CmgEY2BCBbnV8wNTgFqKbltgAkQO3bhf9x9lKvx_aaDtw1_KMh3BBJA8SHthV7pPuVYZP8ebtBvj0FOQmOyoWTgQrlNZPnWUbO4rPcuOmjSpL-ONSbCQwOBwAKnLJHfkjpBQeWLyik8-6hsjPvCQ2Nkym3I1JL0DRanTJICrjJyTmVoHk_PLIpubwx1LaqVDrZySJphaxT72aNTRA-AMzqcE6ZzcnRU77Ca3-KnjTmLbc-f0vStwxOUir46-uqcINxuPhzzYvlYpWxYNWobOZqOFUx0fkK9DvaRbe3aUKQSfuyRjLWQsUoMp4xdawhhcUV3b22Kfkma4ovXIYfx7vrzA-5GJGq1MYxFp8_NFh9mJ7ZmCHfNkQkZxZOmt0r2_6b6x7PpISS0da-Zr9Vfkz1L3UlFtarVqZtSzXqlL9oXagKXk9APPwjyUZoQ3AMC48bTcgTNNaEzhE7EFjYEe70V_bJeRWfgV9_SVy3U0bug2xh8oZYY3n-exnUZdfLOG0eSd249Azhi1vYEQ9TZB8ytBg2VJYDYulOw9MxsYtT1LtMYskz73BLsfUz9bp7tW-N5mzQ-FmUHuCXfDZbyFtCHXprzTkyIdZnvciSKm2nDTpC-3g-NxuEZrwvU4ZZKrmhcCjVI8aQqEvQRJnxkK0v87_SeBkf4ozykoECk3raxxveyThzcUdv90r_UM8OKgM3U4QsjQbTeXS_37K3Q7Dy3nyg20MVo6T7uKN7vU1fF9SOqb0iHxY6qQ4CrLxND_ZF3N1NYEJWOkLZovFTRdviUJl-XCUItELmCNEBRAy6cxFy9vawlexQX8SkVvboc5iHGfYowcFZ-so95IGVZQ4jgovDOyI7SjDXTytLCQwlurQhuU-7W52oz6hihoOtt6O-yd72C-jGwIQlaAVdIOiebEMZhNeJIbai_nuAmyQZTgV3_uGmkxerbhtzQ9i6lRsCGdriGNYv-2vsF8im-rfIzK6l2nC9np3w_gpnVpdr3KGetH9SmmpFk34VoFv3qd0pvW0PDTnCXVIxwx6Fo8IeQD8OwQrfDoUmJPz9v3GXPCP9BfFVloPPzbc87T9Ml57cW3pLqSkNLj_bnBueiwdao2E0jle2ahEkA8ymDBK1tQRBIKY980JXF14uVsQ4RTIou2Dfy8pHgokzhRA7jI8j9zvRA-SUMjrdgzT7gzdvqlJrdrH0fJSknoS-tqj7Yue1ImmeyWXnkY_If4O4A0K1rhCJW9E92ei8vWfEsD4nYipTpniZsTQ81vxHIupDsH4bckmE4C5Huxj-VC0Gty2ndKD31fBVVxFyiSsbsAmA_E7Xx3MzVwePKzNjO-zQxSR7WciwvGfYphxFBZrUpiytB-PKRTq_iw5njxau0c7wD4O39TM8I0QN-n7BRwVJPDtV0FXimjKPahMzhaZPBJHC_nqO1TvICdPr1R_Kq5lMX62rfd9JlJte9T3UNiy02ecfk91sVgNttwl9XVVhvQlJzTdWxOgRZqgJHb0sQsrlWmmEEUDXad98dnEySMfBvr5cAooVtnP39nYG3cIf4_IrivIKI_Y13nvVK1b8Y1BRI12uOYprqPyBUGYRXVCMYhhSvAJfvzxuhqQlB3YOjGNWwCJZk8Wnm9f3WGx3MVq9flERs5xSRPY5zF5nzRQ1vRD4-j9DZsY0zysMQcmfOBWCG-j8nhrGt5mgQ7viANlHIMjf73m5Q9Z9jJC-9Mah39M3M8TauQ_zXt_MsXTTvFx1_sYfNwEn3m6Qpj_DhbZW_BDx7O6XSrhKkH1zLas7jGBa1IfVV0PN_Bvg--0esqD1gDVAcqLvt-oDhV9w0ClYjLN82ZIY2ckxTORbowTpUosDYC4nMtCzpo70MpVyuv3e_GynnDR8nZKoWTH_K-9rDx6nzBUs7ajnFutf8FcTpErZgxaMd0XwGWmsXIx7sgSKvxDArS6wcr6YkT__8EfnmiLKIF7-inUSVJUlsoEkna7w8-c1_Sc70hWCfeJt2gTLvFFOXe2ssqL1zEfiwJ6FxwQC8VpBispj_MpnQBoqLmXlWzl_pfqUjwKDiBUvkIMjxsVm00?></g></svg>
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Aero1553 component architecture.
+
+  Hand-maintained SVG: this file IS the source (there is no generator).
+  Layout is on a 10px grid; every component, package frame, edge and note
+  is a named group below, so edit the group you need and keep coordinates
+  on the grid. Colours come from the custom properties in the style block,
+  which switch for a dark colour scheme.
+
+  Edges into the Data Model band use two collector buses (models bus at
+  y=580, errors bus at y=600) instead of one line per pair. A dot marks a
+  line joining a bus; a crossing without a dot is not a connection.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1600" height="1810" viewBox="0 0 1600 1810">
+  <title>Aero1553 - Component Architecture (Rust, Python, C++)</title>
+  <style>
+    svg {
+      --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --box: #f6f8fa;
+      --stroke: #8c959f; --accent: #0969da; --note: #fff8c5;
+    }
+    @media (prefers-color-scheme: dark) {
+      svg {
+        --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --box: #161b22;
+        --stroke: #3d444d; --accent: #4493f8; --note: #2e2a17;
+      }
+    }
+    text { font-family: "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; fill: var(--fg); }
+    .bg { fill: var(--bg); }
+    .title { font-size: 18px; font-weight: 700; }
+    .subtitle { font-size: 12px; fill: var(--muted); }
+    .frame { fill: none; stroke: var(--stroke); stroke-width: 1; }
+    .frame-title { font-size: 12px; font-weight: 600; fill: var(--muted); }
+    .box { fill: var(--box); stroke: var(--stroke); stroke-width: 1; }
+    .name { font-weight: 700; }
+    .mono { font-family: Consolas, Menlo, monospace; font-size: 12px; }
+    .label { font-size: 12px; fill: var(--muted); }
+    .edge { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+    .io { stroke-dasharray: 6 4; }
+    .dot { fill: var(--accent); }
+    .arrowhead { fill: var(--accent); }
+    .arrowhead-open { fill: none; stroke: var(--accent); stroke-width: 1.5; }
+    .note { fill: var(--note); stroke: var(--stroke); stroke-width: 1; }
+    .note-text { font-size: 12px; }
+    .badge { fill: var(--accent); }
+    .badge-text { font-size: 11px; font-weight: 700; fill: var(--bg); }
+  </style>
+  <defs>
+    <!-- solid dependency arrow -->
+    <marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse"
+            markerWidth="10" markerHeight="10" orient="auto">
+      <path class="arrowhead" d="M0,0 L10,5 L0,10 Z"/>
+    </marker>
+    <!-- open arrow for file I/O (used with the dashed .io line) -->
+    <marker id="arrow-open" viewBox="0 0 10 10" refX="10" refY="5" markerUnits="userSpaceOnUse"
+            markerWidth="10" markerHeight="10" orient="auto">
+      <path class="arrowhead-open" d="M0,0 L10,5 L0,10"/>
+    </marker>
+  </defs>
+
+  <rect class="bg" x="0" y="0" width="1600" height="1810"/>
+
+  <!-- Title -->
+  <g id="title">
+    <text class="title" x="800" y="34" text-anchor="middle">Aero1553 - Component Architecture (Rust, Python, C++)</text>
+    <text class="subtitle" x="800" y="54" text-anchor="middle">Each component is a module in every tree: rust/src/&lt;m&gt;.rs, python/src/aero1553/&lt;m&gt;.py, cpp/src/&lt;m&gt;.cpp (Python spells a few differently: filters, exceptions, logger).</text>
+    <text class="subtitle" x="800" y="70" text-anchor="middle">tests/conformance/ holds the three byte-identical on CSV output. The platform layer is C++ only. Circled numbers refer to the notes at the bottom.</text>
+  </g>
+
+  <!-- ===================================================================
+       Row A: CLI layer and the input file
+       =================================================================== -->
+
+  <!-- Package: CLI Layer -->
+  <g id="pkg-cli">
+    <rect class="frame" x="20" y="80" width="1100" height="130" rx="6"/>
+    <text class="frame-title" x="32" y="98">CLI Layer</text>
+  </g>
+
+  <!-- Component: entrypoint -->
+  <g id="entrypoint">
+    <rect class="box" x="40" y="110" width="200" height="80" rx="4"/>
+    <text class="name" x="140" y="134" text-anchor="middle">entrypoint</text>
+    <text class="mono" x="140" y="154" text-anchor="middle">rust/src/bin/aero1553.rs</text>
+    <text class="mono" x="140" y="172" text-anchor="middle">__main__.py | main.cpp</text>
+  </g>
+
+  <!-- Component: cli (note 7: exit codes) -->
+  <g id="cli">
+    <rect class="box" x="330" y="110" width="180" height="80" rx="4"/>
+    <text class="name" x="420" y="134" text-anchor="middle">cli</text>
+    <text class="mono" x="420" y="154" text-anchor="middle">run(argv)</text>
+    <text x="420" y="172" text-anchor="middle">decode | count | dump</text>
+    <circle class="badge" cx="498" cy="122" r="9"/>
+    <text class="badge-text" x="498" y="126" text-anchor="middle">7</text>
+  </g>
+
+  <!-- Component: config (note 6: precedence) -->
+  <g id="config">
+    <rect class="box" x="620" y="110" width="200" height="80" rx="4"/>
+    <text class="name" x="720" y="134" text-anchor="middle">config</text>
+    <text class="mono" x="720" y="154" text-anchor="middle">load_config()</text>
+    <text class="mono" x="720" y="172" text-anchor="middle">with_overrides()</text>
+    <circle class="badge" cx="808" cy="122" r="9"/>
+    <text class="badge-text" x="808" y="126" text-anchor="middle">6</text>
+  </g>
+
+  <!-- Component: log -->
+  <g id="log">
+    <rect class="box" x="920" y="110" width="180" height="80" rx="4"/>
+    <text class="name" x="1010" y="134" text-anchor="middle">log</text>
+    <text x="1010" y="154" text-anchor="middle">stderr logger,</text>
+    <text x="1010" y="172" text-anchor="middle">atomic global level</text>
+  </g>
+
+  <!-- Package: External input, with the MIE file -->
+  <g id="pkg-external-input">
+    <rect class="frame" x="1160" y="80" width="420" height="130" rx="6"/>
+    <text class="frame-title" x="1172" y="98">External (input)</text>
+  </g>
+  <g id="mie-file">
+    <path class="box" d="M1270,122 A100,10 0 0,1 1470,122 V182 A100,10 0 0,1 1270,182 Z"/>
+    <ellipse class="box" cx="1370" cy="122" rx="100" ry="10"/>
+    <text class="name" x="1370" y="154" text-anchor="middle">MIE binary file</text>
+    <text class="mono" x="1370" y="172" text-anchor="middle">*.mie</text>
+  </g>
+
+  <!-- Edges, row A -->
+  <g id="edges-cli">
+    <!-- entrypoint -> cli -->
+    <path class="edge" d="M240,150 H330" marker-end="url(#arrow)"/>
+    <text class="label" x="285" y="143" text-anchor="middle">dispatch</text>
+    <!-- cli -> config -->
+    <path class="edge" d="M510,150 H620" marker-end="url(#arrow)"/>
+    <text class="label" x="565" y="143" text-anchor="middle">configure</text>
+    <!-- cli -> log -->
+    <path class="edge" d="M480,110 V96 H1010 V110" marker-end="url(#arrow)"/>
+    <text class="label mono" x="745" y="91" text-anchor="middle">set_level</text>
+  </g>
+
+  <!-- cli bus: cli drives every pipeline stage. Trunk down from cli, bus at
+       y=240, drops into the stages; the right-margin trunk carries on down
+       to the output row (lane at y=785). -->
+  <g id="cli-bus">
+    <path class="edge" d="M420,190 V240"/>
+    <path class="edge" d="M165,240 H1570 V785 H130"/>
+    <circle class="dot" cx="420" cy="240" r="3.5"/>
+    <circle class="dot" cx="600" cy="240" r="3.5"/>
+    <circle class="dot" cx="1130" cy="240" r="3.5"/>
+    <circle class="dot" cx="1225" cy="240" r="3.5"/>
+    <circle class="dot" cx="440" cy="785" r="3.5"/>
+    <circle class="dot" cx="700" cy="785" r="3.5"/>
+    <text class="label" x="1560" y="520" text-anchor="end">cli -&gt; output stages</text>
+
+    <!-- cli -> merge -->
+    <path class="edge" d="M165,240 V300" marker-end="url(#arrow)"/>
+    <text class="label" x="171" y="258">2+ inputs</text>
+    <!-- cli -> reader -->
+    <path class="edge" d="M600,240 V300" marker-end="url(#arrow)"/>
+    <text class="label" x="606" y="258">open(path, opts)</text>
+    <!-- cli -> filter -->
+    <path class="edge" d="M1130,240 V300" marker-end="url(#arrow)"/>
+    <text class="label" x="1136" y="258">wrap iterator</text>
+    <!-- cli -> order -->
+    <path class="edge" d="M1225,240 V495 H1210" marker-end="url(#arrow)"/>
+    <text class="label" x="1219" y="420" text-anchor="end">final stage</text>
+    <!-- cli -> dump -->
+    <path class="edge" d="M130,785 V840" marker-end="url(#arrow)"/>
+    <text class="label" x="136" y="832">count, dump</text>
+    <!-- cli -> writer -->
+    <path class="edge" d="M440,785 V840" marker-end="url(#arrow)"/>
+    <text class="label mono" x="446" y="832">write_csv*</text>
+    <!-- cli -> output safety -->
+    <path class="edge" d="M700,785 V840" marker-end="url(#arrow)"/>
+    <text class="label" x="706" y="832">--no-clobber, --allow-partial</text>
+  </g>
+
+  <!-- reader -> MIE file (dashed: mmap read-only). Crosses the cli bus. -->
+  <g id="edge-reader-mie">
+    <path class="edge io" d="M940,300 V225 H1370 V192" marker-end="url(#arrow-open)"/>
+    <text class="label" x="1150" y="221" text-anchor="middle">mmap, read-only</text>
+  </g>
+
+  <!-- ===================================================================
+       Rows B and C: merge, core decode, filtering and ordering
+       =================================================================== -->
+
+  <!-- Package: Multi-file Merge -->
+  <g id="pkg-merge">
+    <rect class="frame" x="20" y="270" width="270" height="290" rx="6"/>
+    <text class="frame-title" x="32" y="288">Multi-file Merge</text>
+  </g>
+
+  <!-- Component: merge (note 4) -->
+  <g id="merge">
+    <rect class="box" x="60" y="300" width="210" height="80" rx="4"/>
+    <text class="name" x="165" y="324" text-anchor="middle">merge</text>
+    <text class="mono" x="165" y="344" text-anchor="middle">MergedRecordIter</text>
+    <text x="165" y="362" text-anchor="middle">k-way heap, manifest / glob</text>
+    <circle class="badge" cx="258" cy="312" r="9"/>
+    <text class="badge-text" x="258" y="316" text-anchor="middle">4</text>
+  </g>
+
+  <!-- Component: delta -->
+  <g id="delta">
+    <rect class="box" x="60" y="450" width="210" height="90" rx="4"/>
+    <text class="name" x="165" y="472" text-anchor="middle">delta</text>
+    <text class="mono" x="165" y="490" text-anchor="middle">DeltaTracker</text>
+    <text x="165" y="507" text-anchor="middle">the one RT/MSG key</text>
+    <text class="mono" x="165" y="524" text-anchor="middle">observe() -&gt; DeltaOutcome</text>
+  </g>
+
+  <!-- Package: Core Decode Pipeline -->
+  <g id="pkg-decode">
+    <rect class="frame" x="340" y="270" width="660" height="290" rx="6"/>
+    <text class="frame-title" x="352" y="288">Core Decode Pipeline</text>
+  </g>
+
+  <!-- Component: reader -->
+  <g id="reader">
+    <rect class="box" x="360" y="300" width="620" height="80" rx="4"/>
+    <text class="name" x="670" y="324" text-anchor="middle">reader</text>
+    <text x="670" y="344" text-anchor="middle">MieFileReader: mmap-backed record iterator</text>
+    <text x="670" y="362" text-anchor="middle">classifies SPURIOUS_DATA continuations via prev_was_error</text>
+  </g>
+
+  <!-- Component: sync (note 1) -->
+  <g id="sync">
+    <rect class="box" x="360" y="450" width="170" height="90" rx="4"/>
+    <text class="name" x="445" y="472" text-anchor="middle">sync</text>
+    <text class="mono" x="445" y="490" text-anchor="middle">find_first_record</text>
+    <text class="mono" x="445" y="507" text-anchor="middle">validate_record</text>
+    <text class="mono" x="445" y="524" text-anchor="middle">recover_sync</text>
+    <circle class="badge" cx="518" cy="462" r="9"/>
+    <text class="badge-text" x="518" y="466" text-anchor="middle">1</text>
+  </g>
+
+  <!-- Component: decode -->
+  <g id="decode">
+    <rect class="box" x="590" y="450" width="200" height="90" rx="4"/>
+    <text class="name" x="690" y="472" text-anchor="middle">decode</text>
+    <text class="mono" x="690" y="490" text-anchor="middle">decode_type_word</text>
+    <text class="mono" x="690" y="507" text-anchor="middle">probe_timestamp_format</text>
+    <text class="mono" x="690" y="524" text-anchor="middle">classify_message_format</text>
+  </g>
+
+  <!-- Component: structural invariants (note 2) -->
+  <g id="invariants">
+    <rect class="box" x="830" y="450" width="150" height="90" rx="4"/>
+    <text class="name" x="905" y="472" text-anchor="middle">invariants</text>
+    <text x="905" y="490" text-anchor="middle">(in decode)</text>
+    <text class="mono" x="905" y="507" text-anchor="middle">WhichInvariant</text>
+    <text class="mono" x="905" y="524" text-anchor="middle">InvariantSeverity</text>
+    <circle class="badge" cx="968" cy="462" r="9"/>
+    <text class="badge-text" x="968" y="466" text-anchor="middle">2</text>
+  </g>
+
+  <!-- Package: Filter + Order -->
+  <g id="pkg-filter-order">
+    <rect class="frame" x="1020" y="270" width="220" height="290" rx="6"/>
+    <text class="frame-title" x="1032" y="288">Filter + Order</text>
+  </g>
+
+  <!-- Component: filter -->
+  <g id="filter">
+    <rect class="box" x="1050" y="300" width="160" height="80" rx="4"/>
+    <text class="name" x="1130" y="324" text-anchor="middle">filter</text>
+    <text x="1130" y="344" text-anchor="middle">include + exclude</text>
+    <text x="1130" y="362" text-anchor="middle">type / RT / bus / SA</text>
+  </g>
+
+  <!-- Component: order (note 5) -->
+  <g id="order">
+    <rect class="box" x="1050" y="450" width="160" height="90" rx="4"/>
+    <text class="name" x="1130" y="472" text-anchor="middle">order</text>
+    <text class="mono" x="1130" y="490" text-anchor="middle">order_rows()</text>
+    <text x="1130" y="507" text-anchor="middle">canonical row order</text>
+    <text x="1130" y="524" text-anchor="middle">per TIME_STAMP run</text>
+    <circle class="badge" cx="1198" cy="462" r="9"/>
+    <text class="badge-text" x="1198" y="466" text-anchor="middle">5</text>
+  </g>
+
+  <!-- Edges inside rows B and C -->
+  <g id="edges-decode">
+    <!-- merge -> reader -->
+    <path class="edge" d="M270,330 H360" marker-end="url(#arrow)"/>
+    <text class="label" x="315" y="322" text-anchor="middle">pulls</text>
+    <text class="label" x="315" y="347" text-anchor="middle">records</text>
+    <!-- merge -> delta (global scope) -->
+    <path class="edge" d="M165,380 V450" marker-end="url(#arrow)"/>
+    <text class="label" x="171" y="420">global DELTA</text>
+    <!-- reader -> delta (per-file scope) -->
+    <path class="edge" d="M360,356 H305 V495 H270" marker-end="url(#arrow)"/>
+    <!-- reader -> sync -->
+    <path class="edge" d="M445,380 V450" marker-end="url(#arrow)"/>
+    <text class="label" x="451" y="420">validate</text>
+    <!-- reader -> decode -->
+    <path class="edge" d="M690,380 V450" marker-end="url(#arrow)"/>
+    <text class="label" x="696" y="420">decode</text>
+    <!-- reader -> invariants -->
+    <path class="edge" d="M905,380 V450" marker-end="url(#arrow)"/>
+    <text class="label" x="911" y="432">check</text>
+    <!-- sync -> decode -->
+    <path class="edge" d="M530,470 H590" marker-end="url(#arrow)"/>
+    <text class="label" x="560" y="465" text-anchor="middle">uses</text>
+  </g>
+
+  <!-- Buses into the Data Model band -->
+  <g id="models-bus">
+    <!-- sources: merge, reader, decode, invariants, filter, order -->
+    <path class="edge" d="M60,345 H32 V580"/>
+    <path class="edge" d="M360,372 H325 V580"/>
+    <path class="edge" d="M690,540 V580"/>
+    <path class="edge" d="M880,540 V580"/>
+    <path class="edge" d="M1050,345 H1032 V580"/>
+    <path class="edge" d="M1130,540 V580"/>
+    <path class="edge" d="M32,580 H1130"/>
+    <circle class="dot" cx="325" cy="580" r="3.5"/>
+    <circle class="dot" cx="690" cy="580" r="3.5"/>
+    <circle class="dot" cx="880" cy="580" r="3.5"/>
+    <circle class="dot" cx="1032" cy="580" r="3.5"/>
+    <circle class="dot" cx="250" cy="580" r="3.5"/>
+    <!-- trunk into models -->
+    <path class="edge" d="M250,580 V650" marker-end="url(#arrow)"/>
+    <text class="label" x="316" y="575" text-anchor="end">yields</text>
+    <text class="label" x="565" y="575" text-anchor="middle">MieMessage and model types</text>
+  </g>
+  <g id="errors-bus">
+    <!-- sources: merge, sync, reader, invariants -->
+    <path class="edge" d="M60,360 H44 V600"/>
+    <path class="edge" d="M445,540 V600"/>
+    <path class="edge" d="M810,380 V600"/>
+    <path class="edge" d="M955,540 V600"/>
+    <path class="edge" d="M44,600 H955"/>
+    <circle class="dot" cx="445" cy="600" r="3.5"/>
+    <circle class="dot" cx="810" cy="600" r="3.5"/>
+    <circle class="dot" cx="700" cy="600" r="3.5"/>
+    <!-- trunk into error -->
+    <path class="edge" d="M700,600 V650" marker-end="url(#arrow)"/>
+    <text class="label" x="816" y="420">raises (strict)</text>
+    <text class="label" x="600" y="615" text-anchor="middle">errors raised</text>
+  </g>
+
+  <!-- ===================================================================
+       Data Model band
+       =================================================================== -->
+
+  <!-- Package: Data Model and Errors -->
+  <g id="pkg-model">
+    <rect class="frame" x="20" y="620" width="1520" height="140" rx="6"/>
+    <text class="frame-title" x="32" y="638">Data Model and Errors</text>
+  </g>
+
+  <!-- Component: models -->
+  <g id="models">
+    <rect class="box" x="40" y="650" width="420" height="95" rx="4"/>
+    <text class="name" x="250" y="670" text-anchor="middle">models</text>
+    <text x="250" y="687" text-anchor="middle">MieMessage, TypeWord, CommandWord,</text>
+    <text x="250" y="704" text-anchor="middle">DataWords (inline [u16; 32]),</text>
+    <text x="250" y="721" text-anchor="middle">IrigTimestamp, StandardTimestamp</text>
+    <text x="250" y="738" text-anchor="middle">produced by decode, read by every later stage</text>
+  </g>
+
+  <!-- Component: error -->
+  <g id="error">
+    <rect class="box" x="500" y="650" width="1020" height="95" rx="4"/>
+    <text class="name" x="1010" y="670" text-anchor="middle">error</text>
+    <text x="1010" y="687" text-anchor="middle">Rust: MieError enum + kind()   |   Python: Aero1553Error class tree   |   C++: MieError</text>
+    <text x="1010" y="704" text-anchor="middle">sync: NoValidRecords, FirstRecordTruncated, HomogeneousPayload   |   invariants: record error (strict)</text>
+    <text x="1010" y="721" text-anchor="middle">merge: IncompatibleMergeInputs (exit 6), NonMonotonicInput   |   writer: WriterError</text>
+    <text x="1010" y="738" text-anchor="middle">output safety: InputOutputCollision, ClobberRefused</text>
+  </g>
+
+  <!-- ===================================================================
+       Output row
+       =================================================================== -->
+
+  <!-- Package: Output Layer -->
+  <g id="pkg-output">
+    <rect class="frame" x="20" y="800" width="900" height="130" rx="6"/>
+    <text class="frame-title" x="32" y="818">Output Layer</text>
+  </g>
+
+  <!-- Component: dump -->
+  <g id="dump">
+    <rect class="box" x="40" y="840" width="180" height="70" rx="4"/>
+    <text class="name" x="130" y="862" text-anchor="middle">dump</text>
+    <text x="130" y="880" text-anchor="middle">hex dump,</text>
+    <text x="130" y="897" text-anchor="middle">record dump</text>
+  </g>
+
+  <!-- Component: writer -->
+  <g id="writer">
+    <rect class="box" x="300" y="840" width="240" height="70" rx="4"/>
+    <text class="name" x="420" y="862" text-anchor="middle">writer</text>
+    <text x="420" y="880" text-anchor="middle">streaming CSV, inline | separate</text>
+    <text class="mono" x="420" y="897" text-anchor="middle">write_csv, write_csv_split</text>
+  </g>
+
+  <!-- Component: output safety (note 3) -->
+  <g id="output-safety">
+    <rect class="box" x="620" y="840" width="280" height="70" rx="4"/>
+    <text class="name" x="760" y="862" text-anchor="middle">output safety</text>
+    <text x="760" y="880" text-anchor="middle">AtomicCsvFile (C++: AtomicFile)</text>
+    <text x="760" y="897" text-anchor="middle">temp file -&gt; commit / commit_partial</text>
+    <circle class="badge" cx="888" cy="852" r="9"/>
+    <text class="badge-text" x="888" y="856" text-anchor="middle">3</text>
+  </g>
+
+  <!-- Edges, output row -->
+  <g id="edges-output">
+    <!-- writer -> models -->
+    <path class="edge" d="M360,840 V745" marker-end="url(#arrow)"/>
+    <text class="label" x="366" y="778">reads</text>
+    <!-- writer -> error -->
+    <path class="edge" d="M520,840 V745" marker-end="url(#arrow)"/>
+    <text class="label" x="526" y="778">WriterError</text>
+    <!-- output safety -> error -->
+    <path class="edge" d="M880,840 V745" marker-end="url(#arrow)"/>
+    <text class="label" x="886" y="778">collision, clobber</text>
+    <!-- writer -> output safety -->
+    <path class="edge" d="M540,875 H620" marker-end="url(#arrow)"/>
+    <text class="label" x="580" y="868" text-anchor="middle">file I/O</text>
+  </g>
+
+  <!-- Package: External outputs -->
+  <g id="pkg-external-output">
+    <rect class="frame" x="960" y="800" width="620" height="230" rx="6"/>
+    <text class="frame-title" x="972" y="818">External (outputs)</text>
+  </g>
+  <g id="csv-file">
+    <path class="box" d="M1040,835 H1326 L1340,849 V885 H1040 Z"/>
+    <path class="frame" d="M1326,835 V849 H1340"/>
+    <text class="name" x="1190" y="856" text-anchor="middle">CSV output</text>
+    <text class="mono" x="1190" y="874" text-anchor="middle">&lt;stem&gt;.csv</text>
+  </g>
+  <g id="errors-file">
+    <path class="box" d="M1040,900 H1326 L1340,914 V950 H1040 Z"/>
+    <path class="frame" d="M1326,900 V914 H1340"/>
+    <text class="name" x="1190" y="921" text-anchor="middle">Errors CSV (separate mode)</text>
+    <text class="mono" x="1190" y="939" text-anchor="middle">&lt;stem&gt;_errors.csv</text>
+  </g>
+  <g id="partial-file">
+    <path class="box" d="M1040,965 H1326 L1340,979 V1015 H1040 Z"/>
+    <path class="frame" d="M1326,965 V979 H1340"/>
+    <text class="name" x="1190" y="986" text-anchor="middle">Partial CSV (--allow-partial)</text>
+    <text class="mono" x="1190" y="1004" text-anchor="middle">&lt;output&gt;.partial</text>
+  </g>
+
+  <!-- output safety -> the three files (dashed: file I/O) -->
+  <g id="edges-files">
+    <path class="edge io" d="M900,875 H1000"/>
+    <path class="edge io" d="M1000,860 V990"/>
+    <path class="edge io" d="M1000,860 H1040" marker-end="url(#arrow-open)"/>
+    <path class="edge io" d="M1000,925 H1040" marker-end="url(#arrow-open)"/>
+    <path class="edge io" d="M1000,990 H1040" marker-end="url(#arrow-open)"/>
+    <text class="label" x="1360" y="925">atomic commit, see note 3</text>
+  </g>
+
+  <!-- Package: Platform layer (C++ only) -->
+  <g id="pkg-platform">
+    <rect class="frame" x="20" y="950" width="900" height="120" rx="6"/>
+    <text class="frame-title" x="32" y="968">Platform layer (C++ only)</text>
+  </g>
+  <g id="platform">
+    <rect class="box" x="40" y="980" width="860" height="75" rx="4"/>
+    <text class="name" x="470" y="1001" text-anchor="middle">platform -- cpp/include/mie/platform.hpp, the only C++ code that touches the OS</text>
+    <text class="mono" x="470" y="1020" text-anchor="middle">MappedFile | AtomicFile | list_directory | set_stdout_binary | paths_same_file</text>
+    <text x="470" y="1039" text-anchor="middle">map the input, atomic output, directory enumeration (--glob), binary stdout, path identity</text>
+  </g>
+
+  <!-- ===================================================================
+       Notes
+       =================================================================== -->
+  <text class="name" x="20" y="1100">Notes</text>
+
+  <!-- Note 1: sync -->
+  <g id="note-1">
+    <rect class="note" x="20" y="1115" width="500" height="210" rx="4"/>
+    <circle class="badge" cx="40" cy="1136" r="9"/>
+    <text class="badge-text" x="40" y="1140" text-anchor="middle">1</text>
+    <text class="name" x="56" y="1141">Four-phase sync (docs/ARCHITECTURE.md section 3)</text>
+    <text class="note-text" x="36" y="1166">
+      <tspan x="36" dy="0">1. find_first_record: scan for the first valid record, &lt;= 64 KB</tspan>
+      <tspan x="36" dy="16">2. validate_record: shape probe of the candidate</tspan>
+      <tspan x="36" dy="16">3. look-ahead: the next N-1 records must also validate</tspan>
+      <tspan x="36" dy="16">    (N = lookahead_records, default 2, L2-SYN-026)</tspan>
+      <tspan x="36" dy="16">4. recover_sync: after a mid-file failure, 2-byte steps, &lt;= 64 KB</tspan>
+      <tspan x="36" dy="24">Homogeneous payloads (all-zero, all-0xFFFF) that would</tspan>
+      <tspan x="36" dy="16">otherwise pass validation are rejected: HomogeneousPayload.</tspan>
+    </text>
+  </g>
+
+  <!-- Note 2: structural invariants -->
+  <g id="note-2">
+    <rect class="note" x="550" y="1115" width="500" height="210" rx="4"/>
+    <circle class="badge" cx="570" cy="1136" r="9"/>
+    <text class="badge-text" x="570" y="1140" text-anchor="middle">2</text>
+    <text class="name" x="586" y="1141">Structural invariants</text>
+    <text class="note-text" x="566" y="1166">
+      <tspan x="566" dy="0">L2-SYN-020..025 and L2-SYN-027 check each decoded record</tspan>
+      <tspan x="566" dy="16">against the MIL-STD-1553 transaction shape.</tspan>
+      <tspan x="566" dy="24">A violated rule: strict mode surfaces a record error</tspan>
+      <tspan x="566" dy="16">(PayloadError); lenient mode logs a WARN and skips the record.</tspan>
+      <tspan x="566" dy="16">InvariantSeverity::AnomalyWarn findings log a WARN and keep it.</tspan>
+      <tspan x="566" dy="24">Errored records skip these checks: their payload is</tspan>
+      <tspan x="566" dy="16">truncated by definition.</tspan>
+    </text>
+  </g>
+
+  <!-- Note 3: output safety -->
+  <g id="note-3">
+    <rect class="note" x="1080" y="1115" width="500" height="210" rx="4"/>
+    <circle class="badge" cx="1100" cy="1136" r="9"/>
+    <text class="badge-text" x="1100" y="1140" text-anchor="middle">3</text>
+    <text class="name" x="1116" y="1141">Output safety (L1-OUT-002)</text>
+    <text class="note-text" x="1096" y="1166">
+      <tspan x="1096" dy="0">1. Reject input == output (L2-WRT-014).</tspan>
+      <tspan x="1096" dy="16">2. --no-clobber: reported early, ENFORCED at commit by a</tspan>
+      <tspan x="1096" dy="16">    non-replacing move (L2-WRT-017, L2-WRT-023).</tspan>
+      <tspan x="1096" dy="16">3. Write &lt;dest&gt;.aero1553.tmp.&lt;pid&gt;.&lt;counter&gt;.&lt;nanos&gt; beside</tspan>
+      <tspan x="1096" dy="16">    the destination, exclusive create (L3-WRT-001).</tspan>
+      <tspan x="1096" dy="16">4. Clean exit: commit renames the temp file onto the destination.</tspan>
+      <tspan x="1096" dy="16">5. Error + --allow-partial: commit_partial -&gt; &lt;output&gt;.partial (L2-WRT-016).</tspan>
+      <tspan x="1096" dy="16">6. Error otherwise: the temp file is removed (L2-WRT-016).</tspan>
+      <tspan x="1096" dy="16">Main output commits before errors output on every path (L2-WRT-019).</tspan>
+    </text>
+  </g>
+
+  <!-- Note 4: merge -->
+  <g id="note-4">
+    <rect class="note" x="20" y="1345" width="500" height="230" rx="4"/>
+    <circle class="badge" cx="40" cy="1366" r="9"/>
+    <text class="badge-text" x="40" y="1370" text-anchor="middle">4</text>
+    <text class="name" x="56" y="1371">Multi-file merge (L1-MRG, L2-MRG)</text>
+    <text class="note-text" x="36" y="1396">
+      <tspan x="36" dy="0">Inputs: positionals / --manifest / --glob, at most 256 (L2-MRG-001).</tspan>
+      <tspan x="36" dy="16">Min-heap keyed (IRIG microseconds, input index, sequence); at most</tspan>
+      <tspan x="36" dy="16">one record per open input, so memory is O(files) (L2-MRG-002).</tspan>
+      <tspan x="36" dy="16">Every input must be calendar-locked IRIG: Standard, freerun-leading</tspan>
+      <tspan x="36" dy="16">or mixed sets are rejected before any output (exit 6, L2-MRG-003).</tspan>
+      <tspan x="36" dy="16">DELTA is per input file by default; --delta-scope global</tspan>
+      <tspan x="36" dy="16">recomputes it on the merged timeline (L2-MRG-005).</tspan>
+      <tspan x="36" dy="16">A backward step within one input: WARN, or NonMonotonicInput in</tspan>
+      <tspan x="36" dy="16">strict mode; never re-sorted (L2-MRG-006).</tspan>
+      <tspan x="36" dy="16">--collapse-duplicates drops cross-recorder duplicates (L2-MRG-007),</tspan>
+      <tspan x="36" dy="16">capped by max_collapse_survivors (L2-MRG-008).</tspan>
+    </text>
+  </g>
+
+  <!-- Note 5: canonical row order -->
+  <g id="note-5">
+    <rect class="note" x="550" y="1345" width="500" height="230" rx="4"/>
+    <circle class="badge" cx="570" cy="1366" r="9"/>
+    <text class="badge-text" x="570" y="1370" text-anchor="middle">5</text>
+    <text class="name" x="586" y="1371">Canonical row order (L1-OUT-003)</text>
+    <text class="note-text" x="566" y="1396">
+      <tspan x="566" dy="0">Buffers one run of CONSECUTIVE equal-TIME_STAMP records and</tspan>
+      <tspan x="566" dy="16">stable-sorts it by (RT, subaddress, direction), receive before</tspan>
+      <tspan x="566" dy="16">transmit (L2-WRT-021). Never reorders across a timestamp boundary.</tspan>
+      <tspan x="566" dy="16">Records with no Command Word (SPURIOUS_DATA) are pinned to the</tspan>
+      <tspan x="566" dy="16">record they followed, keeping a 0x2000 continuation adjacent.</tspan>
+      <tspan x="566" dy="16">Run length is capped by output.max_sort_group (default 4096); at</tspan>
+      <tspan x="566" dy="16">the cap the run is emitted in arrival order with one WARN</tspan>
+      <tspan x="566" dy="16">(L2-WRT-022). A cap of 1 disables reordering.</tspan>
+      <tspan x="566" dy="16">Last stage on BOTH the single-file and merge paths; not applied</tspan>
+      <tspan x="566" dy="16">to the dump subcommand.</tspan>
+    </text>
+  </g>
+
+  <!-- Note 6: configuration precedence -->
+  <g id="note-6">
+    <rect class="note" x="1080" y="1345" width="500" height="230" rx="4"/>
+    <circle class="badge" cx="1100" cy="1366" r="9"/>
+    <text class="badge-text" x="1100" y="1370" text-anchor="middle">6</text>
+    <text class="name" x="1116" y="1371">Configuration precedence (highest first)</text>
+    <text class="note-text" x="1096" y="1396">
+      <tspan x="1096" dy="0">1. CLI flags (--no-clobber, --allow-partial, --separate-errors,</tspan>
+      <tspan x="1096" dy="16">    --include-rts, ...)</tspan>
+      <tspan x="1096" dy="16">2. TOML config file (--config)</tspan>
+      <tspan x="1096" dy="16">3. Built-in defaults</tspan>
+      <tspan x="1096" dy="24">Applied as load_config() then with_overrides().</tspan>
+    </text>
+  </g>
+
+  <!-- Note 7: exit codes -->
+  <g id="note-7">
+    <rect class="note" x="20" y="1595" width="500" height="195" rx="4"/>
+    <circle class="badge" cx="40" cy="1616" r="9"/>
+    <text class="badge-text" x="40" y="1620" text-anchor="middle">7</text>
+    <text class="name" x="56" y="1621">Exit codes (L1-EXIT-001..010; docs/ERROR-CATALOG.md section 1)</text>
+    <text class="note-text" x="36" y="1646">
+      <tspan x="36" dy="0">0  complete, partial-recovered, --allow-partial, broken pipe,</tspan>
+      <tspan x="36" dy="16">    empty recording</tspan>
+      <tspan x="36" dy="16">1  runtime or decode error (record or file I/O)</tspan>
+      <tspan x="36" dy="16">2  no records: NoValidRecords, HomogeneousPayload,</tspan>
+      <tspan x="36" dy="16">    TimestampFormatMismatch (strict)</tspan>
+      <tspan x="36" dy="16">3  partial-unrecoverable (no --allow-partial)</tspan>
+      <tspan x="36" dy="16">4  usage error</tspan>
+      <tspan x="36" dy="16">5  configuration error</tspan>
+      <tspan x="36" dy="16">6  merge-incompatible inputs</tspan>
+    </text>
+  </g>
+</svg>

@@ -2,7 +2,7 @@
 //
 // Message filtering (L2-FLT-001).
 //
-// Mirrors `rust/src/filter.rs` and `python/src/mie_decoder/filters.py`.
+// Mirrors `rust/src/filter.rs` and `python/src/aero1553/filters.py`.
 //
 // THE ASYMMETRY IS THE SEMANTICS. Exclude and include are not opposites:
 //

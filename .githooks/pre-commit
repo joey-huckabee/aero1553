@@ -85,13 +85,6 @@ no_eol=()
 for file in "${STAGED[@]}"; do
     case "$file" in
         *.png|*.jpg|*.jpeg|*.gif|*.ico|*.pdf|*.bin|*.mie) continue ;;
-        # *.svg is generator output: PlantUML ends its SVG at `>` with no
-        # trailing newline, and that is not ours to change. Appending one by
-        # hand would be undone by the next `plantuml -tsvg` run and show up as
-        # a spurious diff on every render. Excluded here to match
-        # `scripts/repo-hygiene.sh`, which must agree with this hook — a hook
-        # stricter than its own backstop just blocks legitimate commits.
-        *.svg) continue ;;
     esac
     # Empty blobs are fine; only a non-empty file can lack a trailing byte.
     size=$(git cat-file -s ":$file" 2>/dev/null || echo 0)

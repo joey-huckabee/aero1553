@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#define MIE_LOG_MODULE "mie_decoder::filter"
+#define MIE_LOG_MODULE "aero1553::filter"
 
 #include "mie/filter.hpp"
 

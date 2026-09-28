@@ -214,7 +214,7 @@ jobs:
       # suite as one test and gives no way to pass Catch2 a tag filter, which is
       # the whole point of this step. Same filter the `check-fuzz` target uses.
       - name: Run the L1-ROB-001 fuzz harness (burn-in)
-        run: cpp\build-msvc\Release\mie_decoder_tests.exe --use-colour no "[fuzz]"
+        run: cpp\build-msvc\Release\aero1553_tests.exe --use-colour no "[fuzz]"
 
       - name: Show summary
         shell: bash

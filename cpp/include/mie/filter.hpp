@@ -2,7 +2,7 @@
 //
 // Message filter configuration.
 //
-// Mirrors `rust/src/filter.rs` and `python/src/mie_decoder/filters.py`.
+// Mirrors `rust/src/filter.rs` and `python/src/aero1553/filters.py`.
 //
 // EXCLUDE AND INCLUDE ARE NOT OPPOSITES, and the asymmetry is the whole of the
 // semantics. An empty include set means "no include constraint", never "include

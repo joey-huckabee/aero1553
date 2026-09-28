@@ -1,4 +1,4 @@
-"""Configuration loading and management for MIE-Decoder.
+"""Configuration loading and management for Aero1553.
 
 Loads configuration from TOML files and merges with CLI arguments.
 CLI arguments always take precedence over file-based configuration.
@@ -10,7 +10,7 @@ Configuration sources (in priority order, highest first):
 
 Usage::
 
-    from mie_decoder.config import DecoderConfig, load_config
+    from aero1553.config import DecoderConfig, load_config
 
     # Load from file
     config = load_config("my-config.toml")
@@ -29,13 +29,13 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from mie_decoder.decode import DEFAULT_DETECT_RECORDS
-from mie_decoder.merge import (
+from aero1553.decode import DEFAULT_DETECT_RECORDS
+from aero1553.merge import (
     DEFAULT_MAX_COLLAPSE_SURVIVORS,
     MAX_COLLAPSE_SURVIVORS_MAX,
     MAX_COLLAPSE_SURVIVORS_MIN,
 )
-from mie_decoder.models import (
+from aero1553.models import (
     YEAR_MAX,
     YEAR_MIN,
     Bus,
@@ -48,12 +48,12 @@ from mie_decoder.models import (
     parse_output_time_format,
     parse_timestamp_format,
 )
-from mie_decoder.order import (
+from aero1553.order import (
     DEFAULT_MAX_SORT_GROUP,
     MAX_SORT_GROUP_MAX,
     MAX_SORT_GROUP_MIN,
 )
-from mie_decoder.sync import DEFAULT_LOOKAHEAD_RECORDS
+from aero1553.sync import DEFAULT_LOOKAHEAD_RECORDS
 
 logger = logging.getLogger(__name__)
 

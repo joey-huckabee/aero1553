@@ -1,4 +1,4 @@
-//! CLI acceptance tests: spawn the actual built `mie-decoder` binary
+//! CLI acceptance tests: spawn the actual built `aero1553` binary
 //! as a subprocess and assert on exit code, stdout, stderr, and
 //! filesystem effects.
 //!
@@ -20,7 +20,7 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Output};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-const BIN: &str = env!("CARGO_BIN_EXE_mie-decoder");
+const BIN: &str = env!("CARGO_BIN_EXE_aero1553");
 
 // ── Fixtures ─────────────────────────────────────────────────────────
 
@@ -120,12 +120,12 @@ where
     let out = Command::new(BIN)
         .args(args)
         .output()
-        .expect("failed to spawn mie-decoder binary");
+        .expect("failed to spawn aero1553 binary");
     if !out.stderr.is_empty() {
         // Surface stderr in test output so a Windows CI failure can
         // be triaged from the runner logs without re-running locally.
         eprintln!(
-            "--- mie-decoder stderr ---\n{}\n--------------------------",
+            "--- aero1553 stderr ---\n{}\n--------------------------",
             String::from_utf8_lossy(&out.stderr)
         );
     }
@@ -534,7 +534,7 @@ fn merge_rejects_an_input_that_a_derived_output_path_would_overwrite() {
 ///
 /// Two-channel output contract:
 /// - stdout: ONLY the integer record count (machine-parseable for
-///   pipelines: `n=$(mie-decoder count rec.mie)`).
+///   pipelines: `n=$(aero1553 count rec.mie)`).
 /// - stderr: human-readable status line including the input path
 ///   so an interactive operator still sees context. Always emitted
 ///   (not gated by --log-level).

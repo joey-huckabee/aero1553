@@ -16,10 +16,10 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.models import Bus, Direction, MessageFormat, MieMessage, TimestampFormat
-from mie_decoder.order import order_rows
-from mie_decoder.reader import MieFileReader
-from mie_decoder.writer import CSV_HEADER, write_csv
+from aero1553.models import Bus, Direction, MessageFormat, MieMessage, TimestampFormat
+from aero1553.order import order_rows
+from aero1553.reader import MieFileReader
+from aero1553.writer import CSV_HEADER, write_csv
 from tests.fuzz_support import FUZZ_SEED, fuzz_logging
 from tests.fuzz_support import fill as fuzz_fill
 from tests.fuzz_support import iterations as fuzz_iterations
@@ -122,7 +122,7 @@ class TestMieFileReader:
     @pytest.mark.requirement("L2-RDR-005")
     def test_file_not_found(self) -> None:
         """Should raise MieFileNotFoundError for missing files."""
-        from mie_decoder.exceptions import MieFileNotFoundError
+        from aero1553.exceptions import MieFileNotFoundError
 
         with pytest.raises(MieFileNotFoundError):
             MieFileReader("/nonexistent/file.mie")
@@ -130,7 +130,7 @@ class TestMieFileReader:
     @pytest.mark.requirement("L2-RDR-006")
     def test_empty_file(self, tmp_path: Path) -> None:
         """Should raise MieFileEmptyError for empty files."""
-        from mie_decoder.exceptions import MieFileEmptyError
+        from aero1553.exceptions import MieFileEmptyError
 
         fpath = tmp_path / "empty.mie"
         fpath.write_bytes(b"")
@@ -150,7 +150,7 @@ class TestMieFileReader:
     @pytest.mark.requirement("L2-RDR-003")
     def test_truncated_record_strict(self, tmp_path: Path) -> None:
         """Strict mode should raise MieRecordTruncatedError on truncation."""
-        from mie_decoder.exceptions import MieRecordTruncatedError
+        from aero1553.exceptions import MieRecordTruncatedError
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "truncated_strict.mie"
@@ -161,13 +161,13 @@ class TestMieFileReader:
     @pytest.mark.requirement("L2-SYN-016")
     def test_invalid_record_strict(self, tmp_path: Path) -> None:
         """Strict mode should raise on invalid record after good data."""
-        from mie_decoder.exceptions import MieDecoderError
+        from aero1553.exceptions import Aero1553Error
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         bad_record = b"\x03\x00" + b"\x00" * 18  # type 0x03, wc=0
         fpath = tmp_path / "bad_record.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV * 2 + bad_record)
-        with pytest.raises(MieDecoderError):
+        with pytest.raises(Aero1553Error):
             list(MieFileReader(fpath, strict=True, input_time_format=TimestampFormat.IRIG))
 
     @pytest.mark.requirement("L2-DEC-009")
@@ -180,7 +180,7 @@ class TestMieFileReader:
         cannot overrun its successor. Mirrors the Rust
         payload_extraction_does_not_overrun_into_next_record test.
         """
-        from mie_decoder.exceptions import MiePayloadError
+        from aero1553.exceptions import MiePayloadError
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         # R1: Type Word word_count=10 (20 bytes) but Command Word 0x797E
@@ -231,7 +231,7 @@ class TestMieFileReader:
         ``test_payload_extraction_does_not_overrun_into_next_record`` (the Cmd1
         path the capacity invariant catches pre-extract).
         """
-        from mie_decoder.exceptions import MiePayloadError
+        from aero1553.exceptions import MiePayloadError
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         # R1: Type Word word_count=10 (20 bytes), type 0x08 (RT-to-RT). Cmd1
@@ -271,7 +271,7 @@ class TestMieFileReader:
         the over-claim/bounds path. Mirrors the Rust
         ``rt_to_rt_cmd_word_count_mismatch_rejected``.
         """
-        from mie_decoder.exceptions import MiePayloadError
+        from aero1553.exceptions import MiePayloadError
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         # R1: word_count=13 (26 bytes), type 0x08 (RT-to-RT). Cmd1 0x7963
@@ -321,7 +321,7 @@ class TestMieFileReader:
 
         fpath = tmp_path / "irig_day.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV * 3)  # 3 non-freerun IRIG records
-        with caplog.at_level(logging.INFO, logger="mie_decoder.reader"):
+        with caplog.at_level(logging.INFO, logger="aero1553.reader"):
             messages = list(MieFileReader(fpath, input_time_format=TimestampFormat.IRIG))
         assert len(messages) == 3
         advisories = [r for r in caplog.records if "day-of-year" in r.getMessage()]
@@ -345,7 +345,7 @@ class TestMieFileReader:
 
         fpath = tmp_path / "irig_day.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV)
-        with caplog.at_level(logging.WARNING, logger="mie_decoder.reader"):
+        with caplog.at_level(logging.WARNING, logger="aero1553.reader"):
             assert len(list(MieFileReader(fpath, input_time_format=TimestampFormat.IRIG))) == 1
         assert not [r for r in caplog.records if "day-of-year" in r.getMessage()]
 
@@ -358,14 +358,14 @@ class TestMieFileReader:
         vendor CSV and wants a verbose run without the known-noise line."""
         import logging
 
-        from mie_decoder.logger import set_irig_day_advisory
+        from aero1553.logger import set_irig_day_advisory
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "irig_day.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV)
         set_irig_day_advisory(False)
         try:
-            with caplog.at_level(logging.INFO, logger="mie_decoder.reader"):
+            with caplog.at_level(logging.INFO, logger="aero1553.reader"):
                 assert len(list(MieFileReader(fpath, input_time_format=TimestampFormat.IRIG))) == 1
         finally:
             # Module-level state: restore it or every later test in the process
@@ -387,7 +387,7 @@ class TestMieFileReader:
         whose declared extent runs past EOF SHALL surface a distinct
         error class in strict mode (MieFirstRecordTruncatedError, NOT
         the generic MieRecordTruncatedError)."""
-        from mie_decoder.exceptions import (
+        from aero1553.exceptions import (
             MieFirstRecordTruncatedError,
             MieRecordTruncatedError,
         )
@@ -409,7 +409,7 @@ class TestMieFileReader:
         """L2-DEC-013: forcing the wrong timestamp format on a recording
         the probe is decisive about SHALL raise in strict mode rather than
         silently emit garbage timestamps."""
-        from mie_decoder.exceptions import MieTimestampFormatMismatchError
+        from aero1553.exceptions import MieTimestampFormatMismatchError
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         # Two valid IRIG records → the probe is decisive for IRIG.
@@ -477,7 +477,7 @@ class TestCsvWriter:
         Mirrors ``vendor_block_precedes_decoder_added_columns`` in
         ``rust/src/writer.rs``.
         """
-        from mie_decoder.writer import VENDOR_COLUMN_COUNT
+        from aero1553.writer import VENDOR_COLUMN_COUNT
 
         assert len(CSV_HEADER) == 46, "46 columns total"
         assert len(CSV_HEADER) - VENDOR_COLUMN_COUNT == 2, "two decoder additions"
@@ -583,7 +583,7 @@ class TestAtomicWriteSafety:
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_paths_refer_to_same_file_existing(self, tmp_path: Path) -> None:
-        from mie_decoder.writer import paths_refer_to_same_file
+        from aero1553.writer import paths_refer_to_same_file
 
         p = tmp_path / "x.dat"
         p.write_bytes(b"x")
@@ -591,7 +591,7 @@ class TestAtomicWriteSafety:
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_paths_refer_to_same_file_distinct(self, tmp_path: Path) -> None:
-        from mie_decoder.writer import paths_refer_to_same_file
+        from aero1553.writer import paths_refer_to_same_file
 
         a = tmp_path / "a.dat"
         a.write_bytes(b"a")
@@ -601,8 +601,8 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L2-WRT-014")
     def test_write_csv_rejects_input_output_collision(self, tmp_mie_file: Path) -> None:
         """L2-WRT-014: refuse to write CSV over the input file."""
-        from mie_decoder.exceptions import MieInputOutputCollisionError
-        from mie_decoder.writer import WriteOptions
+        from aero1553.exceptions import MieInputOutputCollisionError
+        from aero1553.writer import WriteOptions
 
         opts = WriteOptions(input_path=tmp_mie_file, no_clobber=False)
         original_bytes = tmp_mie_file.read_bytes()
@@ -618,8 +618,8 @@ class TestAtomicWriteSafety:
         self, tmp_mie_file: Path, tmp_path: Path
     ) -> None:
         """L2-WRT-017: refuse to overwrite an existing destination."""
-        from mie_decoder.exceptions import MieClobberRefusedError
-        from mie_decoder.writer import WriteOptions
+        from aero1553.exceptions import MieClobberRefusedError
+        from aero1553.writer import WriteOptions
 
         out = tmp_path / "out.csv"
         out.write_text("EXISTING\n", encoding="utf-8")
@@ -645,14 +645,14 @@ class TestAtomicWriteSafety:
         """L3-WRT-001: after a successful write, no temp file should remain."""
         out = tmp_path / "out.csv"
         write_csv(MieFileReader(tmp_mie_file), output=out)
-        # Temp pattern: <output>.mie-decoder.tmp.<pid>
-        leftovers = [p for p in tmp_path.iterdir() if p.name.startswith("out.csv.mie-decoder.tmp.")]
+        # Temp pattern: <output>.aero1553.tmp.<pid>
+        leftovers = [p for p in tmp_path.iterdir() if p.name.startswith("out.csv.aero1553.tmp.")]
         assert leftovers == [], f"unexpected temp file(s): {leftovers}"
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_write_csv_split_rejects_input_output_collision(self, tmp_mie_file: Path) -> None:
-        from mie_decoder.exceptions import MieInputOutputCollisionError
-        from mie_decoder.writer import WriteOptions, write_csv_split
+        from aero1553.exceptions import MieInputOutputCollisionError
+        from aero1553.writer import WriteOptions, write_csv_split
 
         opts = WriteOptions(input_path=tmp_mie_file, no_clobber=False)
         reader = MieFileReader(tmp_mie_file)
@@ -678,8 +678,8 @@ class TestAtomicWriteSafety:
         targets matches this input, so only the target under test can make it
         pass.
         """
-        from mie_decoder.exceptions import MieInputOutputCollisionError
-        from mie_decoder.writer import (
+        from aero1553.exceptions import MieInputOutputCollisionError
+        from aero1553.writer import (
             WriteOptions,
             commit_targets,
             error_path_for,
@@ -719,7 +719,7 @@ class TestAtomicWriteSafety:
         The errors file's own ``.partial`` is the one an audit forgets, and
         split mode commits it.
         """
-        from mie_decoder.writer import commit_targets
+        from aero1553.writer import commit_targets
 
         out = Path("dir") / "capture.csv"
         names = lambda *a: [p.name for p in commit_targets(out, *a)]  # noqa: E731
@@ -748,8 +748,8 @@ class TestAtomicWriteSafety:
         ``capture_errors.mie``, a plausible recording name. Before this, the
         errors file committed straight over that input and the run exited 0.
         """
-        from mie_decoder.exceptions import MieInputOutputCollisionError
-        from mie_decoder.writer import WriteOptions, error_path_for, write_csv_split
+        from aero1553.exceptions import MieInputOutputCollisionError
+        from aero1553.writer import WriteOptions, error_path_for, write_csv_split
 
         dest = tmp_path / "capture.mie"
         victim = error_path_for(dest)
@@ -775,8 +775,8 @@ class TestAtomicWriteSafety:
         is still safe, and by then nobody knows whether the decode will lose
         sync.
         """
-        from mie_decoder.exceptions import MieInputOutputCollisionError
-        from mie_decoder.writer import WriteOptions, partial_path_for
+        from aero1553.exceptions import MieInputOutputCollisionError
+        from aero1553.writer import WriteOptions, partial_path_for
 
         dest = tmp_path / "out.csv"
         victim = partial_path_for(dest)
@@ -801,7 +801,7 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L1-EXIT-002")
     def test_no_valid_records_raises(self, tmp_path: Path) -> None:
         """L1-EXIT-002: input with no decodable records raises MieNoValidRecordsError."""
-        from mie_decoder.exceptions import MieNoValidRecordsError
+        from aero1553.exceptions import MieNoValidRecordsError
 
         bad = tmp_path / "garbage.bin"
         bad.write_bytes(b"\xff" * 1024)  # 1 KB of 0xFF — no valid Type Word
@@ -828,7 +828,7 @@ class TestAtomicWriteSafety:
     def test_wrong_file_is_not_an_empty_recording(self, tmp_path: Path) -> None:
         """L1-EXIT-010: a wrong-file (no terminator, no valid record) still
         raises NoValidRecords and is not mistaken for an empty recording."""
-        from mie_decoder.exceptions import MieNoValidRecordsError
+        from aero1553.exceptions import MieNoValidRecordsError
 
         f = tmp_path / "junk.mie"
         f.write_bytes(b"\xff" * 256)
@@ -866,7 +866,7 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L1-EXIT-004")
     def test_lenient_unrecoverable_sync_loss_raises(self, tmp_path: Path) -> None:
         """L1-EXIT-004: lenient-mode mid-file sync loss (not truncation) raises."""
-        from mie_decoder.exceptions import MieUnrecoverableSyncLossError
+        from aero1553.exceptions import MieUnrecoverableSyncLossError
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         # Two valid records + 70 KB of 0xFF — the second record's
@@ -885,7 +885,7 @@ class TestAtomicWriteSafety:
     def test_write_csv_with_allow_partial_commits_dot_partial(self, tmp_path: Path) -> None:
         """allow_partial converts UnrecoverableSyncLoss to a .partial file
         and a non-None WriteOutcome.partial."""
-        from mie_decoder.writer import WriteOptions
+        from aero1553.writer import WriteOptions
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "corruption.mie"
@@ -912,7 +912,7 @@ class TestAtomicWriteSafety:
     ) -> None:
         """--detect-records N accepts a value in [1, 32] and decodes
         normally on a valid fixture."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "out.csv"
         rc = main(
@@ -935,7 +935,7 @@ class TestAtomicWriteSafety:
         """--detect-records above the max (32) is rejected at parse
         time with a non-zero exit and the offending value in
         stderr."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "out.csv"
         rc = main(
@@ -962,7 +962,7 @@ class TestAtomicWriteSafety:
     ) -> None:
         """--standard-tick-rate-hz <= 0 is a CLI usage error: exit 4
         (L2-CLI-011/L2-CLI-012) with the offending flag in stderr."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "out.csv"
         rc = main(
@@ -994,7 +994,7 @@ class TestAtomicWriteSafety:
         """
         import csv as _csv
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         fixture = (
             Path(__file__).resolve().parents[2]
@@ -1051,7 +1051,7 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L1-EXIT-002")
     def test_cli_no_valid_records_returns_exit_2(self, tmp_path: Path) -> None:
         """CLI maps MieNoValidRecordsError to exit code 2 (L1-EXIT-002)."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         bad = tmp_path / "garbage.bin"
         bad.write_bytes(b"\xff" * 1024)
@@ -1066,7 +1066,7 @@ class TestAtomicWriteSafety:
         """L1-EXIT-010: decoding an empty recording (record stream is just the
         0x0000 terminator) exits 0 and writes a header-only CSV — not the
         exit-2 wrong-file rejection."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         f = tmp_path / "empty.mie"
         f.write_bytes(b"\x00\x00")
@@ -1084,7 +1084,7 @@ class TestAtomicWriteSafety:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """L1-EXIT-010: count of an empty recording prints 0 and exits 0."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         f = tmp_path / "empty.mie"
         f.write_bytes(b"\x00\x00")
@@ -1097,7 +1097,7 @@ class TestAtomicWriteSafety:
     def test_cli_count_no_valid_records_returns_exit_2(self, tmp_path: Path) -> None:
         """L2-CLI-011: count on a wrong-file input exits 2, matching decode.
         Regression: count previously flattened NoValidRecords to exit 1."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         bad = tmp_path / "junk.mie"
         bad.write_bytes(b"\xff" * 256)
@@ -1107,7 +1107,7 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L1-EXIT-004")
     def test_cli_unrecoverable_default_returns_exit_3(self, tmp_path: Path) -> None:
         """CLI maps MieUnrecoverableSyncLossError to exit code 3 (L1-EXIT-004)."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "corruption.mie"
@@ -1123,7 +1123,7 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L1-EXIT-004")
     def test_cli_unrecoverable_allow_partial_returns_exit_0(self, tmp_path: Path) -> None:
         """--allow-partial converts exit 3 into exit 0 + .partial file."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "corruption.mie"
@@ -1139,7 +1139,7 @@ class TestAtomicWriteSafety:
         """The `--format` flag matches the Rust CLI: `csv` is accepted, any
         other value is a runtime error (exit 1) — not a parse error — applied
         after config load like the Rust override path."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "rec.mie"
@@ -1161,8 +1161,8 @@ class TestAtomicWriteSafety:
         self, tmp_mie_file: Path, tmp_path: Path
     ) -> None:
         """no_clobber must also refuse if the errors-file destination exists."""
-        from mie_decoder.exceptions import MieClobberRefusedError
-        from mie_decoder.writer import WriteOptions, write_csv_split
+        from aero1553.exceptions import MieClobberRefusedError
+        from aero1553.writer import WriteOptions, write_csv_split
 
         out = tmp_path / "out.csv"
         err = tmp_path / "out_errors.csv"
@@ -1193,10 +1193,10 @@ class TestCliEndToEnd:
         no-records}. This case exercises the `complete` branch."""
         import logging
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "summary.csv"
-        with caplog.at_level(logging.INFO, logger="mie_decoder.cli"):
+        with caplog.at_level(logging.INFO, logger="aero1553.cli"):
             rc = main(["--log-level", "INFO", "decode", str(tmp_mie_file), "-o", str(out)])
         assert rc == 0
         summary_lines = [
@@ -1219,12 +1219,12 @@ class TestCliEndToEnd:
         """L1-EXIT-005: the `no-records` exit-class summary branch."""
         import logging
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         bad = tmp_path / "garbage.bin"
         bad.write_bytes(b"\xff" * 1024)
         out = tmp_path / "summary.csv"
-        with caplog.at_level(logging.INFO, logger="mie_decoder.cli"):
+        with caplog.at_level(logging.INFO, logger="aero1553.cli"):
             rc = main(["--log-level", "INFO", "decode", str(bad), "-o", str(out)])
         assert rc == 2
         summary_lines = [
@@ -1239,7 +1239,7 @@ class TestCliEndToEnd:
         """CLI decode should produce CSV on stdout."""
         import sys
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         buf = io.StringIO()
         old_stdout = sys.stdout
@@ -1255,7 +1255,7 @@ class TestCliEndToEnd:
     @pytest.mark.requirement("L2-CLI-002")
     def test_cli_decode_output_file(self, tmp_mie_file: Path, tmp_path: Path) -> None:
         """CLI decode with -o should write to the specified file."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "cli_out.csv"
         rc = main(["decode", str(tmp_mie_file), "-o", str(out)])
@@ -1274,7 +1274,7 @@ class TestCliEndToEnd:
         CLI-surface-parity gate could not see it — that gate compares flag
         *names*, not what their values mean.
         """
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         dash = tmp_path / "-"
         rc = main(["decode", str(tmp_mie_file), "-o", str(dash)])
@@ -1289,7 +1289,7 @@ class TestCliEndToEnd:
     ) -> None:
         """The `count` subcommand prints the integer count to stdout and a
         human-readable status line to stderr."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         rc = main(["count", str(tmp_mie_file)])
         assert rc == 0
@@ -1303,7 +1303,7 @@ class TestCliEndToEnd:
     @pytest.mark.requirement("L2-CLI-005")
     def test_cli_decode_missing_file(self, capsys: pytest.CaptureFixture[str]) -> None:
         """CLI decode with nonexistent file should return exit code 1."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         rc = main(["decode", "/nonexistent/file.mie"])
         assert rc == 1
@@ -1311,7 +1311,7 @@ class TestCliEndToEnd:
     @pytest.mark.requirement("L2-CLI-004")
     def test_cli_log_level_info(self, tmp_mie_file: Path, tmp_path: Path) -> None:
         """CLI --log-level INFO should emit log messages to stderr."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "log_test.csv"
         rc = main(["--log-level", "INFO", "decode", str(tmp_mie_file), "-o", str(out)])
@@ -1321,7 +1321,7 @@ class TestCliEndToEnd:
     @pytest.mark.requirement("L2-CLI-004")
     def test_cli_log_level_debug(self, tmp_mie_file: Path, tmp_path: Path) -> None:
         """CLI --log-level DEBUG should succeed without error."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         out = tmp_path / "debug_test.csv"
         rc = main(["--log-level", "DEBUG", "decode", str(tmp_mie_file), "-o", str(out)])
@@ -1340,13 +1340,13 @@ class TestCliEndToEnd:
         the CLI never re-configured the logger after loading."""
         import logging
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         config_path = tmp_path / "config.toml"
         config_path.write_text('[logging]\nlevel = "INFO"\n', encoding="utf-8")
         out = tmp_path / "decoded.csv"
 
-        with caplog.at_level(logging.INFO, logger="mie_decoder"):
+        with caplog.at_level(logging.INFO, logger="aero1553"):
             rc = main(
                 [
                     "--config",
@@ -1360,7 +1360,7 @@ class TestCliEndToEnd:
 
         assert rc == 0
         # `decode exit class:` is INFO-level; it appears only if the
-        # mie_decoder logger is effectively at INFO or finer.
+        # aero1553 logger is effectively at INFO or finer.
         summary_lines = [
             r.getMessage() for r in caplog.records if "decode exit class:" in r.getMessage()
         ]
@@ -1381,7 +1381,7 @@ class TestCliEndToEnd:
         TOML [logging] level (CLI > TOML > default)."""
         import logging
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         # TOML asks for DEBUG (most verbose); CLI asks for ERROR
         # (suppresses INFO). CLI must win — no `decode exit class:`
@@ -1390,7 +1390,7 @@ class TestCliEndToEnd:
         config_path.write_text('[logging]\nlevel = "DEBUG"\n', encoding="utf-8")
         out = tmp_path / "decoded.csv"
 
-        with caplog.at_level(logging.DEBUG, logger="mie_decoder"):
+        with caplog.at_level(logging.DEBUG, logger="aero1553"):
             rc = main(
                 [
                     "--log-level",
@@ -1426,7 +1426,7 @@ class TestCliEndToEnd:
         import logging
         import sys
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         config_path = tmp_path / "config.toml"
         config_path.write_text('[logging]\nlevel = "DEBUG"\n', encoding="utf-8")
@@ -1449,7 +1449,7 @@ class TestCliEndToEnd:
             sys.stdout = old_stdout
 
         assert rc == 0
-        assert logging.getLogger("mie_decoder").getEffectiveLevel() == logging.DEBUG
+        assert logging.getLogger("aero1553").getEffectiveLevel() == logging.DEBUG
 
     @pytest.mark.requirement("L2-CFG-001")
     @pytest.mark.requirement("L2-CLI-004")
@@ -1464,7 +1464,7 @@ class TestCliEndToEnd:
         """
         import logging
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         config_path = tmp_path / "off.toml"
         config_path.write_text('[logging]\nlevel = "OFF"\n', encoding="utf-8")
@@ -1472,15 +1472,15 @@ class TestCliEndToEnd:
         rc = main(["--config", str(config_path), "decode", str(tmp_mie_file), "-o", str(out)])
         assert rc == 0  # not a crash, not exit 5
         assert out.exists()
-        # OFF silences logging — no records on the mie_decoder logger stream.
-        assert logging.getLogger("mie_decoder").getEffectiveLevel() > logging.CRITICAL
+        # OFF silences logging — no records on the aero1553 logger stream.
+        assert logging.getLogger("aero1553").getEffectiveLevel() > logging.CRITICAL
 
     @pytest.mark.requirement("L2-CLI-004")
     def test_cli_log_level_accepts_full_set_case_insensitively(self, tmp_mie_file: Path) -> None:
         """--log-level accepts the same 7 levels as the config file, in any
         case (parity with the Rust CLI) — WARN, OFF, and lowercase spellings
         included. A bogus level is a usage error (exit 4)."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         for lvl in ["OFF", "WARN", "off", "warn", "Critical", "DEBUG"]:
             rc = main(["--log-level", lvl, "count", str(tmp_mie_file)])
@@ -1498,7 +1498,7 @@ class TestCliEndToEnd:
         --log-level, matching the Rust CLI (which pulls those flags before
         validating the level). Regression for the prior order-dependent
         behavior where a bad --log-level before --version exited 4."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         for tail in (["--version"], ["--help"]):
             # argparse's version/help actions exit 0 via SystemExit.
@@ -1511,20 +1511,20 @@ class TestCliEndToEnd:
         """Every accepted spelling of the version flag — both short forms
         (``-V``/``-v``) and the long form in any letter case — prints the version
         and exits 0, matching the Rust CLI."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         for flag in ("-V", "-v", "--version", "--VERSION", "--Version", "--vErSiOn"):
             with pytest.raises(SystemExit) as exc_info:
                 main([flag])
             assert exc_info.value.code in (0, None), f"{flag} should exit 0"
-            assert "mie-decoder" in capsys.readouterr().out, f"{flag} should print the version"
+            assert "aero1553" in capsys.readouterr().out, f"{flag} should print the version"
 
     @pytest.mark.requirement("L2-CLI-009")
     def test_cli_dump_records(self, tmp_mie_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """CLI dump should print record-aware hex dump to stdout."""
         import sys
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         buf = io.StringIO()
         old_stdout = sys.stdout
@@ -1543,7 +1543,7 @@ class TestCliEndToEnd:
         """CLI dump --raw should print raw hex to stdout."""
         import sys
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         buf = io.StringIO()
         old_stdout = sys.stdout
@@ -1559,7 +1559,7 @@ class TestCliEndToEnd:
     @pytest.mark.requirement("L2-CLI-009")
     def test_cli_dump_missing_file(self) -> None:
         """CLI dump with nonexistent file should return exit code 1."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         rc = main(["dump", "/nonexistent/file.mie"])
         assert rc == 1
@@ -1569,7 +1569,7 @@ class TestCliEndToEnd:
     @pytest.mark.requirement("L1-EXIT-007")
     def test_cli_no_subcommand(self) -> None:
         """CLI with no subcommand is a usage error: exit 4 (L2-CLI-011)."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         rc = main([])
         assert rc == 4
@@ -1579,7 +1579,7 @@ class TestCliEndToEnd:
     def test_cli_unknown_flag_is_usage_error(self) -> None:
         """An unknown flag is a usage error: exit 4. argparse defaults to 2,
         which would collide with no-records; the parser remaps it to 4."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         # argparse usage errors raise SystemExit rather than returning.
         with pytest.raises(SystemExit) as exc_info:
@@ -1591,7 +1591,7 @@ class TestCliEndToEnd:
     def test_cli_malformed_config_is_config_error(self, tmp_path: Path) -> None:
         """A malformed/invalid config is a configuration error: exit 5
         (distinct from a usage error and from a runtime error)."""
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         bad = tmp_path / "bad.toml"
         bad.write_text('[decode]\ninput_time_format = "potato"\n')
@@ -1649,7 +1649,7 @@ class TestDeltaAndErrorRecords:
         earlier = normal_record_rt15_sa11_us(350_000)
         fpath = tmp_path / "out_of_order.mie"
         fpath.write_bytes(late + early + earlier)
-        with caplog.at_level(logging.WARNING, logger="mie_decoder.reader"):
+        with caplog.at_level(logging.WARNING, logger="aero1553.reader"):
             messages = list(MieFileReader(fpath))
         assert len(messages) == 3
         assert messages[0].delta == 0.0
@@ -1740,7 +1740,7 @@ class TestFuzzHarness:
     ``MIE_FUZZ_ITERATIONS``
         Inputs to generate (default 256).
     ``MIE_FUZZ_STREAM_LOGS``
-        ``1`` / ``true`` leaves the ``mie_decoder`` logger at WARNING so its
+        ``1`` / ``true`` leaves the ``aero1553`` logger at WARNING so its
         diagnostics stream under ``pytest -s``; anything else silences it.
         Previously the handler was installed unconditionally, so every burn-in
         paid the cost of formatting a quarter of a million WARN records that
@@ -1760,8 +1760,8 @@ class TestFuzzHarness:
         self,
         tmp_path,
     ) -> None:
-        from mie_decoder.exceptions import MieDecoderError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import Aero1553Error
+        from aero1553.reader import MieFileReader
 
         state = FUZZ_SEED
         iterations = fuzz_iterations()
@@ -1785,7 +1785,7 @@ class TestFuzzHarness:
 
                 try:
                     reader = MieFileReader(fpath)
-                except MieDecoderError:
+                except Aero1553Error:
                     # Constructor errors (e.g., MieFileEmptyError) are
                     # documented and acceptable.
                     continue
@@ -1798,7 +1798,7 @@ class TestFuzzHarness:
                         f"iter_errors={iter_errors} outcome=error",
                     )
                     raise AssertionError(
-                        f"Unexpected non-MieDecoderError on construction "
+                        f"Unexpected non-Aero1553Error on construction "
                         f"(seed=0x{FUZZ_SEED:X}, iter={i}, size={size}): "
                         f"{type(exc).__name__}: {exc}"
                     ) from exc
@@ -1820,7 +1820,7 @@ class TestFuzzHarness:
                                 f"(seed=0x{FUZZ_SEED:X}, iter={i}, size={size}) "
                                 f"— possible unbounded loop"
                             )
-                except MieDecoderError:
+                except Aero1553Error:
                     # Decode-time errors are documented and acceptable —
                     # the fuzz harness exists to catch IndexError,
                     # struct.error, RecursionError, etc.
@@ -1836,7 +1836,7 @@ class TestFuzzHarness:
                         f"iter_errors={iter_errors} outcome=error",
                     )
                     raise AssertionError(
-                        f"Unexpected non-MieDecoderError during iteration "
+                        f"Unexpected non-Aero1553Error during iteration "
                         f"(seed=0x{FUZZ_SEED:X}, iter={i}, size={size}): "
                         f"{type(exc).__name__}: {exc}\n"
                         f"First 32 bytes: {payload[:32].hex()}"
@@ -1858,7 +1858,7 @@ class TestFuzzHarness:
     ) -> None:
         """L1-ROB-001 for the ``dump`` subcommand: the record-aware and raw
         hex dumps must tolerate arbitrary bytes — only a documented
-        MieDecoderError (e.g. MieFileEmptyError) may escape.
+        Aero1553Error (e.g. MieFileEmptyError) may escape.
 
         The record dump's header reads are bounded by its
         ``offset + MIN_RECORD_BYTES <= file_len`` loop guard (the deepest
@@ -1880,8 +1880,8 @@ class TestFuzzHarness:
         path, not of the decoder, and the two could never agree. Lines are
         path-independent.
         """
-        from mie_decoder.dump import hex_dump_raw, hex_dump_records
-        from mie_decoder.exceptions import MieDecoderError
+        from aero1553.dump import hex_dump_raw, hex_dump_records
+        from aero1553.exceptions import Aero1553Error
 
         state = FUZZ_SEED  # same seed family as the reader harness
         iterations = fuzz_iterations()
@@ -1904,12 +1904,12 @@ class TestFuzzHarness:
                 buf = io.StringIO()
                 try:
                     hex_dump_records(fpath, max_records=64, stream=buf)
-                except MieDecoderError:
+                except Aero1553Error:
                     # Empty-file / not-found are documented and acceptable.
                     records_errors += 1
                 except Exception as exc:
                     raise AssertionError(
-                        f"Unexpected non-MieDecoderError from hex_dump_records "
+                        f"Unexpected non-Aero1553Error from hex_dump_records "
                         f"(iter={i}, size={size}): {type(exc).__name__}: {exc}\n"
                         f"First 32 bytes: {payload[:32].hex()}"
                     ) from exc
@@ -1918,11 +1918,11 @@ class TestFuzzHarness:
                 buf = io.StringIO()
                 try:
                     hex_dump_raw(fpath, start_offset=0, length=None, stream=buf)
-                except MieDecoderError:
+                except Aero1553Error:
                     raw_errors += 1
                 except Exception as exc:
                     raise AssertionError(
-                        f"Unexpected non-MieDecoderError from hex_dump_raw "
+                        f"Unexpected non-Aero1553Error from hex_dump_raw "
                         f"(iter={i}, size={size}): {type(exc).__name__}: {exc}\n"
                         f"First 32 bytes: {payload[:32].hex()}"
                     ) from exc
@@ -1951,7 +1951,7 @@ class TestDumpDiagnostics:
         """
         import logging
 
-        from mie_decoder.dump import hex_dump_records
+        from aero1553.dump import hex_dump_records
 
         # Type 0x2402 declares word_count=36 (72 bytes) but only 20 bytes
         # exist → the record-aware scan hits the truncated-record branch.
@@ -1959,7 +1959,7 @@ class TestDumpDiagnostics:
         fpath.write_bytes(b"\x02\x24" + bytes(18))
 
         out = io.StringIO()
-        with caplog.at_level(logging.WARNING, logger="mie_decoder.dump"):
+        with caplog.at_level(logging.WARNING, logger="aero1553.dump"):
             hex_dump_records(fpath, max_records=1, stream=out)
 
         # Inline report note still present (unchanged report format)...
@@ -1991,7 +1991,7 @@ class TestDumpDiagnostics:
         """
         import sys
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "in.mie"
@@ -2031,7 +2031,7 @@ class TestDumpDiagnostics:
         """
         import sys
 
-        from mie_decoder.cli import main
+        from aero1553.cli import main
 
         raw = io.BytesIO()
         monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252", newline=""))
@@ -2058,8 +2058,8 @@ class TestDumpDiagnostics:
         """
         import logging
 
-        from mie_decoder.exceptions import MieRecordError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MieRecordError
+        from aero1553.reader import MieFileReader
 
         messages = [
             str(MieRecordError(0x40, "First record after header detection is truncated")),
@@ -2068,7 +2068,7 @@ class TestDumpDiagnostics:
         # And the live log path, which is where the advisory actually surfaced.
         fpath = tmp_path / "irig.mie"
         fpath.write_bytes(multi_record_data)
-        records = logging.getLogger("mie_decoder")
+        records = logging.getLogger("aero1553")
         captured: list[str] = []
 
         class _Capture(logging.Handler):
@@ -2101,7 +2101,7 @@ class TestDumpDiagnostics:
         """The record-aware dump surfaces the bit-14 error flag, the classified
         message format, and the DDC Error Word + its description for an errored
         record. Mirrors the Rust ``record_dump_annotates_errored_record``."""
-        from mie_decoder.dump import hex_dump_records
+        from aero1553.dump import hex_dump_records
 
         # Errored RT->BC (Transmit): Type 0x4604 (bit 14 set), 6 words / 12
         # bytes, Error Word 0x0120 (No Status Response or Too Few Data Words).
@@ -2132,8 +2132,8 @@ class TestSeparateModeCommitOrder:
         remains and no orphan errors file (or temp) is left behind."""
         import dataclasses
 
-        from mie_decoder.exceptions import MieWriterError
-        from mie_decoder.writer import write_csv_split
+        from aero1553.exceptions import MieWriterError
+        from aero1553.writer import write_csv_split
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "in.mie"
@@ -2158,7 +2158,7 @@ class TestSeparateModeCommitOrder:
         # No orphan errors *file*: the destination is still the directory.
         assert err_dest.is_dir()
         # No leftover temp files anywhere in the directory.
-        leftover = list(tmp_path.glob("*.mie-decoder.tmp.*"))
+        leftover = list(tmp_path.glob("*.aero1553.tmp.*"))
         assert leftover == [], f"temp file leaked after failed commit: {leftover}"
 
 
@@ -2201,7 +2201,7 @@ class TestBrokenPipeSubprocess:
     def _run_and_close_pipe(argv: list[str]) -> tuple[int, str]:
         """Run the CLI, read a little stdout, close the pipe, return (rc, stderr)."""
         proc = subprocess.Popen(
-            [sys.executable, "-m", "mie_decoder", *argv],
+            [sys.executable, "-m", "aero1553", *argv],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,

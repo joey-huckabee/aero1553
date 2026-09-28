@@ -28,7 +28,7 @@
 // The "have I already mentioned this key" bookkeeping IS kept here, so the
 // once-per-key promise has one owner rather than a set in each caller.
 //
-// Mirrors `rust/src/delta.rs` and `python/src/mie_decoder/delta.py`.
+// Mirrors `rust/src/delta.rs` and `python/src/aero1553/delta.py`.
 
 #ifndef MIE_DELTA_HPP
 #define MIE_DELTA_HPP

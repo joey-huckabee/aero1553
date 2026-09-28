@@ -399,7 +399,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 const TEMP_CREATE_MAX_ATTEMPTS: u32 = 128;
 
 /// Construct a temp file path:
-/// `<destination>.mie-decoder.tmp.<pid>.<counter>.<nanos>` in the destination's
+/// `<destination>.aero1553.tmp.<pid>.<counter>.<nanos>` in the destination's
 /// parent directory. Same-directory placement guarantees the subsequent
 /// `rename()` lives on one filesystem and is therefore atomic; the per-process
 /// counter plus wall-clock nanoseconds make each call unique and hard to
@@ -416,7 +416,7 @@ fn make_temp_path(final_path: &Path) -> PathBuf {
         .map(std::ffi::OsStr::to_os_string)
         .unwrap_or_default();
     name.push(format!(
-        ".mie-decoder.tmp.{}.{counter}.{nanos}",
+        ".aero1553.tmp.{}.{counter}.{nanos}",
         std::process::id()
     ));
     match final_path.parent() {
@@ -1345,7 +1345,7 @@ mod tests {
         let b = make_temp_path(&dest);
         assert_eq!(a.parent(), dest.parent());
         let name = a.file_name().unwrap().to_string_lossy().into_owned();
-        assert!(name.starts_with("out.csv.mie-decoder.tmp."));
+        assert!(name.starts_with("out.csv.aero1553.tmp."));
         assert!(name.contains(&std::process::id().to_string()));
         // Each call yields a distinct, unique temp path.
         assert_ne!(a, b);

@@ -17,9 +17,9 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.exceptions import MieClobberRefusedError, MieWriterError
-from mie_decoder.reader import MieFileReader
-from mie_decoder.writer import (
+from aero1553.exceptions import MieClobberRefusedError, MieWriterError
+from aero1553.reader import MieFileReader
+from aero1553.writer import (
     CSV_HEADER,
     _AtomicCsvFile,
     _StreamingCsvRowWriter,
@@ -32,10 +32,10 @@ from tests.conftest import normal_record_rt15_sa11_us
 def _leftover_temps(dest: Path) -> list[Path]:
     """Any atomic-writer temp files still sitting next to ``dest``.
 
-    Temp names are now unique/random (``<dest>.mie-decoder.tmp.<pid>.<n>.<ns>``),
+    Temp names are now unique/random (``<dest>.aero1553.tmp.<pid>.<n>.<ns>``),
     so tests glob for leftovers rather than reconstructing the exact path.
     """
-    return list(dest.parent.glob(f"{dest.name}.mie-decoder.tmp.*"))
+    return list(dest.parent.glob(f"{dest.name}.aero1553.tmp.*"))
 
 
 # ── _AtomicCsvFile ─────────────────────────────────────────────────────
@@ -324,7 +324,7 @@ def test_atomic_writer_fails_after_persistent_clash(
 ) -> None:
     # If every candidate temp name already exists, the writer exhausts its
     # retries and raises rather than looping forever or overwriting a file.
-    from mie_decoder import writer as writer_mod
+    from aero1553 import writer as writer_mod
 
     clash = tmp_path / "always-there.tmp"
     clash.write_text("x")  # exists → open(mode="x") always raises FileExistsError
@@ -374,7 +374,7 @@ def test_streaming_writer_streams_rows_incrementally(tmp_path: Path) -> None:
 class _PipeBreaker(io.StringIO):
     """A text stream that raises BrokenPipeError after ``break_after``
     successful writes — simulates a downstream consumer closing the pipe
-    mid-stream (e.g. ``mie-decoder decode ... | head``)."""
+    mid-stream (e.g. ``aero1553 decode ... | head``)."""
 
     def __init__(self, break_after: int) -> None:
         super().__init__()

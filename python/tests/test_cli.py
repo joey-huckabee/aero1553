@@ -1,4 +1,4 @@
-"""Unit tests for the decode CLI helper functions in ``mie_decoder.cli``.
+"""Unit tests for the decode CLI helper functions in ``aero1553.cli``.
 
 White-box tests for the helpers extracted from ``_run_decode`` (the override
 builders, validators, exit-code classifiers, and the merge output-collision
@@ -17,15 +17,15 @@ from types import SimpleNamespace
 
 import pytest
 
-from mie_decoder import cli
-from mie_decoder.cli import (
+from aero1553 import cli
+from aero1553.cli import (
     EXIT_MERGE_INCOMPATIBLE,
     EXIT_NO_RECORDS,
     EXIT_OK,
     EXIT_RUNTIME,
     EXIT_SYNC_LOSS,
 )
-from mie_decoder.exceptions import (
+from aero1553.exceptions import (
     MieClobberRefusedError,
     MieHomogeneousPayloadError,
     MieIncompatibleMergeInputsError,
@@ -37,7 +37,7 @@ from mie_decoder.exceptions import (
     MieUnrecoverableSyncLossError,
     MieWriterError,
 )
-from mie_decoder.models import ErrorMode
+from aero1553.models import ErrorMode
 from tests.conftest import normal_record_rt15_sa11_us
 
 # ── validators ─────────────────────────────────────────────────────────────
@@ -190,7 +190,7 @@ class TestBuildDecodeOverrides:
         assert ov["include_rts"] == [15]
 
     def test_input_time_format_and_simple_value_overrides(self) -> None:
-        from mie_decoder.models import ErrorMode, TimestampFormat
+        from aero1553.models import ErrorMode, TimestampFormat
 
         ov = cli._build_decode_overrides(
             _decode_ns(
@@ -215,7 +215,7 @@ class TestBuildDecodeOverrides:
         ],
     )
     def test_input_time_format_is_case_insensitive(self, spelling: str, expected: str) -> None:
-        from mie_decoder.models import TimestampFormat
+        from aero1553.models import TimestampFormat
 
         ov = cli._build_decode_overrides(_decode_ns(input_time_format=spelling))
         assert ov["input_time_format"] == TimestampFormat[expected]
@@ -230,7 +230,7 @@ class TestBuildDecodeOverrides:
             cli._build_decode_overrides(ns)
 
     def test_detect_and_lookahead_valid_bounds(self) -> None:
-        from mie_decoder.config import DETECT_RECORDS_MIN, LOOKAHEAD_RECORDS_MIN
+        from aero1553.config import DETECT_RECORDS_MIN, LOOKAHEAD_RECORDS_MIN
 
         ov = cli._build_decode_overrides(
             _decode_ns(
@@ -347,7 +347,7 @@ class TestClassifyDecodeSuccess:
         # the summary line names the empty-recording class.
         outcome = SimpleNamespace(partial=None, normal_count=0, error_count=0)
         readers = [SimpleNamespace(sync_losses=0, empty_recording=True)]
-        with caplog.at_level("INFO", logger="mie_decoder"):
+        with caplog.at_level("INFO", logger="aero1553"):
             assert cli._classify_decode_success(outcome, readers) == EXIT_OK  # type: ignore[arg-type]
         assert "empty-recording" in caplog.text
 
@@ -481,7 +481,7 @@ class TestCheckMergeOutputCollision:
 class TestRunDumpBrokenPipe:
     """``dump`` must treat a closed stdout consumer as a clean exit.
 
-    ``mie-decoder dump big.mie | head`` is the documented diagnostic workflow;
+    ``aero1553 dump big.mie | head`` is the documented diagnostic workflow;
     `dump` previously had no broken-pipe guard at all, so it exited 1 with a
     traceback while `finish_dump` in ``rust/src/cli.rs`` exited 0.
     """
@@ -505,7 +505,7 @@ class TestRunDumpBrokenPipe:
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
         monkeypatch.setattr(
-            "mie_decoder.dump.hex_dump_records",
+            "aero1553.dump.hex_dump_records",
             lambda *_a, **_k: (_ for _ in ()).throw(BrokenPipeError("consumer closed")),
         )
         assert cli._run_dump(self._dump_args(tmp_path)) == EXIT_OK
@@ -514,9 +514,9 @@ class TestRunDumpBrokenPipe:
     def test_windows_broken_pipe_exits_zero(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        monkeypatch.setattr("mie_decoder.writer.sys.platform", "win32")
+        monkeypatch.setattr("aero1553.writer.sys.platform", "win32")
         monkeypatch.setattr(
-            "mie_decoder.dump.hex_dump_records",
+            "aero1553.dump.hex_dump_records",
             lambda *_a, **_k: (_ for _ in ()).throw(OSError(errno.EINVAL, "Invalid argument")),
         )
         assert cli._run_dump(self._dump_args(tmp_path)) == EXIT_OK
@@ -525,7 +525,7 @@ class TestRunDumpBrokenPipe:
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
         """A non-pipe output error stays a runtime failure (exit 1)."""
-        import mie_decoder.dump as dump_mod
+        import aero1553.dump as dump_mod
 
         original = dump_mod.hex_dump_records
 

@@ -1,8 +1,8 @@
-# MIE-Decoder — Configuration Reference
+# Aero1553 — Configuration Reference
 
 Complete reference for every TOML key the decoder accepts. Use this when:
 
-- You're writing a site-wide or campaign-wide `mie-decoder.toml`.
+- You're writing a site-wide or campaign-wide `aero1553.toml`.
 - The CLI rejected your config file and you need to know why.
 - You're hunting for the CLI flag that overrides a particular TOML key.
 
@@ -98,7 +98,7 @@ exclude_types = ["SPURIOUS_DATA"]
 ```
 
 ```bash
-mie-decoder --config my-config.toml decode rec.mie --exclude-types BC_TO_RT
+aero1553 --config my-config.toml decode rec.mie --exclude-types BC_TO_RT
 # Effective filter: exclude_types = ["SPURIOUS_DATA", "BC_TO_RT"]
 ```
 
@@ -116,13 +116,13 @@ This matches the operator expectation that CLI filters add to a base set defined
 | **File type** | The path must resolve to a **regular file**. A directory, FIFO, or character device is rejected before any read — so `--config <dir>` reports a clear error instead of an `IsADirectoryError` traceback, and `--config /dev/zero` cannot hang the process on an endless read. |
 | **Missing file** | Reported as a configuration error, exit `5`. Never silently ignored, and never falls back to defaults. |
 | **Interpretation** | The contents are parsed as TOML **data** and nothing else. There is no `include` directive, no shell interpolation, no code execution, and no network access. An unparseable file is a configuration error (exit `5`), not a partial load. |
-| **Location** | **Deliberately unrestricted.** Any readable path is accepted — `/etc/mie-decoder/site.toml`, a mounted share, a path relative to the working directory. See [Site-wide config + per-invocation tweak](#site-wide-config--per-invocation-tweak). |
+| **Location** | **Deliberately unrestricted.** Any readable path is accepted — `/etc/aero1553/site.toml`, a mounted share, a path relative to the working directory. See [Site-wide config + per-invocation tweak](#site-wide-config--per-invocation-tweak). |
 
 Both implementations enforce this identically, with the same message text (`Config path is not a regular file: …`), pinned across the two CLIs by `tests/conformance/config_path_parity.py`.
 
-**Why location is not restricted.** Static analysis flags the `--config` path as a possible path-injection vector (SonarCloud `pythonsecurity:S8707`, "Agentic workflows should not be vulnerable to path injection"). That rule assumes a program confined to some root that an attacker-supplied path could escape. MIE-Decoder is an operator-run CLI with no such confinement: the config path *is* the interface, and a caller who can pass `--config` can already read the same file directly. Constraining configs to an allowlist of roots would therefore add no protection while breaking the site-config deployments the tool is built for.
+**Why location is not restricted.** Static analysis flags the `--config` path as a possible path-injection vector (SonarCloud `pythonsecurity:S8707`, "Agentic workflows should not be vulnerable to path injection"). That rule assumes a program confined to some root that an attacker-supplied path could escape. Aero1553 is an operator-run CLI with no such confinement: the config path *is* the interface, and a caller who can pass `--config` can already read the same file directly. Constraining configs to an allowlist of roots would therefore add no protection while breaking the site-config deployments the tool is built for.
 
-That finding is suppressed for `python/src/mie_decoder/config.py` — scoped to that one rule in that one file, so any other finding there, and that rule anywhere else, still fails the build. The rationale is recorded next to the exclusion in `.github/workflows/sonarcloud.yml`; keep the two in step if either changes.
+That finding is suppressed for `python/src/aero1553/config.py` — scoped to that one rule in that one file, so any other finding there, and that rule anywhere else, still fails the build. The rationale is recorded next to the exclusion in `.github/workflows/sonarcloud.yml`; keep the two in step if either changes.
 
 **The same reasoning covers `--manifest`, for a different path.** SonarCloud also reports `pythonsecurity:S2083` and `pythonsecurity:S8707` against the input-file `open()` in `reader.py`. That flow does **not** start at a command-line argument: it starts at the *contents* of a `--manifest` file, whose lines become input paths (`merge.py` → `cli.py` → `reader.py`). The claim there is narrower than the one above — not "the path is the interface", but that a manifest's contents are exactly as trusted as the operator who chose that manifest. Reading the files it lists is what `--manifest` is for (`L2-MRG-001`), and anyone able to write the manifest can already invoke the decoder with any argument they like, so the flow confers no capability. Both rules are suppressed for `reader.py` on the same scoped basis.
 
@@ -275,7 +275,7 @@ This setting has no effect on IRIG recordings (IRIG already carries absolute tim
 **Example.** Two consecutive records of the same RT/MSG 16 ticks apart, decoded with a 1 MHz rate, yield a `DELTA` of `0.000016`:
 
 ```bash
-mie-decoder decode rec.mie -o out.csv --input-time-format standard --standard-tick-rate-hz 1000000
+aero1553 decode rec.mie -o out.csv --input-time-format standard --standard-tick-rate-hz 1000000
 ```
 
 **Validation:** must be a finite number strictly greater than `0`. A non-positive or non-finite value is rejected — at load time for the TOML key (L2-CFG-011) and at parse time for the CLI flag (L2-CLI-012) — so a bad rate can never silently produce meaningless timing.
@@ -676,7 +676,7 @@ exclude_types = ["RT_TO_BC", "SPURIOUS_DATA", "MODE_COMMAND"]
 ### Site-wide config + per-invocation tweak
 
 ```toml
-# /etc/mie-decoder/site.toml
+# /etc/aero1553/site.toml
 [filter]
 exclude_types = ["SPURIOUS_DATA"]
 
@@ -685,7 +685,7 @@ level = "INFO"
 ```
 
 ```bash
-mie-decoder --config /etc/mie-decoder/site.toml --log-level WARNING \
+aero1553 --config /etc/aero1553/site.toml --log-level WARNING \
             decode flight.mie \
             --exclude-rts 31
 # Effective: SPURIOUS_DATA filtered (config), RT 31 filtered (CLI merge),

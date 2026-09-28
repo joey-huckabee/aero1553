@@ -1,12 +1,12 @@
-# MIE-Decoder — Vendor CSV Alignment & Diffs
+# Aero1553 — Vendor CSV Alignment & Diffs
 
-Documented column-by-column alignment between MIE-Decoder's CSV output and DDC's vendor-generated CSV. Read this when:
+Documented column-by-column alignment between Aero1553's CSV output and DDC's vendor-generated CSV. Read this when:
 
-- You're validating that MIE-Decoder produces the same data your existing pipelines expect from the vendor tool.
+- You're validating that Aero1553 produces the same data your existing pipelines expect from the vendor tool.
 - You ran `diff` against vendor output and found a mismatch.
-- You're integrating MIE-Decoder into a system that previously consumed vendor CSV.
+- You're integrating Aero1553 into a system that previously consumed vendor CSV.
 
-The short version: by spec (`L1-OUT-001`) MIE-Decoder's first **44 columns are the DDC vendor layout**, name-for-name and index-for-index, with two decoder-added columns (`ERROR`, `ERROR_CODE`) appended after them. The cross-implementation conformance suite asserts byte-identical CSV between the Rust and Python implementations; that suite's oracles are derived from validated vendor output. In practice, except for the documented exceptions below, a single `diff` should produce zero lines of difference between MIE-Decoder output and a vendor CSV of the same recording.
+The short version: by spec (`L1-OUT-001`) Aero1553's first **44 columns are the DDC vendor layout**, name-for-name and index-for-index, with two decoder-added columns (`ERROR`, `ERROR_CODE`) appended after them. The cross-implementation conformance suite asserts byte-identical CSV between the Rust and Python implementations; that suite's oracles are derived from validated vendor output. In practice, except for the documented exceptions below, a single `diff` should produce zero lines of difference between Aero1553 output and a vendor CSV of the same recording.
 
 ---
 
@@ -27,14 +27,14 @@ The short version: by spec (`L1-OUT-001`) MIE-Decoder's first **44 columns are t
 | `DELTA` on a **multi-file** decode | **Match** by default (`--delta-scope per-file`, since v2.11.0); `--delta-scope global` diverges deliberately (see §3b) |
 | **Row order** for records sharing one `TIME_STAMP` | **May differ** — we sort ties by `RT` then `MSG` (L1-OUT-003); the vendor writes capture order. Restore with `--max-sort-group 1` (see §3a) |
 
-If you find a divergence outside the documented exceptions, **it is a bug** in MIE-Decoder. See §7.
+If you find a divergence outside the documented exceptions, **it is a bug** in Aero1553. See §7.
 
 ---
 
 ## 2. The CSV columns
 
 A decoded CSV is **two blocks**: the DDC vendor layout, then the columns
-MIE-Decoder adds on top of it.
+Aero1553 adds on top of it.
 
 **Block 1 — the vendor layout, columns 1–44.** These are the columns the DDC tool
 itself emits, in its order:
@@ -53,7 +53,7 @@ ERROR, ERROR_CODE
 ```
 
 `ERROR` and `ERROR_CODE` have **no vendor counterpart** — the DDC tool does not
-report bus errors as CSV fields at all. Surfacing them is a MIE-Decoder feature
+report bus errors as CSV fields at all. Surfacing them is an Aero1553 feature
 (L2-ERR-002), so they live at the tail where they cannot disturb vendor column
 indices. Any column added in a future release goes here too, never inside block 1.
 
@@ -68,7 +68,7 @@ indices. Any column added in a future release goes here too, never inside block 
 ### Cells that match exactly
 
 The following vendor-block columns produce byte-identical content between
-MIE-Decoder and the vendor tool for any clean (non-errored, non-spurious) record:
+Aero1553 and the vendor tool for any clean (non-errored, non-spurious) record:
 
 | Column | Format | Notes |
 |--------|--------|-------|
@@ -95,9 +95,9 @@ are **expected extra fields**, not divergences:
 
 ## 3. Placeholder columns (`MUX`, `TERM_NAME`, `IM_GAP`, `RCV_GAP`, `XMT_GAP`)
 
-Five columns sit between the meaningful payload columns and the trailing diagnostic columns. Four are emitted as empty cells, preserved by spec (L2-WRT-013). **`MUX` is the exception: by default MIE-Decoder populates it from the input file name (L2-WRT-020)** — so default output is *not* byte-for-byte identical to the vendor CSV when the input name carries that field.
+Five columns sit between the meaningful payload columns and the trailing diagnostic columns. Four are emitted as empty cells, preserved by spec (L2-WRT-013). **`MUX` is the exception: by default Aero1553 populates it from the input file name (L2-WRT-020)** — so default output is *not* byte-for-byte identical to the vendor CSV when the input name carries that field.
 
-| Column | What the vendor uses it for | MIE-Decoder |
+| Column | What the vendor uses it for | Aero1553 |
 |--------|---------------------------|----------------|
 | `MUX` | Multiplexer channel identifier on multi-channel DDC cards. | **Populated from a field of the input file name by default** (L2-WRT-020); empty with `--no-mux` / `[mux] enabled = false`. |
 | `TERM_NAME` | Operator-assigned symbolic name for the RT (loaded from a side-channel config file in the vendor tool). | Empty. |
@@ -111,7 +111,7 @@ Removing them would break the L1-OUT-001 byte-compat contract: any downstream to
 
 ### Getting vendor-exact output (`--no-mux`)
 
-For a byte-for-byte diff against a vendor CSV, disable MUX population: pass **`--no-mux`** (or set `[mux] enabled = false` in your config). MIE-Decoder then leaves `MUX` empty like the other four placeholders, and the only remaining differences are the genuinely vendor-populated cells (gap timing, `TERM_NAME`, and any `MUX` values the vendor itself wrote). Those remaining differences are expected and documented — not a bug; the contract is "column layout matches."
+For a byte-for-byte diff against a vendor CSV, disable MUX population: pass **`--no-mux`** (or set `[mux] enabled = false` in your config). Aero1553 then leaves `MUX` empty like the other four placeholders, and the only remaining differences are the genuinely vendor-populated cells (gap timing, `TERM_NAME`, and any `MUX` values the vendor itself wrote). Those remaining differences are expected and documented — not a bug; the contract is "column layout matches."
 
 To make the diff easier to read, filter the comparison to the meaningful columns.
 Since v2.10.0 the vendor columns share indices with the vendor CSV, so the **same**
@@ -146,7 +146,7 @@ mid-row.
 
 ## 3a. Row order (`--max-sort-group 1`)
 
-Since v2.9.0, MIE-Decoder writes rows in a **canonical order** (L1-OUT-003):
+Since v2.9.0, Aero1553 writes rows in a **canonical order** (L1-OUT-003):
 ascending `TIME_STAMP`, then ascending `RT`, then `MSG` (subaddress ascending,
 `R` before `T`). The vendor tool writes rows in **capture order** — the order the
 DDC card wrote them. For records with distinct timestamps the two agree, because
@@ -162,7 +162,7 @@ differ from the vendor's while every cell still matches.
 **For a byte-for-byte diff, disable reordering:**
 
 ```bash
-mie-decoder decode recording.mie -o mie.csv --no-mux --max-sort-group 1
+aero1553 decode recording.mie -o mie.csv --no-mux --max-sort-group 1
 ```
 
 `--max-sort-group 1` makes every record its own sort group, so nothing is
@@ -184,7 +184,7 @@ between records with *different* timestamps, or any cell-content difference.
 The DDC vendor tool has **no merge feature** — it decodes one recording at a
 time, so its `DELTA` is always measured within a single file.
 
-Since v2.11.0 that is also MIE-Decoder's default (`--delta-scope per-file`), so a
+Since v2.11.0 that is also Aero1553's default (`--delta-scope per-file`), so a
 merged decode's `DELTA` matches vendor output for every record: each gap is to
 the previous same-RT/MSG record from that record's *own* file, which is by
 construction the value that file produces decoded alone.
@@ -254,7 +254,7 @@ diff vendor-lf.csv mie.csv
 
 A `git diff --ignore-cr-at-eol vendor.csv mie.csv` also handles the trailing-CR case cleanly.
 
-The MIE-Decoder LF-only choice is pinned by L2-WRT-012 and is intentional — keeps CSV byte-exact across host operating systems so the same recording produces the same hash from any decode host.
+The Aero1553 LF-only choice is pinned by L2-WRT-012 and is intentional — keeps CSV byte-exact across host operating systems so the same recording produces the same hash from any decode host.
 
 ---
 
@@ -295,7 +295,7 @@ The dedicated opt-out exists because the level alone cannot express *"we already
 **Do not use `--log-level ERROR` to silence it.** That works, but it also discards the sync-loss, sync-recovery, non-monotonic-`DELTA`, sort-cap and invalid-record warnings — the diagnostics that *are* about your recording, and the ones you most want during a decode you are troubleshooting. Prior versions of this document recommended it, before the dedicated switch existed.
 
 This is the only known *unintended* column-content discrepancy -- the departures
-in §3a, §3b and §3c are deliberate and operator-selected. If you see a day-of-year mismatch between MIE-Decoder output and vendor CSV for the same recording:
+in §3a, §3b and §3c are deliberate and operator-selected. If you see a day-of-year mismatch between Aero1553 output and vendor CSV for the same recording:
 
 1. **Confirm both tools are looking at the same source file** (no transfer corruption).
 2. **Note the card model and firmware version** that produced the recording.
@@ -307,23 +307,23 @@ Hour, minute, second, microsecond, and freerun fields are not affected — they 
 
 ## 6. Validating a decode matches vendor output
 
-The end-to-end workflow when you want a hard validation that MIE-Decoder reproduces vendor output:
+The end-to-end workflow when you want a hard validation that Aero1553 reproduces vendor output:
 
-1. **Decode the same recording with both tools.** Use the vendor tool's default settings; for MIE-Decoder use the two vendor-exact flags:
+1. **Decode the same recording with both tools.** Use the vendor tool's default settings; for Aero1553 use the two vendor-exact flags:
 
    ```bash
-   mie-decoder decode flight.mie -o mie.csv --no-mux --max-sort-group 1
+   aero1553 decode flight.mie -o mie.csv --no-mux --max-sort-group 1
    ```
 
    `--no-mux` leaves the `MUX` column empty like the vendor's other placeholders (§3), and `--max-sort-group 1` disables canonical row ordering so rows stay in capture order (§3a). Without those two flags a clean decode will still show expected differences, and you would be chasing documented behavior.
 
    There is no third flag to pass: `--output-time-format` defaults to `doy`, the vendor rendering (§3c). But if the value is set in a site config file, **unset it or override it with `--output-time-format doy`** — a configured `iso` or `dom` changes column 1 on every row and turns the whole diff into noise.
 
-   Inline error mode matches the vendor tool's behavior of mixing errored and SPURIOUS records into the main CSV. (Separate-mode comparisons would need you to merge MIE-Decoder's two files first.)
+   Inline error mode matches the vendor tool's behavior of mixing errored and SPURIOUS records into the main CSV. (Separate-mode comparisons would need you to merge Aero1553's two files first.)
 
 2. **Normalize line endings** if your platforms differ (see §4).
 
-3. **Diff with the vendor-empty columns masked out** if your vendor CSV populates `MUX` / `TERM_NAME` / `IM_GAP` / `RCV_GAP` / `XMT_GAP` and MIE-Decoder doesn't (see §3).
+3. **Diff with the vendor-empty columns masked out** if your vendor CSV populates `MUX` / `TERM_NAME` / `IM_GAP` / `RCV_GAP` / `XMT_GAP` and Aero1553 doesn't (see §3).
 
 4. **Expect zero differences** outside the documented exceptions. If you see a divergence:
 
@@ -336,7 +336,7 @@ The end-to-end workflow when you want a hard validation that MIE-Decoder reprodu
    - `DELTA` differs on a **single-file** decode → the vendor may be following a different rule entirely. `python scripts/diagnose-vendor-delta.py vendor.csv` recomputes the column under a range of candidate rules and reports which one reproduces the vendor's own values; a rule at 100% is the vendor's definition. It reads the vendor CSV only — no MIE file and no decoder run needed. Include its output when reporting (§7).
    - Anything else → bug. See §7.
 
-5. **For automated comparison** in a regression pipeline, MIE-Decoder ships a cross-implementation conformance suite under `tests/conformance/` that asserts byte-identical CSV between the Rust and Python implementations against checked-in oracles. The oracle generation method (manual validation against vendor output, then committed) is documented in [`MAINTAINER-GUIDE.md`](MAINTAINER-GUIDE.md) §6.
+5. **For automated comparison** in a regression pipeline, Aero1553 ships a cross-implementation conformance suite under `tests/conformance/` that asserts byte-identical CSV between the Rust and Python implementations against checked-in oracles. The oracle generation method (manual validation against vendor output, then committed) is documented in [`MAINTAINER-GUIDE.md`](MAINTAINER-GUIDE.md) §6.
 
 ---
 
@@ -353,13 +353,13 @@ Any column-content mismatch that isn't:
 - A `TIME_STAMP` rendered as ISO-8601 or day-of-month because
   `--output-time-format` / `[output] output_time_format` selected it (§3c)
 
-…is a violation of the L1-OUT-001 byte-compat contract and a bug in MIE-Decoder. To report it:
+…is a violation of the L1-OUT-001 byte-compat contract and a bug in Aero1553. To report it:
 
 1. **Capture the divergent row from both CSVs** (one line each, with the column header for context).
-2. **Capture the source binary record.** Run `mie-decoder dump <file>.mie --records 1 --offset <byte>` to get the record-aware hex annotation. (For an arbitrary offset rather than the first record, `--raw --offset N --length 256` works.)
+2. **Capture the source binary record.** Run `aero1553 dump <file>.mie --records 1 --offset <byte>` to get the record-aware hex annotation. (For an arbitrary offset rather than the first record, `--raw --offset N --length 256` works.)
 3. **Note the card model and firmware version** if known.
 4. **If the divergent column is `DELTA`**, also run `python scripts/diagnose-vendor-delta.py vendor.csv` and include the ranked table. It answers the question that actually moves a `DELTA` bug forward — not *whether* the values differ but *what rule the vendor is following instead* — without needing the source recording.
-5. **Open an issue** with all of the above. The MIE-Decoder maintainers will reproduce against the conformance suite, add a fixture if missing, and land a fix.
+5. **Open an issue** with all of the above. The Aero1553 maintainers will reproduce against the conformance suite, add a fixture if missing, and land a fix.
 
 The conformance suite (`tests/conformance/`) is the regression net — every reported divergence that turns out to be a real bug becomes a permanent fixture so it can't silently regress.
 
@@ -369,15 +369,15 @@ The conformance suite (`tests/conformance/`) is the regression net — every rep
 
 The L1-OUT-001 byte-compat commitment is load-bearing for adoption:
 
-- **Existing pipelines** that consume vendor CSV can drop in MIE-Decoder without changing any downstream parser.
-- **Validation campaigns** can diff MIE-Decoder output against vendor CSV as a sanity check on every new recording.
+- **Existing pipelines** that consume vendor CSV can drop in Aero1553 without changing any downstream parser.
+- **Validation campaigns** can diff Aero1553 output against vendor CSV as a sanity check on every new recording.
 - **Audits** can show that an alternative decoder produces byte-identical output to a vendor reference.
 
 The contract is enforced at three levels:
 
 1. **L2-WRT-001** pins the column order, including the rule that decoder-added columns are appended *after* the 44-column vendor block and never interleaved within it.
 2. **L2-WRT-002 / L2-WRT-003 / L2-WRT-004** pin the per-cell formatting (empty cells for unused fields, 4-char uppercase hex for words, 6-decimal DELTA).
-3. **L2-WRT-013** explicitly preserves the vendor-empty columns even though MIE-Decoder doesn't populate them.
+3. **L2-WRT-013** explicitly preserves the vendor-empty columns even though Aero1553 doesn't populate them.
 
 Plus the cross-implementation conformance suite, which asserts the Rust and Python implementations agree on every byte for every fixture. If both implementations drift, the suite fails CI; if only one drifts, the suite fails CI louder.
 

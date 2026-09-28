@@ -1,8 +1,8 @@
-# MIE-Decoder — Level 2 Requirements
+# Aero1553 — Level 2 Requirements
 
 ## Purpose
 
-This document establishes the Level 2 (L2) SHALL-statement requirements for MIE-Decoder. L2 requirements are architectural derivations of the L1 requirements documented in `L1-REQ.md`: they specify *how* each L1 obligation is structurally satisfied, without yet prescribing implementation details (those belong to L3).
+This document establishes the Level 2 (L2) SHALL-statement requirements for Aero1553. L2 requirements are architectural derivations of the L1 requirements documented in `L1-REQ.md`: they specify *how* each L1 obligation is structurally satisfied, without yet prescribing implementation details (those belong to L3).
 
 Every L2 requirement traces to exactly one L1 parent via the `**Parent**:` field. When an L2 is motivated by multiple L1 obligations, the primary parent is declared in `**Parent**:` and the supporting L1s are mentioned in prose. L3 requirements derive from these L2s.
 
@@ -681,7 +681,7 @@ The single-enumeration rule exists because the two halves are owned by different
 
 **Parent**: L1-EXIT-001
 **Statement**: A broken-pipe condition on stdout output (downstream consumer closed early) SHALL exit `0` with no error. Disk-full and permission errors SHALL surface as a writer error preserving the underlying OS error message.
-**Rationale**: Broken pipe on stdout is the expected termination signal in shell pipelines (`mie-decoder ... | head`). Treating it as an error would falsely fail every pipeline that consumes only the first N rows. Disk-full and permission errors are genuine failures.
+**Rationale**: Broken pipe on stdout is the expected termination signal in shell pipelines (`aero1553 ... | head`). Treating it as an error would falsely fail every pipeline that consumes only the first N rows. Disk-full and permission errors are genuine failures.
 **Verification Method**: Test (T)
 
 #### L2-WRT-019
@@ -723,7 +723,7 @@ A pre-flight existence test MAY additionally be performed, and SHALL be understo
 
 The default (`no_clobber` unset) is unchanged and SHALL remain a replacing rename (L2-WRT-017).
 
-**Rationale**: `exists()` answers a question about the past. Between that answer and the rename, any other process — a second `mie-decoder`, a scheduled job, an operator — may create the destination, and the replacing rename then destroys it: two concurrent runs of the same command both pass the pre-flight and the second silently overwrites the first's output. That is the precise outcome `--no-clobber` exists to prevent, so the refusal has to happen at the moment of the write, where the filesystem can make it atomic. The `.partial` targets were worse than racy — they were never checked at all, so `--no-clobber --allow-partial` overwrote an existing `.partial` unconditionally.
+**Rationale**: `exists()` answers a question about the past. Between that answer and the rename, any other process — a second `aero1553`, a scheduled job, an operator — may create the destination, and the replacing rename then destroys it: two concurrent runs of the same command both pass the pre-flight and the second silently overwrites the first's output. That is the precise outcome `--no-clobber` exists to prevent, so the refusal has to happen at the moment of the write, where the filesystem can make it atomic. The `.partial` targets were worse than racy — they were never checked at all, so `--no-clobber --allow-partial` overwrote an existing `.partial` unconditionally.
 
 No portable single call does this. `rename(2)` replaces, and so does Windows' `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`; `renameat2(RENAME_NOREPLACE)` needs a kernel and glibc newer than the SLES 12 floor. The requirement is therefore stated over the *property* — atomic and non-replacing — and not over a syscall, so each implementation can reach it the way its platform allows: `MoveFileExW` with no flags is natively atomic-no-replace on Windows, while POSIX gets there with `link(2)` (which fails `EEXIST`) plus an exclusive-create reservation as the fallback for filesystems without hard links.
 
@@ -1009,7 +1009,7 @@ The `count` and `dump` commands inherit `0`, `1`, `2`, `4`, and `5` but SHALL NO
 
 **Parent**: L1-CLI-001
 **Statement**: The record-aware dump SHALL emit each scan-stop anomaly it encounters — invalid Type Word `word_count`, a record whose declared extent runs past EOF (truncated record), and (where the host integer type can overflow) record-offset overflow — through the logger at `WARN`, in addition to the inline `!! …` note written into the hex report. The log message SHALL name the byte offset. Emission is subject to the configured global log level (default `WARN`); the inline report note is unchanged.
-**Rationale**: The record-aware dump previously surfaced these anomalies only inside the report stream, so an operator piping the dump report elsewhere — or any caller that captures the report separately — could not see the diagnostics on the normal stderr log channel the way the reader's diagnostics appear. Routing them through the logger as well makes the dump's diagnostics consistent with the reader's and visible at the configured level, while the inline note is retained for the at-a-glance visual report. (The reader's logger writes to process stderr in Rust and through the `mie_decoder` logger in Python; the dump uses the same channels.)
+**Rationale**: The record-aware dump previously surfaced these anomalies only inside the report stream, so an operator piping the dump report elsewhere — or any caller that captures the report separately — could not see the diagnostics on the normal stderr log channel the way the reader's diagnostics appear. Routing them through the logger as well makes the dump's diagnostics consistent with the reader's and visible at the configured level, while the inline note is retained for the at-a-glance visual report. (The reader's logger writes to process stderr in Rust and through the `aero1553` logger in Python; the dump uses the same channels.)
 **Note on the overflow anomaly**: it is unreachable through a real scan, in both implementations, and the wording above is scoped accordingly. Python integers do not overflow at all. In Rust the scan loop only advances while `offset + MIN_RECORD_BYTES <= file_len`, and `file_len` is a mapped file length, so `offset` stays far below `usize::MAX` while a record's declared extent is capped at 126 bytes (`word_count` is the Type Word's 6-bit field, `(raw >> 8) & 0x3F`, so at most 63 words) — the sum cannot wrap. The guard remains as defense in depth for the contract of `dump_record_extent`, which accepts an arbitrary `offset`, and is verified by calling that helper directly (`dump_record_extent_notes_offset_overflow`). It SHALL NOT be credited to the truncated-record tests, which never reach it.
 **Verification Method**: Test (T), Inspection (I)
 

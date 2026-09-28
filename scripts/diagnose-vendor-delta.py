@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Work out which rule a vendor CSV's DELTA column actually follows.
 
-MIE-Decoder computes DELTA as "seconds since the previous record with the same
+Aero1553 computes DELTA as "seconds since the previous record with the same
 ``(RT, subaddress, direction)`` key" (L1-DLT-001). If a vendor CSV disagrees, the
 useful question is not *whether* it differs but *what rule it follows instead* —
 this script answers that by recomputing the column under a range of candidate
@@ -64,9 +64,9 @@ def split_msg(msg: str) -> tuple[str, str]:
 KeyFn = Callable[[dict[str, str]], object]
 
 #: Each entry is (name, key function). A key of ``None`` means "this row does not
-#: participate" (no key), matching how SPURIOUS_DATA behaves in MIE-Decoder.
+#: participate" (no key), matching how SPURIOUS_DATA behaves in Aero1553.
 CANDIDATE_KEYS: list[tuple[str, KeyFn]] = [
-    ("RT + MSG  (MIE-Decoder's rule)", lambda r: (r["RT"], r["MSG"]) if r["RT"] else None),
+    ("RT + MSG  (Aero1553's rule)", lambda r: (r["RT"], r["MSG"]) if r["RT"] else None),
     (
         "RT + subaddress, ignoring direction",
         lambda r: (r["RT"], split_msg(r["MSG"])[0]) if r["RT"] else None,
@@ -249,12 +249,12 @@ def main(argv: list[str] | None = None) -> int:
 
     if best_score == 1.0:
         print(f"EXACT MATCH: {tied[0]}")
-        if tied[0].startswith("RT + MSG  (MIE-Decoder"):
-            print("That is already MIE-Decoder's rule — so the DELTA definition agrees and")
+        if tied[0].startswith("RT + MSG  (Aero1553"):
+            print("That is already Aero1553's rule — so the DELTA definition agrees and")
             print("the difference is elsewhere: merge scope (--delta-scope), row order,")
             print("or the timestamps themselves.")
         else:
-            print("This differs from MIE-Decoder's rule (RT + MSG, seconds, first=0.000000).")
+            print("This differs from Aero1553's rule (RT + MSG, seconds, first=0.000000).")
     else:
         print(f"No candidate reproduced the column exactly. Best: {best_score * 100:.1f}%")
         print("The vendor may key on a field not present in the CSV, reset per file or")

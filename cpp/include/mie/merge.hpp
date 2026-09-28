@@ -2,7 +2,7 @@
 //
 // Multi-file, time-sorted streaming k-way merge (L1-MRG-*, L2-MRG-*).
 //
-// Mirrors `rust/src/merge.rs` and `python/src/mie_decoder/merge.py`.
+// Mirrors `rust/src/merge.rs` and `python/src/aero1553/merge.py`.
 //
 // Takes several decoded recordings and yields one stream of records in global
 // time order, holding at most ONE record per open file in a min-heap. Resident

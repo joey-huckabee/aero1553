@@ -1,10 +1,10 @@
-"""Unit tests for mie_decoder.models module."""
+"""Unit tests for aero1553.models module."""
 
 from __future__ import annotations
 
 import pytest
 
-from mie_decoder.models import (
+from aero1553.models import (
     VALID_MESSAGE_TYPES,
     Bus,
     CommandWord,
@@ -177,7 +177,7 @@ class TestMieMessage:
         # A crafted record with more than 32 data words is truncated to
         # MAX_DATA_WORDS, mirroring the Rust DataWords [u16; 32] inline buffer,
         # so both implementations carry the same payload for an oversized record.
-        from mie_decoder.models import MAX_DATA_WORDS
+        from aero1553.models import MAX_DATA_WORDS
 
         msg = MieMessage(
             timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),

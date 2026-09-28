@@ -1,12 +1,12 @@
-# MIE-Decoder
+# Aero1553
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mie-decoder&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mie-decoder)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=aero1553&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=aero1553)
 
 Decoder for DDC MIL-STD-1553 MIE binary recording files.
 
-MIE-Decoder reads proprietary binary files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI recording cards and outputs decoded messages in CSV format compatible with DDC's own recording software output.
+Aero1553 reads proprietary binary files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI recording cards and outputs decoded messages in CSV format compatible with DDC's own recording software output.
 
-MIE-Decoder is maintained in three implementations:
+Aero1553 is maintained in three implementations:
 
 - **Rust** — streaming CSV writer (constant memory), hand-rolled CLI, single
   native release binary. See [`rust/README.md`](rust/README.md).
@@ -31,8 +31,8 @@ Build, install, and library-usage instructions live with each implementation:
 
 - **Rust** — [`rust/README.md`](rust/README.md): native release binary, crate /
   library API, `cargo` workflow.
-- **Python** — [`python/README.md`](python/README.md): `mie-decoder` CLI plus the
-  importable `mie_decoder` package, Poetry workflow.
+- **Python** — [`python/README.md`](python/README.md): `aero1553` CLI plus the
+  importable `aero1553` package, Poetry workflow.
 - **C++** — [`cpp/README.md`](cpp/README.md): `make` on Linux (authoritative),
   CMake/MSVC on Windows, and the GCC 4.8.5 fidelity tier.
 
@@ -43,26 +43,26 @@ shared by both implementations.
 
 ```bash
 # Decode to CSV
-mie-decoder decode recording.mie -o decoded.csv
+aero1553 decode recording.mie -o decoded.csv
 
 # Count messages (no CSV output)
-mie-decoder count recording.mie
+aero1553 count recording.mie
 
 # Hex dump with record annotations
-mie-decoder dump recording.mie --records 10
+aero1553 dump recording.mie --records 10
 
 # Decode with config file
-mie-decoder --config config/default.toml decode recording.mie -o decoded.csv
+aero1553 --config config/default.toml decode recording.mie -o decoded.csv
 ```
 
 ## CLI Reference
 
-`mie-decoder` has three subcommands — `decode` (binary → CSV), `count`, and
+`aero1553` has three subcommands — `decode` (binary → CSV), `count`, and
 `dump` — with an identical flag surface in the Rust and Python builds. The
 **complete per-flag reference** (every option, with its default, value range, and
 config-key equivalent) lives in
 **[`docs/CLI-REFERENCE.md`](docs/CLI-REFERENCE.md)**. Each CLI's own
-`mie-decoder <subcommand> --help` lists the same flags, but they are not one
+`aero1553 <subcommand> --help` lists the same flags, but they are not one
 generated source: Python's help is produced by `argparse` from its argument
 definitions, while Rust's is a hand-maintained help string. The
 `cli-surface-parity` check in `tests/conformance/run.py` fails CI if the two ever
@@ -78,27 +78,27 @@ are in the [User Guide](docs/USER-GUIDE.md) and [Examples](docs/EXAMPLES.md).
 
 ```bash
 # Decode to CSV
-mie-decoder decode recording.mie -o decoded.csv
+aero1553 decode recording.mie -o decoded.csv
 
 # Drop spurious + broadcast traffic
-mie-decoder decode rec.mie -o clean.csv \
+aero1553 decode rec.mie -o clean.csv \
   --exclude-types SPURIOUS_DATA,BROADCAST_BC_TO_RT
 
 # Only Bus A, only RT 15 (positive filters)
-mie-decoder decode rec.mie -o rt15.csv --include-buses A --include-rts 15
+aero1553 decode rec.mie -o rt15.csv --include-buses A --include-rts 15
 
 # Split errored + spurious rows out (the default keeps them inline)
-mie-decoder decode rec.mie -o split.csv --separate-errors   # -> split.csv + split_errors.csv
+aero1553 decode rec.mie -o split.csv --separate-errors      # -> split.csv + split_errors.csv
 
 # Multi-file, time-sorted merge; de-dup overlapping recorders
-mie-decoder decode a.mie b.mie -o merged.csv --collapse-duplicates
+aero1553 decode a.mie b.mie -o merged.csv --collapse-duplicates
 
 # Count records; annotated hex dump
-mie-decoder count recording.mie
-mie-decoder dump recording.mie --records 10
+aero1553 count recording.mie
+aero1553 dump recording.mie --records 10
 ```
 
-Library usage (the Rust crate API and the Python `mie_decoder` package) is
+Library usage (the Rust crate API and the Python `aero1553` package) is
 documented in each implementation's README — [`rust/README.md`](rust/README.md)
 and [`python/README.md`](python/README.md).
 
@@ -113,7 +113,7 @@ When the DDC card detects an error mid-transaction (Manchester error, parity err
 > how the DDC vendor tool writes its output, so a default decode lines up with
 > vendor output row-for-row (see
 > [`docs/VENDOR-CSV-DIFFS.md`](docs/VENDOR-CSV-DIFFS.md)). The `ERROR` /
-> `ERROR_CODE` columns themselves are a MIE-Decoder addition — the vendor tool
+> `ERROR_CODE` columns themselves are an Aero1553 addition — the vendor tool
 > does not report bus errors as CSV fields — which is why they sit at the end,
 > after the 44-column vendor layout. Pass **`--separate-errors`** if you want the
 > errored and SPURIOUS records pulled out into a sibling `<output>_errors.csv` so
@@ -141,7 +141,7 @@ When the DDC card detects an error mid-transaction (Manchester error, parity err
 
 ## Sync Recovery
 
-MIE-Decoder automatically handles:
+Aero1553 automatically handles:
 
 - **File headers**: Scans from offset 0 to find the first valid record, skipping proprietary headers.
 - **Mid-file corruption**: If a record fails validation, scans forward in 2-byte steps to find the next valid record.
@@ -152,7 +152,7 @@ MIE-Decoder automatically handles:
 
 ## Configuration
 
-`mie-decoder` reads settings from an optional TOML file passed with
+`aero1553` reads settings from an optional TOML file passed with
 `--config PATH`. Precedence is **CLI flags > config file > built-in defaults**.
 
 The schema is not reproduced here (where it drifts). See the two authoritative
@@ -208,7 +208,7 @@ docs/
 ├── VENDOR-CSV-DIFFS.md Alignment statement vs DDC vendor CSV (column-by-column)
 ├── TRACE-MATRIX.md     Auto-generated trace matrix (L1 -> L2 -> L3 -> tests)
 ├── ROADMAP.md          Versioned roadmap
-└── diagrams/           PlantUML sources and rendered SVGs
+└── diagrams/           Hand-written SVG diagrams (the source of truth)
 
 tests/
 └── conformance/     Cross-implementation suite (Rust ↔ Python oracle)
@@ -228,7 +228,7 @@ Per-implementation development commands (build, test, lint, coverage) live in
 [`docs/MAINTAINER-GUIDE.md`](docs/MAINTAINER-GUIDE.md) cover the full workflow.
 
 Shared Rust/Python conformance suite (run with an interpreter that has
-`mie_decoder` installed, and build the Rust binary first):
+`aero1553` installed, and build the Rust binary first):
 
 ```bash
 (cd rust && cargo build)

@@ -4,10 +4,10 @@ Why this is its own module
 --------------------------
 
 ``DELTA`` used to be computed in three places with the key spelled three ways.
-:mod:`mie_decoder.reader` called ``_compute_delta`` twice: once with
+:mod:`aero1553.reader` called ``_compute_delta`` twice: once with
 ``msg.delta_key`` and once with a hand-built ``f"{cmd.rt}:{cmd.subaddress}{c}"``,
 because on the errored-record path the message does not exist yet.
-:mod:`mie_decoder.merge` kept its own tracker, also keyed by ``msg.delta_key``.
+:mod:`aero1553.merge` kept its own tracker, also keyed by ``msg.delta_key``.
 Three spellings of one concept, and nothing asserted that the hand-built string
 matched the property it was standing in for — a mismatch would have made
 ``DELTA`` mean one thing for clean records and another for errored ones, in the
@@ -22,7 +22,7 @@ This module does not log
 
 :meth:`DeltaTracker.observe` returns a :class:`DeltaOutcome` describing what
 happened and the caller decides whether to say anything — the same rule
-:mod:`mie_decoder.sync` follows, for the same reason. A tracker cannot know
+:mod:`aero1553.sync` follows, for the same reason. A tracker cannot know
 whether a backward step is worth a WARN (single-file decode: yes, once per key)
 or is already reported at file granularity (a merge naming its unsorted inputs,
 L2-MRG-006).
@@ -50,7 +50,7 @@ def delta_key(rt: int, subaddress: int, transmit: bool) -> int:
     three fields are 5, 5 and 1 bits on the wire, so the packing is lossless
     with room to spare.
 
-    :attr:`~mie_decoder.models.MieMessage.delta_key` is the display spelling of
+    :attr:`~aero1553.models.MieMessage.delta_key` is the display spelling of
     this same tuple. ``test_delta.py`` asserts the two partition the
     ``(rt, subaddress, direction)`` space identically — the check that could not
     exist while the representations lived in different modules.

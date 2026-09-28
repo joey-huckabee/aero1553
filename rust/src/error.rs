@@ -1,4 +1,4 @@
-//! Error types for the MIE-Decoder library.
+//! Error types for the Aero1553 library.
 //!
 //! All fallible APIs return `Result<T, MieError>`. The single enum replaces
 //! the Python class hierarchy; the `kind()` method returns a `MieErrorKind`
@@ -499,7 +499,7 @@ mod tests {
         const FILE: &[K] = &[K::FileNotFound, K::FileEmpty, K::FileIo];
         // Neither predicate, by design. Python groups the first four under
         // MieFileError (whole-file rejections and destination guards) and
-        // leaves the last two directly under MieDecoderError; Rust's narrower
+        // leaves the last two directly under Aero1553Error; Rust's narrower
         // is_file_error() covers I/O only, so these answer false to both.
         const NEITHER: &[K] = &[
             K::NoValidRecords,

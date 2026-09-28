@@ -166,14 +166,14 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--rust-bin",
         type=Path,
-        help="Use this Rust binary instead of rust/target/debug/mie-decoder.",
+        help="Use this Rust binary instead of rust/target/debug/aero1553.",
     )
     parser.add_argument(
         "--python-bin",
         type=Path,
         help="Use this Python interpreter for the Python CLI instead of the "
         "one running this script (sys.executable). Needed when the runner is "
-        "not itself launched from an interpreter that has mie_decoder.",
+        "not itself launched from an interpreter that has aero1553.",
     )
     parser.add_argument(
         "--cpp-bin",
@@ -384,7 +384,7 @@ def prepare_rust_bin(args: argparse.Namespace) -> None:
         args.rust_bin = args.rust_bin.resolve()
     else:
         suffix = ".exe" if sys.platform == "win32" else ""
-        args.rust_bin = ROOT / "rust" / "target" / "debug" / f"mie-decoder{suffix}"
+        args.rust_bin = ROOT / "rust" / "target" / "debug" / f"aero1553{suffix}"
 
     if args.rust_bin.exists():
         return
@@ -401,7 +401,7 @@ def prepare_rust_bin(args: argparse.Namespace) -> None:
     # invisible stall. It is raised to a figure that a real build cannot reach
     # but a hang comfortably will.
     result = subprocess.run(
-        ["cargo", "build", "--quiet", "--locked", "--bin", "mie-decoder"],
+        ["cargo", "build", "--quiet", "--locked", "--bin", "aero1553"],
         cwd=ROOT / "rust",
         check=False,
         timeout=600,
@@ -411,21 +411,21 @@ def prepare_rust_bin(args: argparse.Namespace) -> None:
 
 
 def prepare_python_bin(args: argparse.Namespace) -> None:
-    """Resolve the Python interpreter that will run the Python mie-decoder CLI.
+    """Resolve the Python interpreter that will run the Python aero1553 CLI.
 
     Default to :data:`sys.executable`. When the runner is invoked under
     ``poetry -C python run python ...`` (as it is in CI), the active
-    interpreter already has ``mie_decoder`` installed, so this avoids a
+    interpreter already has ``aero1553`` installed, so this avoids a
     fragile ``poetry env info --executable`` subprocess that can resolve
     to a different interpreter than the one Poetry installed packages
-    into. The interpreter is sanity-checked by importing ``mie_decoder``
+    into. The interpreter is sanity-checked by importing ``aero1553``
     so the runner fails fast with a clear error rather than emitting a
-    confusing ``No module named mie_decoder`` for every case.
+    confusing ``No module named aero1553`` for every case.
     """
     # absolute(), NOT resolve(): a virtualenv's bin/python is a SYMLINK to the
     # base interpreter, and resolving it throws the venv away. `python3 -m venv
     # /tmp/v && /tmp/v/bin/pip install -e ./python` then failed with
-    # "mie_decoder is not importable from /usr/bin/python3.10" -- naming an
+    # "aero1553 is not importable from /usr/bin/python3.10" -- naming an
     # interpreter the caller never asked for, which reads as the package being
     # uninstalled rather than the path being rewritten. CI never hit it because
     # Poetry's Windows venv python is a real file and CI's Linux job installs
@@ -439,7 +439,7 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
         raise RuntimeError(f"Python interpreter was not found: {args.python_bin}")
 
     probe = subprocess.run(
-        [str(args.python_bin), "-c", "import mie_decoder"],
+        [str(args.python_bin), "-c", "import aero1553"],
         capture_output=True,
         text=True,
         check=False,
@@ -447,7 +447,7 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
     )
     if probe.returncode != 0:
         raise RuntimeError(
-            f"mie_decoder is not importable from {args.python_bin}. "
+            f"aero1553 is not importable from {args.python_bin}. "
             "Either install the package into this interpreter (e.g. "
             "`poetry -C python sync`) or pass --python-bin pointing at "
             "an interpreter that has it.\n"
@@ -493,7 +493,7 @@ def prepare_cpp_bin(args: argparse.Namespace) -> None:
 
     if candidate is None or not candidate.exists():
         suffix = ".exe" if sys.platform == "win32" else ""
-        found = sorted(cpp_dir.glob(f"build*/**/mie-decoder{suffix}"))
+        found = sorted(cpp_dir.glob(f"build*/**/aero1553{suffix}"))
         candidate = found[-1].resolve() if found else candidate
 
     if candidate is None or not candidate.exists():
@@ -571,7 +571,7 @@ IMPLS: dict[str, ImplSpec] = {
         # --config before the subcommand, a count subcommand, and an identical
         # decode flag set -- so this differs only in the entrypoint prefix. The
         # per-case `args` are passed verbatim to every implementation.
-        prefix=lambda args: [str(args.python_bin), "-m", "mie_decoder"],
+        prefix=lambda args: [str(args.python_bin), "-m", "aero1553"],
     ),
     "cpp": ImplSpec(
         name="cpp",
@@ -709,7 +709,7 @@ def main() -> int:
         )
 
     # Only prepare the toolchains we will actually run -- this is what lets a
-    # single-implementation host (no cargo, no installed mie_decoder, no C++
+    # single-implementation host (no cargo, no installed aero1553, no C++
     # build) still validate its side against the committed oracles.
     for impl in impls:
         impl.prepare(args)

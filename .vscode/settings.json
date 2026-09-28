@@ -1,5 +1,5 @@
 {
-  // Workspace settings for the MIE-Decoder Rust + Python repo. These align the
+  // Workspace settings for the Aero1553 Rust + Python repo. These align the
   // editor with the CI gates (rustfmt / clippy, ruff format / ruff check,
   // pytest) so what you see locally matches what CI enforces.
 

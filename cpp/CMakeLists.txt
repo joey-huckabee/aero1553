@@ -1,4 +1,4 @@
-# MIE-Decoder -- C++ build for MSVC / Visual Studio (ADR-0002)
+# Aero1553 -- C++ build for MSVC / Visual Studio (ADR-0002)
 #
 # AUTHORITATIVE ON WINDOWS. cpp/Makefile is authoritative on Linux. Two build
 # descriptions rather than one is not a preference: the gcc:4.8 fidelity
@@ -24,7 +24,7 @@
 # supported Visual Studio is far newer.
 cmake_minimum_required(VERSION 3.15)
 
-project(mie_decoder
+project(aero1553
     VERSION 3.0.0
     DESCRIPTION "DDC MIL-STD-1553 MIE binary decoder"
     LANGUAGES CXX
@@ -77,9 +77,9 @@ mark_as_advanced(MIE_RESOLVED_SOURCES)
 # compiling every source into each target -- doubles build time and lets the two
 # drift in flags, which is how a test can pass against code the shipped binary
 # does not contain.
-add_library(mie_decoder_lib STATIC ${MIE_LIB_SOURCES})
+add_library(aero1553_lib STATIC ${MIE_LIB_SOURCES})
 
-target_include_directories(mie_decoder_lib PUBLIC
+target_include_directories(aero1553_lib PUBLIC
     $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
     $<INSTALL_INTERFACE:include>
 )
@@ -95,20 +95,20 @@ target_include_directories(mie_decoder_lib PUBLIC
 # both and GCC 4.8 rejects both, so they produce "green on Windows, red on
 # Linux" -- the failure mode this whole arrangement exists to catch early.
 if(MSVC)
-    target_compile_features(mie_decoder_lib PUBLIC cxx_std_14)
+    target_compile_features(aero1553_lib PUBLIC cxx_std_14)
 else()
-    target_compile_features(mie_decoder_lib PUBLIC cxx_std_11)
+    target_compile_features(aero1553_lib PUBLIC cxx_std_11)
 endif()
 
 # Warnings-as-errors on both compilers. MSVC's /permissive- makes it STRICTER
 # and closer to the standard, which pulls it toward GCC rather than away -- the
 # opposite of what the flag name suggests to most readers.
-target_compile_options(mie_decoder_lib PRIVATE
+target_compile_options(aero1553_lib PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Werror>
     $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive-;/utf-8;/Zc:__cplusplus>
 )
 
-target_compile_definitions(mie_decoder_lib PRIVATE
+target_compile_definitions(aero1553_lib PRIVATE
     # 64-bit off_t. MIE recordings routinely exceed 2 GiB, so a silently
     # 32-bit file offset is a live failure rather than a hypothetical one.
     $<$<NOT:$<BOOL:${WIN32}>>:_FILE_OFFSET_BITS=64>
@@ -122,20 +122,20 @@ target_compile_definitions(mie_decoder_lib PRIVATE
 )
 
 # --- CLI --------------------------------------------------------------------
-add_executable(mie-decoder src/main.cpp)
+add_executable(aero1553 src/main.cpp)
 if(WIN32)
     # shell32 for CommandLineToArgvW, used to recover the real UTF-16 command
     # line. A platform library, not a third-party one -- L3-CPP-002's
     # no-runtime-dependency rule is about the latter.
-    target_link_libraries(mie_decoder_lib PUBLIC shell32)
+    target_link_libraries(aero1553_lib PUBLIC shell32)
 endif()
 
-target_link_libraries(mie-decoder PRIVATE mie_decoder_lib)
-target_compile_options(mie-decoder PRIVATE
+target_link_libraries(aero1553 PRIVATE aero1553_lib)
+target_compile_options(aero1553 PRIVATE
     $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Werror>
     $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive-;/utf-8;/Zc:__cplusplus>
 )
-target_compile_definitions(mie-decoder PRIVATE
+target_compile_definitions(aero1553 PRIVATE
     $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
 )
 
@@ -152,30 +152,30 @@ if(MIE_BUILD_TESTS)
     # require a manual reconfigure.
     file(GLOB MIE_TEST_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/tests/*.cpp")
 
-    add_executable(mie_decoder_tests ${MIE_TEST_SOURCES})
-    target_link_libraries(mie_decoder_tests PRIVATE mie_decoder_lib)
+    add_executable(aero1553_tests ${MIE_TEST_SOURCES})
+    target_link_libraries(aero1553_tests PRIVATE aero1553_lib)
 
     # SYSTEM, so the vendored Catch2 header does not trip /WX or -Werror. This
     # is the CMake counterpart of the Makefile's `-isystem third_party`. Without
     # it the gates would be unusable: a 650 kB third-party header cannot be held
     # to the warning level project code is held to.
-    target_include_directories(mie_decoder_tests SYSTEM PRIVATE
+    target_include_directories(aero1553_tests SYSTEM PRIVATE
         "${CMAKE_CURRENT_SOURCE_DIR}/third_party"
     )
 
-    target_compile_options(mie_decoder_tests PRIVATE
+    target_compile_options(aero1553_tests PRIVATE
         $<$<CXX_COMPILER_ID:GNU,Clang,AppleClang>:-Wall;-Wextra;-Werror>
         $<$<CXX_COMPILER_ID:MSVC>:/W4;/WX;/permissive-;/utf-8;/Zc:__cplusplus;/bigobj>
     )
-    target_compile_definitions(mie_decoder_tests PRIVATE
+    target_compile_definitions(aero1553_tests PRIVATE
         $<$<CXX_COMPILER_ID:MSVC>:_CRT_SECURE_NO_WARNINGS>
     )
 
     # --use-colour no keeps the output readable in CI logs and in the VS Test
     # Explorer pane, both of which render ANSI escapes as literal noise.
-    add_test(NAME mie_decoder_tests COMMAND mie_decoder_tests --use-colour no)
+    add_test(NAME aero1553_tests COMMAND aero1553_tests --use-colour no)
 endif()
 
 # --- Install ----------------------------------------------------------------
 include(GNUInstallDirs)
-install(TARGETS mie-decoder RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+install(TARGETS aero1553 RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})

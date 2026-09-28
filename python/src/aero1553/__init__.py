@@ -1,4 +1,4 @@
-"""MIE-Decoder: DDC MIL-STD-1553 MIE binary recording file decoder.
+"""Aero1553: DDC MIL-STD-1553 MIE binary recording file decoder.
 
 This package provides a decoder for proprietary binary files produced by
 DDC (Data Device Corporation) MIL-STD-1553 PCI recording cards. These
@@ -15,17 +15,17 @@ the Command Word at both candidate offsets and scoring the results.
 
 Typical usage::
 
-    from mie_decoder import MieFileReader
+    from aero1553 import MieFileReader
 
     reader = MieFileReader("recording.mie")
     for message in reader:
         print(message.timestamp, message.rt, message.subaddress)
 
 The decoder entry point ``MieFileReader`` and the ``MieMessage`` records it
-yields are importable directly from the package root (``mie_decoder``).
+yields are importable directly from the package root (``aero1553``).
 
 The release history lives in ``CHANGELOG.md``; the installed version is
-available as ``mie_decoder.__version__``.
+available as ``aero1553.__version__``.
 """
 
 from importlib.metadata import PackageNotFoundError
@@ -35,13 +35,13 @@ from importlib.metadata import version as _pkg_version
 # ``MieFileReader``, a typed callable: ``MieFileReader(path)`` constructs a
 # reader that decodes the file lazily into ``MieMessage`` records — and that
 # record type are re-exported here so library consumers can write
-# ``from mie_decoder import MieFileReader`` without reaching into submodules.
+# ``from aero1553 import MieFileReader`` without reaching into submodules.
 # (The submodule paths remain importable and unchanged.)
-from mie_decoder.models import MieMessage
-from mie_decoder.reader import MieFileReader
+from aero1553.models import MieMessage
+from aero1553.reader import MieFileReader
 
 try:
-    __version__ = _pkg_version("mie-decoder")
+    __version__ = _pkg_version("aero1553")
 except PackageNotFoundError:
     # Source-tree fallback: the package isn't installed (e.g. imported
     # directly from a clone before `pip install -e ./python` or

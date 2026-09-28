@@ -3,7 +3,7 @@
 //! Surface:
 //!
 //! ```text
-//! mie-decoder [--log-level L] [--config PATH] <command> [opts...]
+//! aero1553 [--log-level L] [--config PATH] <command> [opts...]
 //! ```
 //!
 //! Commands: `decode`, `count`, `dump`.
@@ -25,10 +25,10 @@ use crate::{log_error, log_info, log_warn};
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const HELP: &str = "\
-mie-decoder -- DDC MIL-STD-1553 MIE binary decoder
+aero1553 -- DDC MIL-STD-1553 MIE binary decoder
 
 USAGE:
-  mie-decoder [--log-level L] [--config PATH] <command> [options]
+  aero1553 [--log-level L] [--config PATH] <command> [options]
 
 COMMANDS:
   decode <INPUT>... Decode MIE file(s) to CSV (2+ inputs -> time-sorted merge)
@@ -149,12 +149,12 @@ DUMP OPTIONS:
   --records N                           Max records, record mode (decimal or 0xHEX)
 
 EXAMPLES:
-  mie-decoder decode rec.mie -o out.csv
-  mie-decoder decode rec.mie --separate-errors --include-rts 15
-  mie-decoder decode a.mie b.mie c.mie -o merged.csv   # time-sorted merge
-  mie-decoder decode --glob 'recordings/*.mie' -o merged.csv
-  mie-decoder count rec.mie
-  mie-decoder dump rec.mie --records 10
+  aero1553 decode rec.mie -o out.csv
+  aero1553 decode rec.mie --separate-errors --include-rts 15
+  aero1553 decode a.mie b.mie c.mie -o merged.csv   # time-sorted merge
+  aero1553 decode --glob 'recordings/*.mie' -o merged.csv
+  aero1553 count rec.mie
+  aero1553 dump rec.mie --records 10
 ";
 
 #[derive(Debug)]
@@ -343,7 +343,7 @@ pub fn run(argv: Vec<String>) -> ExitCode {
         log::set_level(Level::Warn);
     }
 
-    log_info!("mie-decoder v{VERSION}");
+    log_info!("aero1553 v{VERSION}");
 
     // Decode returns a Result<ExitCode, CliError> so it can choose exit
     // codes 2 (no-records) and 3 (partial-unrecoverable) directly. The
@@ -415,7 +415,7 @@ fn parse_global_flags(
             // returned below as the subcommand token, reporting itself as an
             // unknown command.
             s if a.bare() && is_version_flag(s) => {
-                println!("mie-decoder {VERSION}");
+                println!("aero1553 {VERSION}");
                 return Err(ExitCode::SUCCESS);
             }
             // POSIX end-of-options. Scoped to THIS parser: the subcommand

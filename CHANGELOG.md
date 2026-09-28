@@ -1,6 +1,8 @@
 # Changelog
 
-All notable changes to MIE-Decoder are documented in this file.
+All notable changes to Aero1553 (named MIE-Decoder through v3.0.0) are
+documented in this file. Entries before the rename keep the names that
+were current when they shipped.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -16,6 +18,46 @@ shared behavior) holds at any compatible version pair. See
 `docs/MAINTAINER-GUIDE.md` §11 for the full release workflow.
 
 ## [Unreleased]
+
+### Changed — BREAKING
+
+- **The project is renamed from MIE-Decoder to Aero1553**, aligning it with
+  the companion Aero1394 project. The GitHub repository is now
+  `joey-huckabee/aero1553`; GitHub redirects the old URL.
+
+  | Surface | Was | Now |
+  |---|---|---|
+  | CLI command (Rust, Python, C++) | `mie-decoder` | `aero1553` |
+  | Rust crate / import path | `mie-decoder` / `use mie_decoder::…` | `aero1553` / `use aero1553::…` |
+  | Python distribution / import | `mie-decoder` / `import mie_decoder` | `aero1553` / `import aero1553` |
+  | Python base exception | `MieDecoderError` | `Aero1553Error` |
+  | C++ CMake project / targets | `mie_decoder`, `mie_decoder_lib`, `mie_decoder_tests` | `aero1553`, `aero1553_lib`, `aero1553_tests` |
+  | Atomic-write temp file | `<dest>.mie-decoder.tmp.…` | `<dest>.aero1553.tmp.…` |
+  | Log module tags | `[mie_decoder::reader]` | `[aero1553::reader]` |
+  | `--version` output | `mie-decoder 3.0.0` | `aero1553 <version>` |
+
+  Update scripts that invoke `mie-decoder`, code that imports `mie_decoder`
+  or catches `MieDecoderError`, and anything that parses log tags or looks
+  for leftover `.mie-decoder.tmp.*` files.
+
+  **Unchanged**: names that describe the MIE *file format* rather than the
+  product — `MieFileReader`, `MieMessage`, `MieError`, the `Mie*Error`
+  subclasses, the C++ `mie::` namespace and `include/mie/` headers, and the
+  `MIE_FUZZ_*` environment variables. CSV output is byte-identical.
+
+### Changed
+
+- The Python CLI's startup log line now reads `aero1553 v<version>`, the
+  same as the Rust CLI's. It previously said `MIE-Decoder v<version>` while
+  Rust said `mie-decoder v<version>`.
+- **The architecture diagrams are hand-written SVG, and PlantUML is gone.**
+  `docs/diagrams/{class,component,dataflow}.svg` are now their own source;
+  the `.puml` files and the CI `diagrams` job are removed. The redraw also
+  corrects content that had gone stale: all three implementations are shown
+  (C++ was missing), the temp file is `<dest>.aero1553.tmp.<pid>.…`, several
+  output-safety requirement IDs were wrong, the class diagram's enums and
+  fields now match the code, and the data flow gains the empty-recording and
+  `0x0000` terminator paths and drops an fsync step no implementation has.
 
 ## [3.0.0] — 2026-08-28
 

@@ -165,9 +165,9 @@ def stream_logs() -> bool:
 
 @contextlib.contextmanager
 def fuzz_logging() -> Iterator[None]:
-    """Silence the ``mie_decoder`` logger unless ``MIE_FUZZ_STREAM_LOGS`` asks.
+    """Silence the ``aero1553`` logger unless ``MIE_FUZZ_STREAM_LOGS`` asks.
 
-    The decoder logs through the ``mie_decoder`` logger; with no handler
+    The decoder logs through the ``aero1553`` logger; with no handler
     configured (the fuzz tests call the library directly, not the CLI) pytest's
     log capture swallows the records -- but the package still *formats* every
     one of them. Setting the level to ``OFF`` skips the formatting entirely,
@@ -182,9 +182,9 @@ def fuzz_logging() -> Iterator[None]:
     Yields:
         None. The block runs with the logger configured.
     """
-    from mie_decoder.logger import configure_logging
+    from aero1553.logger import configure_logging
 
-    mie_log = logging.getLogger("mie_decoder")
+    mie_log = logging.getLogger("aero1553")
     saved_handlers = mie_log.handlers[:]
     saved_level = mie_log.level
     saved_propagate = mie_log.propagate

@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import pytest
 
-from mie_decoder.delta import DeltaKind, DeltaTracker, delta_key
-from mie_decoder.models import (
+from aero1553.delta import DeltaKind, DeltaTracker, delta_key
+from aero1553.models import (
     Bus,
     CommandWord,
     Direction,

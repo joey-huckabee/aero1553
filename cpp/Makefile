@@ -1,4 +1,4 @@
-# MIE-Decoder -- C++ build (ADR-0002)
+# Aero1553 -- C++ build (ADR-0002)
 # Target toolchain: GCC 4.8.5 on SLES 12 SP5. Keep everything C++11-clean.
 #
 # This Makefile is AUTHORITATIVE on Linux. CMakeLists.txt exists alongside it
@@ -111,8 +111,8 @@ LIB_OBJ  := $(patsubst src/%.cpp,$(BUILD_DIR)/src/%.o,$(LIB_SRC))
 TEST_SRC := $(sort $(wildcard tests/*.cpp))
 TEST_OBJ := $(patsubst tests/%.cpp,$(BUILD_DIR)/tests/%.o,$(TEST_SRC))
 
-TEST_BIN    := $(BUILD_DIR)/mie_decoder_tests
-DECODER_BIN := $(BUILD_DIR)/mie-decoder
+TEST_BIN    := $(BUILD_DIR)/aero1553_tests
+DECODER_BIN := $(BUILD_DIR)/aero1553
 DECODER_OBJ := $(BUILD_DIR)/src/main.o
 
 # Header dependency tracking: without it, editing a header rebuilds nothing and
@@ -265,7 +265,7 @@ FORMAT_SRC := $(sort $(TIDY_SRC) src/platform_posix.cpp src/platform_win32.cpp) 
 #   src/main.cpp          -- the executable entry point and nothing else. Its
 #                            body is three calls; the CLI it delegates to is
 #                            tested in-process. The Rust gate ignores its own
-#                            `bin/mie-decoder.rs` for the same reason, so this
+#                            `bin/aero1553.rs` for the same reason, so this
 #                            keeps the two numbers comparable.
 #   src/platform_win32.cpp -- not compiled on this platform, so it produces no
 #                            .gcno and gcov never sees it. Named here anyway so

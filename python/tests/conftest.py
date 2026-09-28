@@ -1,4 +1,4 @@
-"""Shared test fixtures for MIE-Decoder test suite.
+"""Shared test fixtures for Aero1553 test suite.
 
 Provides binary test data derived from empirically validated DDC MIE
 recordings. All expected values have been cross-referenced against
@@ -13,7 +13,7 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.logger import LOGGER_NAME
+from aero1553.logger import LOGGER_NAME
 
 
 @pytest.fixture(autouse=True)
@@ -21,9 +21,9 @@ def _restore_package_logger_state() -> Iterator[None]:
     """Undo any ``configure_logging()`` a test performs.
 
     ``configure_logging`` sets the level and replaces the handlers on the
-    ``mie_decoder`` logger, and several tests call it directly. Because that
+    ``aero1553`` logger, and several tests call it directly. Because that
     state is process-global it leaked into every later test: ``caplog`` only
-    adjusts the *root* logger, so once a test had pinned ``mie_decoder`` to
+    adjusts the *root* logger, so once a test had pinned ``aero1553`` to
     WARNING (or OFF), a later ``caplog.at_level("INFO")`` captured nothing and
     the assertion failed — but only in some run orders, which is why the full
     suite stayed green while running two files together did not.

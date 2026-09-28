@@ -1,4 +1,4 @@
-# MIE-Decoder Architecture
+# Aero1553 Architecture
 
 **Document ID:** MIE-ARCH-001
 **Version:** 2.0.0
@@ -11,26 +11,26 @@ Companion docs: [`MIE-FORMAT.md`](MIE-FORMAT.md) (binary format reference), [`ER
 
 ## 1. Three implementations, one architecture
 
-MIE-Decoder ships as a Rust crate (`rust/src/`), a Python package (`python/src/mie_decoder/`) and a C++ implementation (`cpp/`). They are independent implementations that satisfy the same shared specification and produce byte-identical CSV output (verified by the cross-implementation conformance suite under `tests/conformance/`). The module structure is intentionally aligned so the architecture description fits all three.
+Aero1553 ships as a Rust crate (`rust/src/`), a Python package (`python/src/aero1553/`) and a C++ implementation (`cpp/`). They are independent implementations that satisfy the same shared specification and produce byte-identical CSV output (verified by the cross-implementation conformance suite under `tests/conformance/`). The module structure is intentionally aligned so the architecture description fits all three.
 
 > **The port is complete.** Every concern below is implemented in all three, and the C++ build passes the whole shared conformance manifest on Linux and Windows. The prose in the rest of this document is written against Rust and Python for readability; where it names a Rust module, the C++ and Python equivalents in the same row behave identically unless the text says otherwise.
 
 | Concern | Rust module | Python module | C++ module |
 |---------|-------------|---------------|------------|
-| CLI / argument parsing | `rust/src/cli.rs` | `python/src/mie_decoder/cli.py` | `cpp/src/cli.cpp` |
-| TOML configuration loader | `rust/src/config.rs` | `python/src/mie_decoder/config.py` | `cpp/src/config.cpp` + `cpp/src/toml.cpp` |
-| Message filtering | `rust/src/filter.rs` | `python/src/mie_decoder/filters.py` | `cpp/src/filter.cpp` |
-| Canonical row order (equal-timestamp ties) | `rust/src/order.rs` | `python/src/mie_decoder/order.py` | `cpp/src/order.cpp` |
-| Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/mie_decoder/reader.py` | `cpp/src/reader.cpp` |
-| Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/mie_decoder/merge.py` | `cpp/src/merge.cpp` |
-| Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/mie_decoder/delta.py` | `cpp/src/delta.cpp` |
-| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | `python/src/mie_decoder/decode.py` | `cpp/src/decode.cpp` |
-| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | `python/src/mie_decoder/sync.py` | `cpp/src/sync.cpp` |
-| Domain models + error code constants | `rust/src/models.rs` | `python/src/mie_decoder/models.py` | `cpp/src/models.cpp` |
-| Error types | `rust/src/error.rs` (single enum) | `python/src/mie_decoder/exceptions.py` (class hierarchy) | `cpp/src/error.cpp` (single enum + kind) |
-| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/mie_decoder/writer.py` (streaming, stdlib `csv`) | `cpp/src/writer.cpp` (streaming) |
-| Logging | `rust/src/log.rs` (hand-rolled) | `python/src/mie_decoder/logger.py` (stdlib `logging`) | `cpp/src/log.cpp` (hand-rolled) |
-| Hex dump | `rust/src/dump.rs` | `python/src/mie_decoder/dump.py` | `cpp/src/dump.cpp` |
+| CLI / argument parsing | `rust/src/cli.rs` | `python/src/aero1553/cli.py` | `cpp/src/cli.cpp` |
+| TOML configuration loader | `rust/src/config.rs` | `python/src/aero1553/config.py` | `cpp/src/config.cpp` + `cpp/src/toml.cpp` |
+| Message filtering | `rust/src/filter.rs` | `python/src/aero1553/filters.py` | `cpp/src/filter.cpp` |
+| Canonical row order (equal-timestamp ties) | `rust/src/order.rs` | `python/src/aero1553/order.py` | `cpp/src/order.cpp` |
+| Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` | `cpp/src/reader.cpp` |
+| Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/aero1553/merge.py` | `cpp/src/merge.cpp` |
+| Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/aero1553/delta.py` | `cpp/src/delta.cpp` |
+| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | `python/src/aero1553/decode.py` | `cpp/src/decode.cpp` |
+| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | `python/src/aero1553/sync.py` | `cpp/src/sync.cpp` |
+| Domain models + error code constants | `rust/src/models.rs` | `python/src/aero1553/models.py` | `cpp/src/models.cpp` |
+| Error types | `rust/src/error.rs` (single enum) | `python/src/aero1553/exceptions.py` (class hierarchy) | `cpp/src/error.cpp` (single enum + kind) |
+| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (streaming, stdlib `csv`) | `cpp/src/writer.cpp` (streaming) |
+| Logging | `rust/src/log.rs` (hand-rolled) | `python/src/aero1553/logger.py` (stdlib `logging`) | `cpp/src/log.cpp` (hand-rolled) |
+| Hex dump | `rust/src/dump.rs` | `python/src/aero1553/dump.py` | `cpp/src/dump.cpp` |
 
 The sync helpers (`sync.rs` / `sync.py` / `sync.cpp`) are **pure** in all three implementations — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
 
@@ -44,7 +44,7 @@ The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│                  rust/src/bin/mie-decoder.rs                      │
+│                  rust/src/bin/aero1553.rs                    │
 │                (delegates to cli::run(argv))                 │
 └──────────────────────────┬───────────────────────────────────┘
                            │
@@ -270,7 +270,7 @@ write_csv(messages, dest_path, opts)
   │       (an EARLY report only -- the guarantee is at the commit, below)
   │
   ├── L2-WRT-015: exclusively create a unique temp file
-  │       <dest>.mie-decoder.tmp.<pid>.<counter>.<nanos> on the SAME
+  │       <dest>.aero1553.tmp.<pid>.<counter>.<nanos> on the SAME
   │       filesystem as dest_path (so rename is atomic). Per L3-WRT-001.
   │
   ├── stream rows through BufWriter<File> wrapped around the temp
@@ -355,10 +355,10 @@ MieError {
 
 `MieError::kind()` returns a `MieErrorKind` discriminant for callers that need to branch on the failure mode without matching on the full enum. The `is_record_error()` predicate matches Python's `MieRecordError` exactly; `is_file_error()` is deliberately **narrower** than Python's `MieFileError` — see the mapping note below the Python tree.
 
-### Python — class hierarchy rooted at `MieDecoderError`
+### Python — class hierarchy rooted at `Aero1553Error`
 
 ```
-MieDecoderError                          (base, catches everything)
+Aero1553Error                            (base, catches everything)
 ├── MieFileError
 │   ├── MieFileNotFoundError
 │   ├── MieFileIoError                   (open/mmap failure; wraps OSError)
@@ -572,7 +572,7 @@ Removing either cap would silently reintroduce an unbounded allocation and must 
 ### Multi-file time-sorted merge (streaming k-way merge)
 
 > **Status: implemented in v2.1.0** (L1-MRG / L2-MRG), in both implementations
-> (`rust/src/merge.rs`, `python/src/mie_decoder/merge.py`). `decode` accepts more
+> (`rust/src/merge.rs`, `python/src/aero1553/merge.py`). `decode` accepts more
 > than one input via multiple positionals, `--manifest`, or `--glob` (mutually
 > exclusive, capped at `MAX_MERGE_FILES = 256`); a single input bypasses the
 > merge module and behaves exactly as before.

@@ -1,1 +1,1 @@
-"""Test suite for MIE-Decoder."""
+"""Test suite for Aero1553."""

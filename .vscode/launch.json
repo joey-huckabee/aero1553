@@ -1,13 +1,13 @@
 {
-  // Debug configurations for the MIE-Decoder Rust + Python implementations.
+  // Debug configurations for the Aero1553 Rust + Python implementations.
   //
   // Requires:
   //   - Rust configs: the "CodeLLDB" extension (vadimcn.vscode-lldb). Each one
-  //     builds the `mie-decoder` bin from rust/Cargo.toml first (no tasks.json
+  //     builds the `aero1553` bin from rust/Cargo.toml first (no tasks.json
   //     needed) and launches it under the debugger.
   //   - Python configs: the "Python" + "Python Debugger" extensions. They use
   //     the interpreter selected in VS Code — pick the Poetry venv at
-  //     `python/.venv` (Python: Select Interpreter) so `mie_decoder` is importable.
+  //     `python/.venv` (Python: Select Interpreter) so `aero1553` is importable.
   //
   // The `${input:*}` prompts below let you enter the recording / output paths at
   // launch; edit their defaults under "inputs" to skip retyping.
@@ -21,10 +21,10 @@
       "cargo": {
         "args": [
           "build",
-          "--bin=mie-decoder",
+          "--bin=aero1553",
           "--manifest-path=${workspaceFolder}/rust/Cargo.toml"
         ],
-        "filter": { "name": "mie-decoder", "kind": "bin" }
+        "filter": { "name": "aero1553", "kind": "bin" }
       },
       "args": ["decode", "${input:mieFile}", "-o", "${input:outCsv}"],
       "cwd": "${workspaceFolder}"
@@ -36,10 +36,10 @@
       "cargo": {
         "args": [
           "build",
-          "--bin=mie-decoder",
+          "--bin=aero1553",
           "--manifest-path=${workspaceFolder}/rust/Cargo.toml"
         ],
-        "filter": { "name": "mie-decoder", "kind": "bin" }
+        "filter": { "name": "aero1553", "kind": "bin" }
       },
       "args": ["count", "${input:mieFile}"],
       "cwd": "${workspaceFolder}"
@@ -51,10 +51,10 @@
       "cargo": {
         "args": [
           "build",
-          "--bin=mie-decoder",
+          "--bin=aero1553",
           "--manifest-path=${workspaceFolder}/rust/Cargo.toml"
         ],
-        "filter": { "name": "mie-decoder", "kind": "bin" }
+        "filter": { "name": "aero1553", "kind": "bin" }
       },
       "args": ["dump", "${input:mieFile}", "--records", "10"],
       "cwd": "${workspaceFolder}"
@@ -80,7 +80,7 @@
       "type": "debugpy",
       "request": "launch",
       "name": "Python: decode <file> -> CSV",
-      "module": "mie_decoder",
+      "module": "aero1553",
       "args": ["decode", "${input:mieFile}", "-o", "${input:outCsv}"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -90,7 +90,7 @@
       "type": "debugpy",
       "request": "launch",
       "name": "Python: count <file>",
-      "module": "mie_decoder",
+      "module": "aero1553",
       "args": ["count", "${input:mieFile}"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
@@ -100,7 +100,7 @@
       "type": "debugpy",
       "request": "launch",
       "name": "Python: dump <file>",
-      "module": "mie_decoder",
+      "module": "aero1553",
       "args": ["dump", "${input:mieFile}", "--records", "10"],
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",

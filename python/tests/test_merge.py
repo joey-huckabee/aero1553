@@ -11,19 +11,19 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.exceptions import (
-    MieDecoderError,
+from aero1553.exceptions import (
+    Aero1553Error,
     MieIncompatibleMergeInputsError,
     MieNonMonotonicInputError,
 )
-from mie_decoder.merge import (
+from aero1553.merge import (
     MAX_MERGE_FILES,
     expand_glob,
     glob_match,
     merge_readers,
     read_manifest,
 )
-from mie_decoder.models import (
+from aero1553.models import (
     Bus,
     DeltaScope,
     IrigTimestamp,
@@ -32,7 +32,7 @@ from mie_decoder.models import (
     TimestampFormat,
     TypeWord,
 )
-from mie_decoder.reader import MieFileReader
+from aero1553.reader import MieFileReader
 from tests.conftest import RECORD_RT15_SA11_RCV
 from tests.fuzz_support import FUZZ_SEED, GLOB_PROBES, fuzz_logging, glob_pattern
 from tests.fuzz_support import fill as fuzz_fill
@@ -145,7 +145,7 @@ def test_merge_warns_on_within_file_backward_step(
     fa.write_bytes(a)
     import logging
 
-    with caplog.at_level(logging.WARNING, logger="mie_decoder.merge"):
+    with caplog.at_level(logging.WARNING, logger="aero1553.merge"):
         msgs = list(merge_readers([MieFileReader(fa)]))
     assert len(msgs) == 3, "lenient mode keeps all records despite the WARN"
     backward_warns = [r for r in caplog.records if "not internally time-sorted" in r.getMessage()]
@@ -268,7 +268,7 @@ def test_cli_merge_incompatible_exits_6(tmp_path: Path) -> None:
     """A merge whose inputs can't share an absolute timeline (a freerun-leading
     file) exits 6 and writes no output. Mirrors the Rust
     `merge_incompatible_inputs_exit_6` CLI test."""
-    from mie_decoder.cli import EXIT_MERGE_INCOMPATIBLE, main
+    from aero1553.cli import EXIT_MERGE_INCOMPATIBLE, main
 
     good = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     freerun = rt15_record_at(0, 0, 0, 0, 0, freerun=True) + rt15_record_at(
@@ -288,7 +288,7 @@ def test_cli_merge_strict_flag_exits_1_on_backward_step(tmp_path: Path) -> None:
     """The `--strict` CLI flag (parity with the Rust CLI) makes a within-file
     backward timestamp step fail the merge with exit 1. Lenient (no flag) exits
     0. This exercises the flag end-to-end through the CLI."""
-    from mie_decoder.cli import EXIT_OK, EXIT_RUNTIME, main
+    from aero1553.cli import EXIT_OK, EXIT_RUNTIME, main
 
     nonmono = (
         rt15_record_at(192, 15, 54, 50, 200)
@@ -314,7 +314,7 @@ def test_cli_merge_allow_partial_priming_writes_dot_partial(tmp_path: Path) -> N
     record) under `--allow-partial` writes the combined output as
     ``<out>.partial``, leaves the plain ``<out>`` absent, and exits 0. Mirrors
     the Rust `merge_allow_partial_priming_writes_dot_partial`."""
-    from mie_decoder.cli import EXIT_OK, main
+    from aero1553.cli import EXIT_OK, main
 
     good = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     fg = tmp_path / "good.mie"
@@ -332,7 +332,7 @@ def test_cli_merge_allow_partial_open_failure_writes_dot_partial(tmp_path: Path)
     """A merge where one input fails at *open* (an empty 0-byte file) under
     `--allow-partial` likewise writes a ``.partial`` and exits 0 — the per-file
     failure is tolerated whether it occurs at open, priming, or mid-file."""
-    from mie_decoder.cli import EXIT_OK, main
+    from aero1553.cli import EXIT_OK, main
 
     good = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     fg = tmp_path / "good.mie"
@@ -357,7 +357,7 @@ def test_cli_merge_allow_partial_single_survivor_still_guards_output(
     both it and the writer's own single-input check (``WriteOptions`` receives
     ``input_path=None`` for any requested merge), risking an in-place overwrite of
     the input. Now gated on ``merge_requested``, mirroring the Rust CLI."""
-    from mie_decoder.cli import EXIT_RUNTIME, main
+    from aero1553.cli import EXIT_RUNTIME, main
 
     good = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     fg = tmp_path / "good.mie"
@@ -388,7 +388,7 @@ def test_cli_merge_rejects_input_a_derived_output_would_overwrite(
     derived from ``-o capture.mie``. Asserted on the artifact: exit
     ``EXIT_RUNTIME``, every input byte identical, and no output created.
     """
-    from mie_decoder.cli import EXIT_RUNTIME, main
+    from aero1553.cli import EXIT_RUNTIME, main
 
     rec = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     first = tmp_path / "recording.mie"
@@ -412,7 +412,7 @@ def test_cli_merge_rejects_input_a_derived_output_would_overwrite(
 
 @pytest.mark.requirement("L2-MRG-001")
 def test_cli_rejects_combined_input_methods(tmp_path: Path) -> None:
-    from mie_decoder.cli import EXIT_USAGE, main
+    from aero1553.cli import EXIT_USAGE, main
 
     out = tmp_path / "o.csv"
     # positional + --manifest, positional + --glob, --manifest + --glob
@@ -424,7 +424,7 @@ def test_cli_rejects_combined_input_methods(tmp_path: Path) -> None:
 
 @pytest.mark.requirement("L2-MRG-001")
 def test_cli_rejects_over_cap(tmp_path: Path) -> None:
-    from mie_decoder.cli import EXIT_USAGE, main
+    from aero1553.cli import EXIT_USAGE, main
 
     manifest = tmp_path / "many.txt"
     manifest.write_text(
@@ -439,7 +439,7 @@ def test_cli_rejects_over_cap(tmp_path: Path) -> None:
 
 @pytest.mark.requirement("L2-MRG-001")
 def test_cli_glob_no_match_is_usage_error(tmp_path: Path) -> None:
-    from mie_decoder.cli import EXIT_USAGE, main
+    from aero1553.cli import EXIT_USAGE, main
 
     out = tmp_path / "o.csv"
     assert main(["decode", "--glob", str(tmp_path / "*.nomatch"), "-o", str(out)]) == EXIT_USAGE
@@ -447,7 +447,7 @@ def test_cli_glob_no_match_is_usage_error(tmp_path: Path) -> None:
 
 @pytest.mark.requirement("L1-ROB-001")
 def test_cli_manifest_missing_is_runtime_error(tmp_path: Path) -> None:
-    from mie_decoder.cli import EXIT_RUNTIME, main
+    from aero1553.cli import EXIT_RUNTIME, main
 
     out = tmp_path / "o.csv"
     assert (
@@ -459,7 +459,7 @@ def test_cli_manifest_missing_is_runtime_error(tmp_path: Path) -> None:
 def test_cli_manifest_non_utf8_is_runtime_error(tmp_path: Path) -> None:
     # Matches the Rust reader's read_to_string failure → exit 1 (not a usage
     # error), keeping the two implementations' exit codes identical.
-    from mie_decoder.cli import EXIT_RUNTIME, main
+    from aero1553.cli import EXIT_RUNTIME, main
 
     manifest = tmp_path / "bin.txt"
     manifest.write_bytes(b"\xff\xfe\x00\x01\x80\x81 not utf-8")
@@ -473,7 +473,7 @@ def test_merge_allow_partial_writes_partial_on_file_failure(tmp_path: Path) -> N
     an unrecoverable sync loss truncates that file, completes from the rest,
     and the writer commits the combined output as ``.partial``. Mirrors the
     Rust ``merge_allow_partial_writes_partial_on_file_failure``."""
-    from mie_decoder.writer import WriteOptions, write_csv
+    from aero1553.writer import WriteOptions, write_csv
 
     a = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     b = (
@@ -506,7 +506,7 @@ def test_merge_allow_partial_writes_partial_on_priming_failure(tmp_path: Path) -
     deferred terminal so the writer commits a ``.partial``. Regression: pre-fix
     the priming failure was skipped silently and a plain ``.csv`` was written
     with ``outcome.partial is None``."""
-    from mie_decoder.writer import WriteOptions, write_csv
+    from aero1553.writer import WriteOptions, write_csv
 
     a = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     fa = tmp_path / "a.mie"
@@ -533,7 +533,7 @@ def test_merge_no_allow_partial_priming_failure_raises(tmp_path: Path) -> None:
     fa.write_bytes(a)
     fb.write_bytes(b"\xff" * 4096)
     readers = [MieFileReader(fa), MieFileReader(fb)]
-    with pytest.raises(MieDecoderError):
+    with pytest.raises(Aero1553Error):
         list(merge_readers(readers, allow_partial=False))
 
 
@@ -541,7 +541,7 @@ def test_merge_no_allow_partial_priming_failure_raises(tmp_path: Path) -> None:
 def test_merge_allow_partial_all_inputs_bad(tmp_path: Path) -> None:
     """L2-MRG-004: a merge where every input fails to prime still commits an
     (empty) ``.partial`` under allow_partial."""
-    from mie_decoder.writer import WriteOptions, write_csv
+    from aero1553.writer import WriteOptions, write_csv
 
     fa = tmp_path / "a.mie"
     fb = tmp_path / "b.mie"
@@ -562,7 +562,7 @@ def test_merge_allow_partial_bad_input_then_good(tmp_path: Path) -> None:
     """L2-MRG-004: a bad first input (index 0) plus a good second input still
     yields a ``.partial`` carrying the good rows — the priming terminal survives
     the drain."""
-    from mie_decoder.writer import WriteOptions, write_csv
+    from aero1553.writer import WriteOptions, write_csv
 
     good = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
     fa = tmp_path / "a.mie"
@@ -802,7 +802,7 @@ def test_dedup_window_retention_is_independent_of_arrival_order() -> None:
     Retention is now on absolute distance, so the 1000us survivors go the moment
     a 0us record arrives, and vice versa.
     """
-    from mie_decoder.merge import DEFAULT_MAX_COLLAPSE_SURVIVORS, _DedupWindow
+    from aero1553.merge import DEFAULT_MAX_COLLAPSE_SURVIVORS, _DedupWindow
 
     w = _DedupWindow(0, DEFAULT_MAX_COLLAPSE_SURVIVORS)
     for i in range(10_000):
@@ -826,11 +826,11 @@ def test_dedup_survivor_set_is_capped_when_the_window_cannot_bound_it(
     """
     import logging
 
-    from mie_decoder.merge import _DedupWindow
+    from aero1553.merge import _DedupWindow
 
     cap = 64
     w = _DedupWindow(2**63, cap)
-    with caplog.at_level(logging.WARNING, logger="mie_decoder.merge"):
+    with caplog.at_level(logging.WARNING, logger="aero1553.merge"):
         for i in range(10_000):
             w.is_duplicate(0, i % 2, _probe_message(i))
 

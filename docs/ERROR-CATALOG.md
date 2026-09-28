@@ -1,6 +1,6 @@
-# MIE-Decoder — Error Catalog
+# Aero1553 — Error Catalog
 
-Operator-facing reference for every error and diagnostic the MIE-Decoder CLI and libraries can surface. Use this when:
+Operator-facing reference for every error and diagnostic the Aero1553 CLI and libraries can surface. Use this when:
 
 - The CLI exited non-zero and you need to know what happened.
 - The CSV `ERROR_CODE` column contains an unfamiliar code.
@@ -20,7 +20,7 @@ The exit-code taxonomy is pinned by L1-EXIT-001 through L1-EXIT-010 and the L2-C
 | **0** | `complete` | (none — decode finished normally) | Every record decoded without sync loss. | None. |
 | **0** | `partial-recovered` | (none — decode finished after sync loss recovery) | At least one mid-file sync loss occurred and was recovered. INFO summary names the recovery count. | Investigate the recording source if recovery counts are high or trending up. |
 | **0** | `complete` (`--allow-partial`) | `UnrecoverableSyncLoss` on the unrecoverable-but-tolerated path | An unrecoverable sync loss occurred but `--allow-partial` preserved the rows decoded so far as `<dest>.partial`. | Inspect the `.partial` output, then triage the recording. |
-| **0** | `complete (broken-pipe on stdout)` | a broken pipe on stdout output | A downstream consumer closed early (e.g. `mie-decoder decode … \| head`). Not an error. | None. |
+| **0** | `complete (broken-pipe on stdout)` | a broken pipe on stdout output | A downstream consumer closed early (e.g. `aero1553 decode … \| head`). Not an error. | None. |
 | **0** | `empty-recording` | (none — a valid but empty recording) | The input is a genuine MIE recording that captured **zero records**: its stream opens directly on the `0x0000` end-of-records terminator (e.g. an unused MIL-STD-1553 channel — literally the two bytes `00 00`). A **header-only CSV** is written and a WARN names the empty capture (L1-EXIT-010 / L2-RDR-021). Distinct from exit `2`, which is a *wrong-file* rejection. | None — the recording simply captured nothing. |
 | **1** | runtime / decode error | `RecordTruncated`, `FirstRecordTruncated`, `PayloadError`, `InvalidTypeWord`, `UnknownTypeWord`, `UnknownErrorCode`, `WriterError` (non-broken-pipe), file I/O errors (incl. input not found) | Per-record validation failed in strict mode, the input couldn't be opened, or the output sink failed. | Read the stderr message; if it's a record error, lenient mode (`decode.strict = false`) usually skips and continues. |
 | **2** | `no-records` | `NoValidRecords`, `HomogeneousPayload`, `TimestampFormatMismatch` (strict mode only — ambiguous auto-detection per L2-DEC-016, or a forced `--input-time-format` the recording decisively contradicts per L2-DEC-013) | The input file isn't an MIE recording at all (wrong file type, single-byte-pad, ambiguous timestamp format), or the forced timestamp format is wrong for the file. No output file is created. **Not** the same as a valid empty recording (exit `0`, `empty-recording`): that case is recognized by the `0x0000` terminator at offset 0. | Verify the input path. If it's actually a recording, check that records begin within the first 64 KB and that the timestamp format is recognizable; drop `--input-time-format` to auto-detect, or pass the correct `--input-time-format irig\|standard`. |
@@ -37,13 +37,13 @@ The `count` and `dump` subcommands inherit `0`, `1`, `2`, `4`, and `5` — they 
 
 ## 2. Library exception / error hierarchy
 
-The Python package exposes a class hierarchy rooted at `MieDecoderError`; the Rust crate exposes a single `MieError` enum with a `kind()` discriminant. The two are kept in lockstep — every variant has a counterpart in the other.
+The Python package exposes a class hierarchy rooted at `Aero1553Error`; the Rust crate exposes a single `MieError` enum with a `kind()` discriminant. The two are kept in lockstep — every variant has a counterpart in the other.
 
-### Python (`mie_decoder.exceptions`)
+### Python (`aero1553.exceptions`)
 
 ```
 Exception
-└── MieDecoderError                  (catch-all base)
+└── Aero1553Error                    (catch-all base)
     ├── MieFileError                 (wrong file / file-system issue)
     │   ├── MieFileNotFoundError
     │   ├── MieFileEmptyError
@@ -67,7 +67,7 @@ Exception
     └── MieNonMonotonicInputError    (merge input not internally time-sorted)
 ```
 
-### Rust (`mie_decoder::MieError`)
+### Rust (`aero1553::MieError`)
 
 A single `enum MieError { … }` with the same set of variants. `MieError::kind()` returns a `MieErrorKind` discriminant. Of the two predicates, only `is_record_error()` mirrors the Python class split — it matches `MieRecordError` exactly. `is_file_error()` is deliberately **narrower** than `MieFileError`; see the note below the listing.
 
@@ -94,13 +94,13 @@ MieError ├── FileNotFound             ── MieErrorKind::FileNotFound   
 
 `MieRecordError` and `MieError::is_record_error()` cover the same seven failures exactly, `UnrecoverableSyncLoss` included. (Rust omitted it until v2.12.0 — see the CHANGELOG.)
 
-Python's `MieFileError` is **wider** than `MieError::is_file_error()`, which answers only "did input I/O fail" (`FileNotFound`, `FileEmpty`, `FileIo`). The whole-file rejections (`NoValidRecords`, `HomogeneousPayload`, `TimestampFormatMismatch`, `IncompatibleMergeInputs`) and the destination guards (`InputOutputCollision`, `ClobberRefused`) extend `MieFileError` in Python but answer `false` to **both** Rust predicates; match on `kind()` for those. `WriterError` and `NonMonotonicInput` sit directly under `MieDecoderError` and likewise answer `false` to both.
+Python's `MieFileError` is **wider** than `MieError::is_file_error()`, which answers only "did input I/O fail" (`FileNotFound`, `FileEmpty`, `FileIo`). The whole-file rejections (`NoValidRecords`, `HomogeneousPayload`, `TimestampFormatMismatch`, `IncompatibleMergeInputs`) and the destination guards (`InputOutputCollision`, `ClobberRefused`) extend `MieFileError` in Python but answer `false` to **both** Rust predicates; match on `kind()` for those. `WriterError` and `NonMonotonicInput` sit directly under `Aero1553Error` and likewise answer `false` to both.
 
 ---
 
 ## 3. File-level errors
 
-These fire before any record is decoded, or before the writer touches the destination. All but the last row are catchable in Python as `MieFileError`; `MieNonMonotonicInputError` is grouped here because it fires at the same stage, but it extends `MieDecoderError` **directly** and a `MieFileError` handler will not catch it. In Rust only the I/O subset (`FileNotFound`, `FileEmpty`, `FileIo`) answers `true` to `is_file_error()`; for the rest of this section, match on `MieError::kind()` (see §2).
+These fire before any record is decoded, or before the writer touches the destination. All but the last row are catchable in Python as `MieFileError`; `MieNonMonotonicInputError` is grouped here because it fires at the same stage, but it extends `Aero1553Error` **directly** and a `MieFileError` handler will not catch it. In Rust only the I/O subset (`FileNotFound`, `FileEmpty`, `FileIo`) answers `true` to `is_file_error()`; for the rest of this section, match on `MieError::kind()` (see §2).
 
 | Variant | When it fires | Exit | What to do |
 |---------|---------------|------|------------|
@@ -146,7 +146,7 @@ context line capped at 32 bytes; normal WARNING output remains compact.
 | Variant | When it fires | Exit |
 |---------|---------------|------|
 | `MieWriterError` / `WriterError` | An underlying `io::Error` from the CSV writer (disk full, permission denied, etc.). Preserves the source OS error message. | 1 |
-| `MieWriterError` / `WriterError` (broken-pipe variant) | The stdout consumer closed before the writer flushed. Classified by `MieError::is_broken_pipe()` in Rust and `mie_decoder.writer.is_broken_pipe()` in Python. Note the Python predicate is **not** just `isinstance(exc, BrokenPipeError)`: CPython raises that only on POSIX, while Windows reports a closed pipe as a bare `OSError` with `EINVAL`, so both forms are matched (the widened `errno` match is scoped to Windows so a real POSIX `EINVAL` write failure stays a failure). Applies to `decode` and `dump` alike. (L2-WRT-018) | **0** |
+| `MieWriterError` / `WriterError` (broken-pipe variant) | The stdout consumer closed before the writer flushed. Classified by `MieError::is_broken_pipe()` in Rust and `aero1553.writer.is_broken_pipe()` in Python. Note the Python predicate is **not** just `isinstance(exc, BrokenPipeError)`: CPython raises that only on POSIX, while Windows reports a closed pipe as a bare `OSError` with `EINVAL`, so both forms are matched (the widened `errno` match is scoped to Windows so a real POSIX `EINVAL` write failure stays a failure). Applies to `decode` and `dump` alike. (L2-WRT-018) | **0** |
 
 Disk-full and permission failures during the atomic temp-file write are surfaced via `WriterError` and the temp file is unlinked before the process exits (L2-WRT-015 / L2-WRT-016).
 

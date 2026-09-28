@@ -30,6 +30,6 @@
 # `scripts/repo-hygiene.sh` now fails the build when they disagree.
 
 [alias]
-cov      = 'llvm-cov --html --open --ignore-filename-regex=bin[\\/]mie-decoder\.rs$'
-cov-lcov = 'llvm-cov --lcov --output-path lcov.info --ignore-filename-regex=bin[\\/]mie-decoder\.rs$'
-cov-ci   = 'llvm-cov --fail-under-lines 90 --fail-under-regions 89 --ignore-filename-regex=bin[\\/]mie-decoder\.rs$'
+cov      = 'llvm-cov --html --open --ignore-filename-regex=bin[\\/]aero1553\.rs$'
+cov-lcov = 'llvm-cov --lcov --output-path lcov.info --ignore-filename-regex=bin[\\/]aero1553\.rs$'
+cov-ci   = 'llvm-cov --fail-under-lines 90 --fail-under-regions 89 --ignore-filename-regex=bin[\\/]aero1553\.rs$'

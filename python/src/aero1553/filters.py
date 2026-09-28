@@ -1,15 +1,15 @@
 """Message filtering for decoded MIE messages.
 
 Provides a generator wrapper that filters decoded messages based on
-:class:`~mie_decoder.config.FilterConfig` criteria. Filtering is
+:class:`~aero1553.config.FilterConfig` criteria. Filtering is
 applied after decoding and before CSV output, so filtered messages
 do not appear in the output and are not counted.
 
 Usage::
 
-    from mie_decoder.config import FilterConfig
-    from mie_decoder.filters import apply_filters
-    from mie_decoder.reader import MieFileReader
+    from aero1553.config import FilterConfig
+    from aero1553.filters import apply_filters
+    from aero1553.reader import MieFileReader
 
     config = FilterConfig(exclude_types={0x20})  # drop spurious data
     reader = MieFileReader("recording.mie")
@@ -22,8 +22,8 @@ from __future__ import annotations
 import logging
 from collections.abc import Iterable, Iterator
 
-from mie_decoder.config import FilterConfig
-from mie_decoder.models import MieMessage
+from aero1553.config import FilterConfig
+from aero1553.models import MieMessage
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +40,7 @@ def apply_filters(
 
     Args:
         messages: Iterable of decoded MieMessage instances (typically
-            from :class:`~mie_decoder.reader.MieFileReader`).
+            from :class:`~aero1553.reader.MieFileReader`).
         filters: Filter configuration specifying which messages to
             exclude.
 

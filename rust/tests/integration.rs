@@ -7,10 +7,10 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 
-use mie_decoder::filter::{FilterConfig, FilterIterExt};
-use mie_decoder::models::{Bus, Direction, MessageFormat, TimeRender};
-use mie_decoder::reader::MieFileReader;
-use mie_decoder::writer::write_csv;
+use aero1553::filter::{FilterConfig, FilterIterExt};
+use aero1553::models::{Bus, Direction, MessageFormat, TimeRender};
+use aero1553::reader::MieFileReader;
+use aero1553::writer::write_csv;
 
 /// Requirements: L3-RS-013
 ///
@@ -22,13 +22,13 @@ use mie_decoder::writer::write_csv;
 /// module path (a genuine re-export, not a coincidental name).
 #[test]
 fn crate_root_reexports_public_decode_api() {
-    fn takes_reader(_: mie_decoder::reader::MieFileReader) {}
-    fn takes_message(_: mie_decoder::models::MieMessage) {}
-    fn takes_error(_: mie_decoder::error::MieError) {}
+    fn takes_reader(_: aero1553::reader::MieFileReader) {}
+    fn takes_message(_: aero1553::models::MieMessage) {}
+    fn takes_error(_: aero1553::error::MieError) {}
 
-    let _: fn(mie_decoder::MieFileReader) = takes_reader;
-    let _: fn(mie_decoder::MieMessage) = takes_message;
-    let _: fn(mie_decoder::MieError) = takes_error;
+    let _: fn(aero1553::MieFileReader) = takes_reader;
+    let _: fn(aero1553::MieMessage) = takes_message;
+    let _: fn(aero1553::MieError) = takes_error;
 }
 
 // ── Fixtures (byte-exact from python/tests/conftest.py) ───────────────
@@ -197,7 +197,7 @@ fn lenient_mode_unrecoverable_sync_loss_yields_terminal_error() {
     // the 64 KB scan window, the iterator must yield a terminal
     // Err(UnrecoverableSyncLoss) item before stopping. Previously this
     // returned None silently and the CLI exited 0 with truncated data.
-    use mie_decoder::error::{MieError, MieErrorKind};
+    use aero1553::error::{MieError, MieErrorKind};
 
     // Two valid records back-to-back so the first record's look-ahead
     // check sees the second record's Type Word and accepts. Then 70 KB
@@ -322,9 +322,9 @@ fn recovery_scan_is_forward_only_and_bounded() {
 /// Requirements: L2-DEC-009
 #[test]
 fn payload_extraction_does_not_overrun_into_next_record() {
-    use mie_decoder::error::MieErrorKind;
-    use mie_decoder::models::TimestampFormat;
-    use mie_decoder::reader::ReaderOptions;
+    use aero1553::error::MieErrorKind;
+    use aero1553::models::TimestampFormat;
+    use aero1553::reader::ReaderOptions;
 
     // R1: Type Word declares word_count = 10 words (20 bytes), but the
     // Command Word 0x797E declares data_word_count = 30 — far more payload
@@ -397,9 +397,9 @@ fn payload_extraction_does_not_overrun_into_next_record() {
 /// Requirements: L2-DEC-009, L1-ROB-001, L2-SYN-027
 #[test]
 fn rt_to_rt_cmd2_overclaim_does_not_overrun() {
-    use mie_decoder::error::MieErrorKind;
-    use mie_decoder::models::TimestampFormat;
-    use mie_decoder::reader::ReaderOptions;
+    use aero1553::error::MieErrorKind;
+    use aero1553::models::TimestampFormat;
+    use aero1553::reader::ReaderOptions;
 
     // R1: Type Word word_count = 10 (20 bytes), type 0x08 (RT-to-RT). Cmd1
     // 0x7961 declares dwc = 1 (small → passes the Cmd1-based capacity check);
@@ -457,9 +457,9 @@ fn rt_to_rt_cmd2_overclaim_does_not_overrun() {
 /// Requirements: L2-SYN-027
 #[test]
 fn rt_to_rt_cmd_word_count_mismatch_rejected() {
-    use mie_decoder::error::MieErrorKind;
-    use mie_decoder::models::TimestampFormat;
-    use mie_decoder::reader::ReaderOptions;
+    use aero1553::error::MieErrorKind;
+    use aero1553::models::TimestampFormat;
+    use aero1553::reader::ReaderOptions;
 
     // R1: word_count = 13 (26 bytes), type 0x08. Cmd1 0x7963 (RT15 R SA11
     // dwc=3); Cmd2 0x7965 (RT15 R SA11 dwc=5, direction Receive so L2-SYN-023
@@ -550,7 +550,7 @@ fn filtering_drops_excluded_rts() {
 /// Requirements: L2-WRT-001
 #[test]
 fn csv_output_has_one_row_per_message_plus_header() {
-    use mie_decoder::writer::WriteOptions;
+    use aero1553::writer::WriteOptions;
     let mut bytes = Vec::new();
     bytes.extend(record_rt15_sa11_rcv());
     bytes.extend(record_rt15_sa22_rcv());
@@ -659,7 +659,7 @@ fn non_mie_file_surfaces_error_not_silent_zero_messages() {
     // produce zero messages and exit successfully. The fix surfaces a
     // NoValidRecords error from the iterator so `count` and `decode`
     // return non-zero exit codes and tell the user what went wrong.
-    let toml = b"[package]\nname = \"mie-decoder\"\nversion = \"1.0.0\"\nedition = \"2024\"\n\n[dependencies]\nmemmap2 = \"0.9\"\n";
+    let toml = b"[package]\nname = \"aero1553\"\nversion = \"1.0.0\"\nedition = \"2024\"\n\n[dependencies]\nmemmap2 = \"0.9\"\n";
     // Pad with 0xFF so the rest of the file can't coincidentally form
     // a valid Type Word (low byte 0xFF & 0x7F = 0x7F, not in the
     // valid type set). Padding with spaces would not work — pairs of
@@ -743,7 +743,7 @@ fn header_skip_via_proprietary_prefix() {
 // Module scope rather than inside the harness body: `order_rows` is called from
 // within a `catch_unwind` closure, and an inner `use` after a statement trips
 // `clippy::items_after_statements` (the pedantic group is denied crate-wide).
-use mie_decoder::order::OrderIterExt;
+use aero1553::order::OrderIterExt;
 
 /// The seed every fuzz harness in every implementation starts from.
 const FUZZ_SEED: u64 = 0x0DDC_D1EC_DDC0_DEC0;
@@ -778,10 +778,10 @@ fn fuzz_iterations_or(default: usize) -> usize {
 fn fuzz_configure_logging() {
     let stream = std::env::var("MIE_FUZZ_STREAM_LOGS")
         .is_ok_and(|v| matches!(v.as_str(), "1" | "true" | "TRUE"));
-    mie_decoder::log::set_level(if stream {
-        mie_decoder::log::Level::Warn
+    aero1553::log::set_level(if stream {
+        aero1553::log::Level::Warn
     } else {
-        mie_decoder::log::Level::Off
+        aero1553::log::Level::Off
     });
 }
 
@@ -1005,10 +1005,10 @@ fn dump_arbitrary_bytes_never_panics() {
                 u64::try_from(sink.iter().filter(|&&b| b == b'\n').count()).unwrap_or(0)
             };
             let mut sink = Vec::new();
-            let records = mie_decoder::dump::hex_dump_records(f.path(), Some(64), 0, &mut sink);
+            let records = aero1553::dump::hex_dump_records(f.path(), Some(64), 0, &mut sink);
             let records_len = count_lines(&sink);
             sink.clear();
-            let raw = mie_decoder::dump::hex_dump_raw(f.path(), 0, None, &mut sink);
+            let raw = aero1553::dump::hex_dump_raw(f.path(), 0, None, &mut sink);
             let raw_len = count_lines(&sink);
             (
                 u64::from(records.is_err()),
@@ -1083,7 +1083,7 @@ fn rt15_record_at(
 /// Requirements: L1-MRG-001, L2-MRG-002, L2-MRG-005
 #[test]
 fn merge_orders_records_across_files_by_absolute_time() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     // File A: t=100µs, 300µs. File B: t=200µs, 400µs. Same day/h/m/s so the
     // microsecond field is the discriminator; merged order must interleave.
@@ -1131,7 +1131,7 @@ fn merge_orders_records_across_files_by_absolute_time() {
 /// Requirements: L2-MRG-001
 #[test]
 fn merge_single_input_is_unchanged() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
     // A one-file "merge" yields exactly the file's records, in order.
     let a = [
         rt15_record_at(192, 15, 54, 50, 10, false),
@@ -1148,8 +1148,8 @@ fn merge_single_input_is_unchanged() {
 /// Requirements: L1-MRG-002, L2-MRG-003
 #[test]
 fn merge_rejects_freerun_leading_input() {
-    use mie_decoder::error::MieErrorKind;
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::error::MieErrorKind;
+    use aero1553::merge::MergedRecordIter;
 
     let good = [
         rt15_record_at(192, 15, 54, 50, 100, false),
@@ -1177,10 +1177,10 @@ fn merge_rejects_freerun_leading_input() {
 /// Requirements: L1-MRG-002, L2-MRG-003
 #[test]
 fn merge_rejects_standard_format_input() {
-    use mie_decoder::error::MieErrorKind;
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::models::TimestampFormat;
-    use mie_decoder::reader::ReaderOptions;
+    use aero1553::error::MieErrorKind;
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::models::TimestampFormat;
+    use aero1553::reader::ReaderOptions;
 
     let a = [
         rt15_record_at(192, 15, 54, 50, 100, false),
@@ -1219,7 +1219,7 @@ fn merge_rejects_standard_format_input() {
 fn read_manifest_skips_blanks_and_comments() {
     let body = "# a comment\n\nfile1.mie\n  file2.mie  \n# another\nfile3.mie\n";
     let f = TempFile::new(body.as_bytes());
-    let paths = mie_decoder::merge::read_manifest(f.path()).unwrap();
+    let paths = aero1553::merge::read_manifest(f.path()).unwrap();
     assert_eq!(
         paths,
         vec![
@@ -1252,7 +1252,7 @@ fn read_manifest_skips_blanks_and_comments() {
 fn read_manifest_grammar_is_exactly_specified() {
     let read = |body: &[u8]| {
         let f = TempFile::new(body);
-        mie_decoder::merge::read_manifest(f.path())
+        aero1553::merge::read_manifest(f.path())
     };
 
     // Only `\n` separates. A form feed is part of the filename.
@@ -1370,7 +1370,7 @@ fn merge_input_resolution_tolerates_arbitrary_bytes() {
         let f = TempFile::new(&bytes);
         let result = std::panic::catch_unwind(|| {
             // read_manifest: Ok (parsed lines) or Err (non-UTF8) — never panic.
-            let manifest = mie_decoder::merge::read_manifest(f.path());
+            let manifest = aero1553::merge::read_manifest(f.path());
             let (ok, errs, paths) = match &manifest {
                 Ok(list) => (1u64, 0u64, u64::try_from(list.len()).unwrap_or(0)),
                 Err(_) => (0, 1, 0),
@@ -1382,10 +1382,10 @@ fn merge_input_resolution_tolerates_arbitrary_bytes() {
                 .collect();
             let mut hits = [0u64; GLOB_PROBES.len()];
             for (slot, probe) in hits.iter_mut().zip(GLOB_PROBES) {
-                *slot = u64::from(mie_decoder::merge::glob_match(&pattern, probe));
+                *slot = u64::from(aero1553::merge::glob_match(&pattern, probe));
             }
             // Crash-safety only; see the doc comment.
-            let _ = mie_decoder::merge::expand_glob(&pattern);
+            let _ = aero1553::merge::expand_glob(&pattern);
             (ok, errs, paths, hits)
         });
 
@@ -1459,8 +1459,8 @@ fn merge_fuzz_summary(
 /// Requirements: L2-MRG-004, L1-EXIT-004
 #[test]
 fn merge_allow_partial_writes_partial_on_file_failure() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::writer::{WriteOptions, write_csv};
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::writer::{WriteOptions, write_csv};
 
     // File A: good records at 100µs, 300µs. File B: good records at 200µs,
     // 400µs, then 70 KB of 0xFF → recover_sync exhausts the 64 KB window
@@ -1515,8 +1515,8 @@ fn merge_allow_partial_writes_partial_on_file_failure() {
 /// Requirements: L2-MRG-004
 #[test]
 fn merge_allow_partial_writes_partial_on_priming_failure() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::writer::{WriteOptions, write_csv};
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::writer::{WriteOptions, write_csv};
 
     let a = [
         rt15_record_at(192, 15, 54, 50, 100, false),
@@ -1557,7 +1557,7 @@ fn merge_allow_partial_writes_partial_on_priming_failure() {
 /// Requirements: L2-MRG-004
 #[test]
 fn merge_no_allow_partial_priming_failure_fails_batch() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     let a = [
         rt15_record_at(192, 15, 54, 50, 100, false),
@@ -1582,8 +1582,8 @@ fn merge_no_allow_partial_priming_failure_fails_batch() {
 /// Requirements: L2-MRG-004
 #[test]
 fn merge_allow_partial_all_inputs_bad() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::writer::{WriteOptions, write_csv};
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::writer::{WriteOptions, write_csv};
 
     let fa = TempFile::new(&vec![0xFFu8; 4096]);
     let fb = TempFile::new(&vec![0xFFu8; 4096]);
@@ -1616,8 +1616,8 @@ fn merge_allow_partial_all_inputs_bad() {
 /// Requirements: L2-MRG-004
 #[test]
 fn merge_allow_partial_bad_input_then_good() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::writer::{WriteOptions, write_csv};
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::writer::{WriteOptions, write_csv};
 
     let good = [
         rt15_record_at(192, 15, 54, 50, 100, false),
@@ -1655,7 +1655,7 @@ fn merge_allow_partial_bad_input_then_good() {
 /// Requirements: L2-MRG-006
 #[test]
 fn merge_warns_on_within_file_backward_step() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     // One file whose microsecond keys step 100 → 200 → 150 (the third record
     // is older than the second): a within-file backward step.
@@ -1684,8 +1684,8 @@ fn merge_warns_on_within_file_backward_step() {
 /// Requirements: L2-MRG-006
 #[test]
 fn merge_strict_fails_on_within_file_backward_step() {
-    use mie_decoder::error::MieErrorKind;
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::error::MieErrorKind;
+    use aero1553::merge::MergedRecordIter;
 
     let a = [
         rt15_record_at(192, 15, 54, 50, 100, false),
@@ -1720,7 +1720,7 @@ fn merge_strict_fails_on_within_file_backward_step() {
 /// Requirements: L1-MRG-003, L2-MRG-007, L3-RS-015
 #[test]
 fn merge_collapse_cross_recorder_duplicate() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
     use std::sync::atomic::Ordering;
 
     let rec = rt15_record_at(192, 15, 54, 50, 100, false);
@@ -1748,7 +1748,7 @@ fn merge_collapse_cross_recorder_duplicate() {
 /// Requirements: L2-MRG-007
 #[test]
 fn merge_collapse_keeps_different_time() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     let fa = TempFile::new(&rt15_record_at(192, 15, 54, 50, 100, false));
     let fb = TempFile::new(&rt15_record_at(192, 15, 54, 50, 300, false));
@@ -1768,7 +1768,7 @@ fn merge_collapse_keeps_different_time() {
 /// Requirements: L2-MRG-007
 #[test]
 fn merge_collapse_same_file_not_collapsed() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     let rec = rt15_record_at(192, 15, 54, 50, 100, false);
     let body = [rec.clone(), rec].concat(); // two identical records, one file
@@ -1786,7 +1786,7 @@ fn merge_collapse_same_file_not_collapsed() {
 /// Requirements: L2-MRG-007
 #[test]
 fn merge_collapse_within_window() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     let fa = TempFile::new(&rt15_record_at(192, 15, 54, 50, 100, false));
     let fb = TempFile::new(&rt15_record_at(192, 15, 54, 50, 103, false));
@@ -1808,7 +1808,7 @@ fn merge_collapse_within_window() {
 /// Requirements: L2-MRG-006, L2-MRG-007
 #[test]
 fn merge_collapse_survives_lenient_non_monotonic() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
 
     // One file whose microsecond keys step 100 → 200 → 150 (backward at the
     // third record), with collapsing enabled.
@@ -1842,7 +1842,7 @@ fn merge_collapse_survives_lenient_non_monotonic() {
 /// Requirements: L2-MRG-006, L2-MRG-007
 #[test]
 fn merge_collapse_no_over_collapse_after_backward_step() {
-    use mie_decoder::merge::MergedRecordIter;
+    use aero1553::merge::MergedRecordIter;
     use std::sync::atomic::Ordering;
 
     // File A: one record at 1000µs. File B non-monotonic: 1002µs then 10µs.
@@ -1935,7 +1935,7 @@ fn patch_cmd(rec: &mut [u8], rt: u8, sa: u8, transmit: bool) {
 }
 
 /// `(RT, MSG)` pairs as the writer renders them, for order assertions.
-fn rt_msg_pairs(msgs: &[mie_decoder::models::MieMessage]) -> Vec<(Option<u8>, String)> {
+fn rt_msg_pairs(msgs: &[aero1553::models::MieMessage]) -> Vec<(Option<u8>, String)> {
     msgs.iter().map(|m| (m.rt(), m.msg_label())).collect()
 }
 
@@ -1945,7 +1945,7 @@ fn rt_msg_pairs(msgs: &[mie_decoder::models::MieMessage]) -> Vec<(Option<u8>, St
 /// Requirements: L1-OUT-003, L2-WRT-021
 #[test]
 fn canonical_order_sorts_tied_rows_by_rt_then_msg() {
-    use mie_decoder::order::OrderIterExt;
+    use aero1553::order::OrderIterExt;
 
     // One instant, four records, input order chosen to violate every key level.
     let bytes = [
@@ -1959,7 +1959,7 @@ fn canonical_order_sorts_tied_rows_by_rt_then_msg() {
     let reader = MieFileReader::new(f.path()).unwrap();
     let msgs: Vec<_> = reader
         .iter()
-        .order_rows(mie_decoder::order::DEFAULT_MAX_SORT_GROUP)
+        .order_rows(aero1553::order::DEFAULT_MAX_SORT_GROUP)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -1981,7 +1981,7 @@ fn canonical_order_sorts_tied_rows_by_rt_then_msg() {
 /// Requirements: L1-OUT-003, L2-WRT-021
 #[test]
 fn canonical_order_never_reorders_across_timestamps() {
-    use mie_decoder::order::OrderIterExt;
+    use aero1553::order::OrderIterExt;
 
     let bytes = [
         rcv_record_at(21, 3, 100),
@@ -1993,7 +1993,7 @@ fn canonical_order_never_reorders_across_timestamps() {
     let reader = MieFileReader::new(f.path()).unwrap();
     let msgs: Vec<_> = reader
         .iter()
-        .order_rows(mie_decoder::order::DEFAULT_MAX_SORT_GROUP)
+        .order_rows(aero1553::order::DEFAULT_MAX_SORT_GROUP)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -2010,8 +2010,8 @@ fn canonical_order_never_reorders_across_timestamps() {
 /// Requirements: L1-OUT-003, L2-WRT-021, L2-MRG-002, L3-RS-016
 #[test]
 fn canonical_order_applies_to_merged_stream() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::order::OrderIterExt;
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::order::OrderIterExt;
 
     // File A holds the HIGHER RT, so the heap's (file_index, seq) tiebreak alone
     // would emit RT 20 before RT 4. Canonical order must invert that.
@@ -2025,7 +2025,7 @@ fn canonical_order_applies_to_merged_stream() {
     ];
     let msgs: Vec<_> = MergedRecordIter::new(&readers, None, false, false)
         .unwrap()
-        .order_rows(mie_decoder::order::DEFAULT_MAX_SORT_GROUP)
+        .order_rows(aero1553::order::DEFAULT_MAX_SORT_GROUP)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -2042,7 +2042,7 @@ fn canonical_order_applies_to_merged_stream() {
 /// Requirements: L1-OUT-003, L2-WRT-021, L1-DLT-001
 #[test]
 fn canonical_order_leaves_delta_unchanged() {
-    use mie_decoder::order::OrderIterExt;
+    use aero1553::order::OrderIterExt;
 
     let bytes = [
         rcv_record_at(21, 3, 500),
@@ -2058,12 +2058,12 @@ fn canonical_order_leaves_delta_unchanged() {
     let reader2 = MieFileReader::new(f.path()).unwrap();
     let ordered: Vec<_> = reader2
         .iter()
-        .order_rows(mie_decoder::order::DEFAULT_MAX_SORT_GROUP)
+        .order_rows(aero1553::order::DEFAULT_MAX_SORT_GROUP)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
     // Same multiset of (RT, DELTA) pairs before and after reordering.
-    let key = |ms: &[mie_decoder::models::MieMessage]| {
+    let key = |ms: &[aero1553::models::MieMessage]| {
         let mut v: Vec<(u8, String)> = ms
             .iter()
             .map(|m| (m.rt().unwrap(), format!("{:?}", m.delta)))
@@ -2084,14 +2084,14 @@ fn canonical_order_leaves_delta_unchanged() {
 /// Requirements: L2-WRT-022
 #[test]
 fn canonical_order_cap_of_one_restores_capture_order() {
-    use mie_decoder::order::OrderIterExt;
+    use aero1553::order::OrderIterExt;
 
     let bytes = [rcv_record_at(21, 3, 500), rcv_record_at(3, 3, 500)].concat();
     let f = TempFile::new(&bytes);
     let reader = MieFileReader::new(f.path()).unwrap();
     let msgs: Vec<_> = reader
         .iter()
-        .order_rows(mie_decoder::order::MAX_SORT_GROUP_MIN)
+        .order_rows(aero1553::order::MAX_SORT_GROUP_MIN)
         .collect::<Result<Vec<_>, _>>()
         .unwrap();
 
@@ -2108,8 +2108,8 @@ fn canonical_order_cap_of_one_restores_capture_order() {
 /// Requirements: L1-OUT-003, L2-WRT-021
 #[test]
 fn canonical_order_is_visible_in_written_csv() {
-    use mie_decoder::order::OrderIterExt;
-    use mie_decoder::writer::{WriteOptions, write_csv};
+    use aero1553::order::OrderIterExt;
+    use aero1553::writer::{WriteOptions, write_csv};
 
     let bytes = [
         rcv_record_at(21, 3, 500),
@@ -2123,7 +2123,7 @@ fn canonical_order_is_visible_in_written_csv() {
     write_csv(
         reader
             .iter()
-            .order_rows(mie_decoder::order::DEFAULT_MAX_SORT_GROUP),
+            .order_rows(aero1553::order::DEFAULT_MAX_SORT_GROUP),
         Some(out.as_path()),
         WriteOptions::default(),
     )
@@ -2173,8 +2173,8 @@ fn two_files_sharing_a_key() -> (Vec<u8>, Vec<u8>) {
 /// Requirements: L2-MRG-005, L3-WRT-004
 #[test]
 fn per_file_delta_matches_single_file_decode() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::models::DeltaScope;
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::models::DeltaScope;
 
     let (a, b) = two_files_sharing_a_key();
     let fa = TempFile::new(&a);
@@ -2218,8 +2218,8 @@ fn per_file_delta_matches_single_file_decode() {
 /// Requirements: L2-MRG-005
 #[test]
 fn global_scope_measures_across_the_merged_timeline() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::models::DeltaScope;
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::models::DeltaScope;
 
     let (a, b) = two_files_sharing_a_key();
     let fa = TempFile::new(&a);
@@ -2259,8 +2259,8 @@ fn global_scope_measures_across_the_merged_timeline() {
 /// Requirements: L2-MRG-005
 #[test]
 fn per_file_is_the_default_scope() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::models::DeltaScope;
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::models::DeltaScope;
 
     let (a, b) = two_files_sharing_a_key();
     let fa = TempFile::new(&a);
@@ -2285,8 +2285,8 @@ fn per_file_is_the_default_scope() {
 /// Requirements: L2-MRG-005
 #[test]
 fn scope_does_not_affect_a_single_input() {
-    use mie_decoder::merge::MergedRecordIter;
-    use mie_decoder::models::DeltaScope;
+    use aero1553::merge::MergedRecordIter;
+    use aero1553::models::DeltaScope;
 
     let (a, _b) = two_files_sharing_a_key();
     let fa = TempFile::new(&a);

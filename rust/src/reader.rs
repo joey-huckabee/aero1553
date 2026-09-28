@@ -1422,7 +1422,7 @@ mod tests {
             static COUNTER: AtomicU64 = AtomicU64::new(0);
             let n = COUNTER.fetch_add(1, Ordering::Relaxed);
             let pid = std::process::id();
-            let path = std::env::temp_dir().join(format!("mie-decoder-test-{pid}-{n}.bin"));
+            let path = std::env::temp_dir().join(format!("aero1553-test-{pid}-{n}.bin"));
             let mut f = std::fs::File::create(&path).unwrap();
             f.write_all(bytes).unwrap();
             f.flush().unwrap();

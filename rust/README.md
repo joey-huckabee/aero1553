@@ -1,6 +1,6 @@
-# MIE-Decoder (Rust)
+# Aero1553 (Rust)
 
-The Rust implementation of MIE-Decoder: a streaming, constant-memory decoder for
+The Rust implementation of Aero1553: a streaming, constant-memory decoder for
 DDC MIL-STD-1553 MIE binary recording files, with a hand-rolled CLI and a single
 native release binary.
 
@@ -21,13 +21,13 @@ lives at the [repository root](../README.md) and under [`docs/`](../docs/).
 ```bash
 cd rust
 cargo build --release
-# binary lands at rust/target/release/mie-decoder
+# binary lands at rust/target/release/aero1553
 ```
 
 ## Library usage
 
 ```rust,no_run
-use mie_decoder::{
+use aero1553::{
     filter::{FilterConfig, FilterIterExt},
     reader::MieFileReader,
     writer::{write_csv, WriteOptions},
@@ -60,7 +60,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 cd rust
 cargo test                  # All unit + integration tests
 cargo test --test integration -- multi_record_stream   # One integration test
-cargo build --release       # Release binary at rust/target/release/mie-decoder
+cargo build --release       # Release binary at rust/target/release/aero1553
 cargo clippy --all-targets  # Lint (if installed)
 ```
 
@@ -78,7 +78,7 @@ rust/
 ├── .cargo/          cargo-llvm-cov coverage aliases (cov / cov-lcov / cov-ci)
 ├── src/
 │   ├── lib.rs           Library entry point and re-exports
-│   ├── bin/mie-decoder.rs  Binary entry point
+│   ├── bin/aero1553.rs  Binary entry point
 │   ├── cli.rs           Hand-rolled argparse + dispatch
 │   ├── config.rs        Hand-rolled TOML loader, DecoderConfig
 │   ├── decode.rs        Pure decoders + format classifier

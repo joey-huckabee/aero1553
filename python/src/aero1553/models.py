@@ -33,7 +33,7 @@ Error Handling:
         0x0140  Too Many Data Words
         0x0150  Unknown/TBD
 
-    MIE-Decoder Custom Error Codes (0x20xx range):
+    Aero1553 Custom Error Codes (0x20xx range):
         0x2000  Spurious Data: Continuation of preceding errored message
         0x2001  Spurious Data: Standalone (no preceding error record)
 """
@@ -240,7 +240,7 @@ class CalendarUnavailableError(Exception):
     """A calendar rendering could not be produced for one timestamp.
 
     Raised by the ``format_with`` methods and converted by the writer into
-    :class:`~mie_decoder.exceptions.MieCalendarUnavailableError`. Two of the
+    :class:`~aero1553.exceptions.MieCalendarUnavailableError`. Two of the
     three L2-WRT-026 preconditions are checked before the first row is written
     (a missing year at CLI parse time, a Standard recording once the format
     resolves), so the case that normally reaches here is a day-of-year the
@@ -436,7 +436,7 @@ DDC_ERROR_DESCRIPTIONS: dict[int, str] = {
     ERROR_UNKNOWN_DDC: "Unknown DDC Error",
 }
 
-# ── MIE-Decoder Custom Error Codes ────────────────────────────────────
+# ── Aero1553 Custom Error Codes ────────────────────────────────────
 # These codes are assigned by the decoder (not the hardware) to identify
 # spurious data records. The 0x20 prefix mirrors the SPURIOUS_DATA type
 # code from Type Word bits 0–6.
@@ -447,7 +447,7 @@ ERROR_SPURIOUS_CONTINUATION: Final[int] = 0x2000
 #: Standalone spurious data with no preceding error record.
 ERROR_SPURIOUS_STANDALONE: Final[int] = 0x2001
 
-#: Set of all known MIE-Decoder custom error codes.
+#: Set of all known Aero1553 custom error codes.
 KNOWN_CUSTOM_ERROR_CODES: frozenset[int] = frozenset(
     {
         ERROR_SPURIOUS_CONTINUATION,
@@ -511,7 +511,7 @@ class IrigTimestamp:
         """Format as ``DAY:HH:MM:SS.uuuuuu`` string.
 
         Per L2-DEC-014 the microsecond field SHALL be exactly six
-        digits. Validation in :mod:`mie_decoder.sync` should reject
+        digits. Validation in :mod:`aero1553.sync` should reject
         any record with ``microsecond >= 1_000_000`` (L2-SYN-004), so
         the modulo here is a defensive belt-and-suspenders: a caller
         constructing an :class:`IrigTimestamp` directly with an out-of-

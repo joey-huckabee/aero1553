@@ -29,15 +29,15 @@ from collections import deque
 from collections.abc import Iterator
 from pathlib import Path
 
-from mie_decoder.delta import DeltaTracker
-from mie_decoder.exceptions import (
-    MieDecoderError,
+from aero1553.delta import DeltaTracker
+from aero1553.exceptions import (
+    Aero1553Error,
     MieIncompatibleMergeInputsError,
     MieNonMonotonicInputError,
     MieUnrecoverableSyncLossError,
 )
-from mie_decoder.models import DeltaScope, IrigTimestamp, MieMessage, StandardTimestamp
-from mie_decoder.reader import MieFileReader
+from aero1553.models import DeltaScope, IrigTimestamp, MieMessage, StandardTimestamp
+from aero1553.reader import MieFileReader
 
 logger = logging.getLogger(__name__)
 
@@ -377,7 +377,7 @@ def merge_readers(
         MieUnrecoverableSyncLossError: from an input that loses sync. Under
             ``allow_partial`` this is deferred until the heap drains, so the
             writer still commits a ``.partial``.
-        MieDecoderError: any other decoder failure from an underlying reader,
+        Aero1553Error: any other decoder failure from an underlying reader,
             propagated unchanged.
     """
     iters = [iter(r) for r in readers]
@@ -401,7 +401,7 @@ def merge_readers(
             msg = next(it)
         except StopIteration:
             continue  # empty file contributes nothing
-        except MieDecoderError as exc:
+        except Aero1553Error as exc:
             if allow_partial:
                 logger.warning(
                     "merge: input #%d (%s) could not be read; truncating it "

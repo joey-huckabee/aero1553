@@ -22,9 +22,9 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.models import MieMessage
-from mie_decoder.reader import MieFileReader
-from mie_decoder.writer import write_csv
+from aero1553.models import MieMessage
+from aero1553.reader import MieFileReader
+from aero1553.writer import write_csv
 from tests.conftest import RECORD_RT15_SA11_RCV
 
 

@@ -1,4 +1,4 @@
-"""Tests for mie_decoder.exceptions and mie_decoder.logger modules."""
+"""Tests for aero1553.exceptions and aero1553.logger modules."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.exceptions import (
-    MieDecoderError,
+from aero1553.exceptions import (
+    Aero1553Error,
     MieFileEmptyError,
     MieFileError,
     MieFileNotFoundError,
@@ -20,7 +20,7 @@ from mie_decoder.exceptions import (
     MieUnknownTypeWordError,
     MieWriterError,
 )
-from mie_decoder.logger import LOGGER_NAME, configure_logging
+from aero1553.logger import LOGGER_NAME, configure_logging
 
 
 class TestExceptionHierarchy:
@@ -30,54 +30,54 @@ class TestExceptionHierarchy:
     def test_file_not_found_is_file_error(self) -> None:
         exc = MieFileNotFoundError("/tmp/missing.mie")
         assert isinstance(exc, MieFileError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_file_empty_is_file_error(self) -> None:
         exc = MieFileEmptyError("/tmp/empty.mie")
         assert isinstance(exc, MieFileError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_invalid_type_word_is_record_error(self) -> None:
         exc = MieInvalidTypeWordError(0x100, 0x0000, 0)
         assert isinstance(exc, MieRecordError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_record_truncated_is_record_error(self) -> None:
         exc = MieRecordTruncatedError(0x200, 72, 20)
         assert isinstance(exc, MieRecordError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_payload_error_is_record_error(self) -> None:
         exc = MiePayloadError(0x300, "bad payload")
         assert isinstance(exc, MieRecordError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_unknown_type_word_is_record_error(self) -> None:
         exc = MieUnknownTypeWordError(0x400, 0x0503, 0x03)
         assert isinstance(exc, MieRecordError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_unknown_error_code_is_record_error(self) -> None:
         exc = MieUnknownErrorCodeError(0x500, 0x9999)
         assert isinstance(exc, MieRecordError)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
 
     @pytest.mark.requirement("L3-PY-006")
     def test_writer_error_is_decoder_error(self) -> None:
         cause = OSError("disk full")
         exc = MieWriterError("output.csv", cause)
-        assert isinstance(exc, MieDecoderError)
+        assert isinstance(exc, Aero1553Error)
         assert exc.cause is cause
 
     @pytest.mark.requirement("L3-PY-006")
     def test_catch_all_with_base_class(self) -> None:
-        """All custom exceptions should be catchable via MieDecoderError."""
+        """All custom exceptions should be catchable via Aero1553Error."""
         exceptions = [
             MieFileNotFoundError("/x"),
             MieFileEmptyError("/x"),
@@ -89,7 +89,7 @@ class TestExceptionHierarchy:
             MieWriterError("out", OSError()),
         ]
         for exc in exceptions:
-            with pytest.raises(MieDecoderError):
+            with pytest.raises(Aero1553Error):
                 raise exc
 
     @pytest.mark.requirement("L3-PY-006")
@@ -101,10 +101,10 @@ class TestExceptionHierarchy:
         with `PermissionError` on Windows and `IsADirectoryError` on POSIX, both
         `OSError`. Rust reports the same condition as `MieError::FileIo`; before
         v2.12.0 Python let the `OSError` escape, so a caller catching
-        `MieDecoderError` (as the class docstring advertises) missed it.
+        `Aero1553Error` (as the class docstring advertises) missed it.
         """
-        from mie_decoder.exceptions import MieFileIoError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MieFileIoError
+        from aero1553.reader import MieFileReader
 
         target = tmp_path / "not-a-file.mie"
         target.mkdir()
@@ -113,7 +113,7 @@ class TestExceptionHierarchy:
             MieFileReader(target)
         exc = caught.value
         assert isinstance(exc, MieFileError), "must be catchable as a file error"
-        assert isinstance(exc, MieDecoderError), "must be catchable as a decoder error"
+        assert isinstance(exc, Aero1553Error), "must be catchable as a decoder error"
         assert isinstance(exc.source, OSError), "the originating OSError is preserved"
         assert exc.__cause__ is exc.source, "and chained, so the traceback keeps it"
         assert str(exc).startswith("I/O error on "), "message prefix mirrors Rust's FileIo"
@@ -126,8 +126,8 @@ class TestExceptionHierarchy:
         reported "MIE file is empty" for something that was never readable.
         `MieFileReader::new` in Rust opens first; this pins the same order here.
         """
-        from mie_decoder.exceptions import MieFileEmptyError, MieFileIoError
-        from mie_decoder.reader import MieFileReader
+        from aero1553.exceptions import MieFileEmptyError, MieFileIoError
+        from aero1553.reader import MieFileReader
 
         target = tmp_path / "stats-as-zero.mie"
         target.mkdir()
@@ -159,7 +159,7 @@ class TestExceptionHierarchy:
         """
         import inspect
 
-        from mie_decoder import exceptions as exc_mod
+        from aero1553 import exceptions as exc_mod
 
         # Direct children of the base by design: neither a file-level nor a
         # record-level failure. Mirrors Rust's NEITHER list.
@@ -175,10 +175,10 @@ class TestExceptionHierarchy:
             "MieUnrecoverableSyncLossError",
         }
 
-        bases = {"MieDecoderError", "MieFileError", "MieRecordError"}
+        bases = {"Aero1553Error", "MieFileError", "MieRecordError"}
         record_class: set[str] = set()
         for name, obj in inspect.getmembers(exc_mod, inspect.isclass):
-            if not issubclass(obj, MieDecoderError) or name in bases:
+            if not issubclass(obj, Aero1553Error) or name in bases:
                 continue
             if issubclass(obj, MieRecordError):
                 record_class.add(name)
@@ -186,7 +186,7 @@ class TestExceptionHierarchy:
                 pass  # file-class
             else:
                 assert name in direct, (
-                    f"{name} extends MieDecoderError directly but is not a known "
+                    f"{name} extends Aero1553Error directly but is not a known "
                     "direct child — classify it under MieFileError or "
                     "MieRecordError, or add it to `direct` here and to Rust's "
                     "NEITHER list"

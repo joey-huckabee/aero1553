@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
-#define MIE_LOG_MODULE "mie_decoder::merge"
+#define MIE_LOG_MODULE "aero1553::merge"
 
 #include "mie/merge.hpp"
 

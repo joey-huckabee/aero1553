@@ -41,7 +41,7 @@ from __future__ import annotations
 
 import pytest
 
-from mie_decoder.decode import (
+from aero1553.decode import (
     decode_command_word,
     decode_irig_timestamp,
     decode_standard_timestamp,

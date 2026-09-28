@@ -1,6 +1,6 @@
-# MIE-Decoder — MIE Binary Format Reference
+# Aero1553 — MIE Binary Format Reference
 
-Comprehensive reference for the DDC MIE binary recording format and the CSV output MIE-Decoder produces from it. Read this when:
+Comprehensive reference for the DDC MIE binary recording format and the CSV output Aero1553 produces from it. Read this when:
 
 - You're reverse-engineering an MIE file by eye (`xxd` / `hexdump` / `dump --raw`).
 - You're adding decoder support for a new message format or bit field.
@@ -25,7 +25,7 @@ All multi-byte fields are **little-endian** per L2-DEC-008. The decoder is byte-
 
 ### 2.1 The proprietary header
 
-DDC recording software prepends a header to each MIE file. The header is opaque to the decoder — it doesn't match any documented MIE record format. MIE-Decoder skips it by scanning forward in 2-byte (word-aligned) increments from offset 0 until it finds a structurally-valid Type Word that passes the full validation path (L2-SYN-006).
+DDC recording software prepends a header to each MIE file. The header is opaque to the decoder — it doesn't match any documented MIE record format. Aero1553 skips it by scanning forward in 2-byte (word-aligned) increments from offset 0 until it finds a structurally-valid Type Word that passes the full validation path (L2-SYN-006).
 
 The scan is bounded:
 
@@ -143,7 +143,7 @@ The first word of every record. Drives record classification, framing, and the e
 | 7 | 1 | Bus ID | Identifies which MIL-STD-1553 redundant bus this message was captured on. `0` = Bus A, `1` = Bus B. MIL-STD-1553 defines two electrically independent buses for fault tolerance; both carry the same logical traffic. |
 | 8–13 | 6 | Word Count | Total record size in 16-bit words, including the Type Word itself, the timestamp, the command word, the status word, and all data words. Multiply by 2 to get bytes. The minimum depends on the timestamp format: **4** for Standard (Type Word + 2-word timestamp + Command Word) and **5** for IRIG (Type Word + 3-word timestamp + Command Word). Maximum 63 (the field is 6 bits). |
 | 14 | 1 | Error Flag | Set to 1 if the recording card detected an error in this message. When set, the payload is truncated and the final 16-bit slot of the record contains the **Error Word** (the DDC hardware error code). |
-| 15 | 1 | Reserved | Per spec, should be 0. MIE-Decoder treats a set bit as an L2-SYN anomaly (WARN; continue) rather than an error, because the bit may be used by undocumented vendor extensions. |
+| 15 | 1 | Reserved | Per spec, should be 0. Aero1553 treats a set bit as an L2-SYN anomaly (WARN; continue) rather than an error, because the bit may be used by undocumented vendor extensions. |
 
 ### 4.1 Known message types
 
@@ -237,7 +237,7 @@ When both formats score equally, **IRIG wins** (L2-DEC-012). Flight-test recordi
 
 ## 6. Per-format record layouts
 
-MIE-Decoder classifies every record into one of 11 formats (L2-MSG-001). The Type Word's message type code plus the Command Word's `data_word_count` and broadcast bit determine which.
+Aero1553 classifies every record into one of 11 formats (L2-MSG-001). The Type Word's message type code plus the Command Word's `data_word_count` and broadcast bit determine which.
 
 Identification happens in two layers: the raw Type Word message-type code (§4.1) selects a family, and the Command Word's direction, `data_word_count`, and broadcast bit then pin the exact format. The 11 decoded formats, their source Type Word code, and how each is identified — the per-format byte shapes follow in §6.1–§6.11:
 
@@ -398,7 +398,7 @@ The resulting error record looks like:
 └──────────────┴─────┴─────┴───────────────┴────────────┘
 ```
 
-The Error Word's value names the failure (the DDC hardware error code). MIE-Decoder reads the final word of every error record and emits it in the CSV `ERROR_CODE` column with `ERROR` in the `ERROR` column. Strict mode rejects unknown DDC error codes (L2-ERR-004); lenient mode logs a WARN and still emits the row, with the **raw code** in `ERROR_CODE` — the CSV always carries the value read from the file, never a literal `UNKNOWN` placeholder.
+The Error Word's value names the failure (the DDC hardware error code). Aero1553 reads the final word of every error record and emits it in the CSV `ERROR_CODE` column with `ERROR` in the `ERROR` column. Strict mode rejects unknown DDC error codes (L2-ERR-004); lenient mode logs a WARN and still emits the row, with the **raw code** in `ERROR_CODE` — the CSV always carries the value read from the file, never a literal `UNKNOWN` placeholder.
 
 ### 7.2 DDC hardware error codes (`0x01xx`)
 
@@ -412,7 +412,7 @@ The Error Word's value names the failure (the DDC hardware error code). MIE-Deco
 
 ### 7.3 SPURIOUS continuation (decoder-assigned `0x20xx`)
 
-When a SPURIOUS_DATA record immediately follows an error record, MIE-Decoder assigns it the **continuation** code `0x2000`. When a SPURIOUS_DATA record stands alone (the immediately preceding decoded record was not an error), it's assigned the **standalone** code `0x2001`. The `0x20` prefix matches the SPURIOUS_DATA message type code for visual identification.
+When a SPURIOUS_DATA record immediately follows an error record, Aero1553 assigns it the **continuation** code `0x2000`. When a SPURIOUS_DATA record stands alone (the immediately preceding decoded record was not an error), it's assigned the **standalone** code `0x2001`. The `0x20` prefix matches the SPURIOUS_DATA message type code for visual identification.
 
 "Immediately following" is defined relative to the immediately preceding **successfully decoded** record (L2-ERR-005). A classification failure or unrecoverable validation error between an error record and a SPURIOUS_DATA record resets the continuation flag — the corruption itself is a boundary, and the SPURIOUS_DATA falls through to the standalone code.
 
@@ -600,11 +600,11 @@ In **separate** error mode (`--separate-errors`; **inline** is the default), thi
 
 ### `ERROR_CODE`
 
-DDC hardware error code or MIE-Decoder decoder-assigned code in uppercase 4-character hex. Empty for normal messages. See §7 for the full table.
+DDC hardware error code or Aero1553 decoder-assigned code in uppercase 4-character hex. Empty for normal messages. See §7 for the full table.
 
 ### `IM_GAP`, `RCV_GAP`, `XMT_GAP`
 
-Vendor compatibility columns for inter-message / receive / transmit timing gaps. Not decoded in MIE-Decoder v1; empty. See [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) §3.
+Vendor compatibility columns for inter-message / receive / transmit timing gaps. Not decoded in Aero1553 v1; empty. See [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) §3.
 
 ---
 

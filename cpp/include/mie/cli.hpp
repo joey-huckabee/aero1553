@@ -3,7 +3,7 @@
 // The command-line interface: argument parsing, the subcommand runners, and
 // the exit-code contract.
 //
-// Mirrors `rust/src/cli.rs` and `python/src/mie_decoder/cli.py`.
+// Mirrors `rust/src/cli.rs` and `python/src/aero1553/cli.py`.
 // `docs/CLI-REFERENCE.md` is the normative per-flag reference and
 // `docs/ERROR-CATALOG.md` the normative exit-code table.
 //

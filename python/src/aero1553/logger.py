@@ -1,9 +1,9 @@
-"""Centralized logging configuration for MIE-Decoder.
+"""Centralized logging configuration for Aero1553.
 
-Provides a single function to configure the ``mie_decoder`` logger
+Provides a single function to configure the ``aero1553`` logger
 hierarchy. All modules in the package obtain their loggers via
 ``logging.getLogger(__name__)``, which places them under the
-``mie_decoder`` namespace and inherits the configuration set here.
+``aero1553`` namespace and inherits the configuration set here.
 
 Log Levels:
     DEBUG:
@@ -29,7 +29,7 @@ Log Levels:
 
 Usage::
 
-    from mie_decoder.logger import configure_logging
+    from aero1553.logger import configure_logging
 
     configure_logging("DEBUG")  # Enable all log output
     configure_logging("INFO")   # Standard operational logging
@@ -42,8 +42,8 @@ from __future__ import annotations
 import logging
 import sys
 
-#: Name of the root logger for the MIE-Decoder package.
-LOGGER_NAME: str = "mie_decoder"
+#: Name of the root logger for the Aero1553 package.
+LOGGER_NAME: str = "aero1553"
 
 #: Default log format string.
 LOG_FORMAT: str = "%(asctime)s [%(levelname)-5s] %(name)s: %(message)s"
@@ -92,7 +92,7 @@ def configure_logging(
     level: str = "WARNING",
     stream: object | None = None,
 ) -> None:
-    """Configure the ``mie_decoder`` logger hierarchy.
+    """Configure the ``aero1553`` logger hierarchy.
 
     Sets up a :class:`logging.StreamHandler` on the package root logger
     with a structured format. Safe to call multiple times; subsequent

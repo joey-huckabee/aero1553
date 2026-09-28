@@ -2,7 +2,7 @@
 //
 // Canonical row order for equal-timestamp ties (L1-OUT-003, L2-WRT-021).
 //
-// Mirrors `rust/src/order.rs` and `python/src/mie_decoder/order.py`.
+// Mirrors `rust/src/order.rs` and `python/src/aero1553/order.py`.
 //
 // THE STAGE IS RUN-SCOPED, AND THAT IS THE DESIGN POINT. It permutes only a run
 // of *consecutive* records that share a `TIME_STAMP`, never the file. A

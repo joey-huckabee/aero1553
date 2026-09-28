@@ -1,7 +1,7 @@
 """Binary decoding routines for DDC MIE record fields.
 
 This module contains pure functions that decode raw bytes into the
-structured types defined in :mod:`mie_decoder.models`. All functions
+structured types defined in :mod:`aero1553.models`. All functions
 operate on ``bytes`` or ``memoryview`` objects and use ``struct`` for
 portable little-endian unpacking.
 
@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from enum import Enum, IntEnum
 from typing import Final
 
-from mie_decoder.models import (
+from aero1553.models import (
     VALID_MESSAGE_TYPES,
     Bus,
     ByteSource,
@@ -189,7 +189,7 @@ class DetectionConfidence(Enum):
     ``DECISIVE`` and ``MARGINAL`` both result in the chosen format
     being used silently or with a single INFO log line. ``AMBIGUOUS``
     is the L2-DEC-016 mismatch class: strict mode surfaces it as
-    :class:`mie_decoder.exceptions.MieTimestampFormatMismatchError`;
+    :class:`aero1553.exceptions.MieTimestampFormatMismatchError`;
     lenient mode logs WARN and uses the chosen format anyway.
     """
 

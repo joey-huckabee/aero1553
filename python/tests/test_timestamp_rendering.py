@@ -14,8 +14,8 @@ from pathlib import Path
 
 import pytest
 
-from mie_decoder.cli import EXIT_NO_RECORDS, EXIT_OK, EXIT_USAGE, main
-from mie_decoder.models import (
+from aero1553.cli import EXIT_NO_RECORDS, EXIT_OK, EXIT_USAGE, main
+from aero1553.models import (
     YEAR_MAX,
     YEAR_MIN,
     CalendarUnavailableError,
@@ -491,7 +491,7 @@ class TestAdvisoryLevel:
 
         def advisory_levels(argv: list[str]) -> list[int]:
             caplog.clear()
-            with caplog.at_level(logging.DEBUG, logger="mie_decoder.reader"):
+            with caplog.at_level(logging.DEBUG, logger="aero1553.reader"):
                 assert main(argv) == EXIT_OK
             return [
                 record.levelno for record in caplog.records if "day-of-year" in record.getMessage()
@@ -514,7 +514,7 @@ class TestAdvisoryLevel:
         import logging
 
         caplog.clear()
-        with caplog.at_level(logging.DEBUG, logger="mie_decoder.reader"):
+        with caplog.at_level(logging.DEBUG, logger="aero1553.reader"):
             code = main(
                 [
                     "--no-irig-day-advisory",

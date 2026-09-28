@@ -1,5 +1,5 @@
 [project]
-name = "mie-decoder"
+name = "aero1553"
 version = "3.0.0"
 description = "Decoder for DDC MIL-STD-1553 MIE binary recording files"
 authors = [
@@ -13,10 +13,10 @@ dependencies = [
 ]
 
 [project.scripts]
-mie-decoder = "mie_decoder.cli:main_cli"
+aero1553 = "aero1553.cli:main_cli"
 
 [tool.poetry]
-packages = [{include = "mie_decoder", from = "src"}]
+packages = [{include = "aero1553", from = "src"}]
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^8.0"
@@ -61,11 +61,11 @@ ignore_missing_imports = true
 # ratchet rationale. `fail_under` below is the single source of truth — CI runs
 # `pytest --cov` and the gate fails the build automatically.
 #
-# __main__.py is the entry shim (python -m mie_decoder) — three-line
+# __main__.py is the entry shim (python -m aero1553) — three-line
 # wrapper around cli.main(), uncoverable without spawning a child
-# process. Mirrors the Rust exclusion of rust/src/bin/mie-decoder.rs.
+# process. Mirrors the Rust exclusion of rust/src/bin/aero1553.rs.
 [tool.coverage.run]
-source = ["mie_decoder"]
+source = ["aero1553"]
 branch = true
 omit = ["*/__main__.py"]
 
@@ -74,7 +74,7 @@ show_missing = true
 skip_covered = false
 fail_under = 92
 
-# Pylint lints the package source (src/mie_decoder). Genuine correctness/hygiene
+# Pylint lints the package source (src/aero1553). Genuine correctness/hygiene
 # checks stay on; checks that conflict with deliberate design choices or
 # duplicate SonarCloud are disabled below. Run: `poetry -C python run pylint src`.
 [tool.pylint.basic]
@@ -215,14 +215,14 @@ allowed-confusables = ["–", "—", "×", "µ"]
 # ARG002: argparse calls `Action.__call__(parser, namespace, values,
 # option_string=...)` BY NAME. The unused parameters are the interface;
 # renaming them to `_parser` breaks the call.
-"src/mie_decoder/cli.py" = ["T201", "ARG002"]
+"src/aero1553/cli.py" = ["T201", "ARG002"]
 
 # SIM115: these files outlive the opening scope BY DESIGN -- the reader owns a
 # mapping and the writer owns a temp file until `commit()` renames it. A `with`
 # block would close them at exactly the wrong moment; the lifetime is the
 # object's, and each has an explicit close on every path.
-"src/mie_decoder/reader.py" = ["SIM115"]
-"src/mie_decoder/writer.py" = ["SIM115"]
+"src/aero1553/reader.py" = ["SIM115"]
+"src/aero1553/writer.py" = ["SIM115"]
 
 # ARG002: a pytest test requests a fixture for its SIDE EFFECT as often as for
 # its value -- `capsys` starts capturing, `tmp_path` creates a directory. An
@@ -247,7 +247,7 @@ allowed-confusables = ["–", "—", "×", "µ"]
 # function used only by tests is not "dead"). The ignored names are intentional:
 # `option_string` is the argparse Action.__call__ interface arg; the two
 # constants are documented module reference values (MAX_RECORD_BYTES is also in
-# docs/diagrams/class.puml) that stay part of the surface though unused in-tree.
+# docs/diagrams/class.svg) that stay part of the surface though unused in-tree.
 # Run: `poetry -C python run vulture`.
 [tool.vulture]
 paths = ["src", "tests"]

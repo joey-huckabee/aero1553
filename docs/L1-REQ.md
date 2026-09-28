@@ -1,8 +1,8 @@
-# MIE-Decoder — Level 1 Requirements
+# Aero1553 — Level 1 Requirements
 
 ## Purpose
 
-This document establishes the Level 1 (L1) SHALL-statement requirements for MIE-Decoder: maintained Rust, Python and C++ libraries plus CLIs that decode proprietary binary recording files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI cards into CSV output that is column-compatible with DDC's own recording software.
+This document establishes the Level 1 (L1) SHALL-statement requirements for Aero1553: maintained Rust, Python and C++ libraries plus CLIs that decode proprietary binary recording files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI cards into CSV output that is column-compatible with DDC's own recording software.
 
 L1 requirements define **what** the product must do at the highest level of abstraction. They are the root of the requirements tree; L2 requirements decompose each L1 into architectural decisions, and L3 requirements decompose each L2 into implementation-level obligations. All three levels are traced through `docs/TRACE-MATRIX.md`.
 
@@ -353,7 +353,7 @@ Operators who need tighter screening can raise `decode.lookahead_records` / `--l
 
 ### L1-ROB-001
 
-**Statement**: For arbitrary input bytes within the size limits of `usize`, no implementation SHALL panic, segfault, or enter an unbounded loop. All failures SHALL surface as a documented decoder error variant (`MieError` in Rust, a `MieDecoderError` subclass in Python). Verified by a per-implementation deterministic-PRNG fuzz harness.
+**Statement**: For arbitrary input bytes within the size limits of `usize`, no implementation SHALL panic, segfault, or enter an unbounded loop. All failures SHALL surface as a documented decoder error variant (`MieError` in Rust, an `Aero1553Error` subclass in Python). Verified by a per-implementation deterministic-PRNG fuzz harness.
 
 **Rationale**: The decoder is run on operator-supplied files, some of which are corrupt by accident and some of which are the output of misconfigured recording sessions. Crashing on bad input gives the operator no useful information and may take down a batch pipeline. Surfacing every failure as a structured error variant lets the operator diagnose and act. The deterministic-PRNG harness ensures regressions can be reproduced.
 
@@ -391,12 +391,12 @@ Operators who need tighter screening can raise `decode.lookahead_records` / `--l
 
 ## Non-Requirements
 
-These items are explicitly OUT of scope for MIE-Decoder. They are recorded here so future requests do not get folded into the existing requirements set without separate analysis. Non-requirement IDs use the prefix `NR-<NNN>` and are not subject to the L1/L2/L3 decomposition convention.
+These items are explicitly OUT of scope for Aero1553. They are recorded here so future requests do not get folded into the existing requirements set without separate analysis. Non-requirement IDs use the prefix `NR-<NNN>` and are not subject to the L1/L2/L3 decomposition convention.
 
 ### NR-001
 
-**Statement**: The MIE Decoder SHALL NOT implement decode functionality for IRIG 106 Chapter 10 / 1553 data.
+**Statement**: The Aero1553 SHALL NOT implement decode functionality for IRIG 106 Chapter 10 / 1553 data.
 
-**Rationale**: MIE files use a DDC proprietary record format that is distinct from IRIG 106 Chapter 10 packet formats — they differ in file framing, timestamp encoding, metadata layout, and the sub-format conventions used to carry MIL-STD-1553 wire data. Conflating the two formats would silently produce wrong output on inputs of either kind. Any future request to add IRIG 106 1553 decode SHALL be treated as a new capability requiring separate requirements, design analysis, architecture review, and approval. It SHALL NOT be added as an extension of the existing MIE Decoder.
+**Rationale**: MIE files use a DDC proprietary record format that is distinct from IRIG 106 Chapter 10 packet formats — they differ in file framing, timestamp encoding, metadata layout, and the sub-format conventions used to carry MIL-STD-1553 wire data. Conflating the two formats would silently produce wrong output on inputs of either kind. Any future request to add IRIG 106 1553 decode SHALL be treated as a new capability requiring separate requirements, design analysis, architecture review, and approval. It SHALL NOT be added as an extension of the existing Aero1553.
 
 **Disposition**: Future request handled as a new capability per the rationale above.

@@ -501,7 +501,7 @@ TEST_CASE("help outranks a deferred diagnostic but not a missing value",
         REQUIRE(mie::cli::run(args("count", input.str(), "--version")) == mie::cli::EXIT_USAGE);
         std::string out;
         REQUIRE(run_capturing_stdout(args("--version"), out) == mie::cli::EXIT_OK);
-        REQUIRE(out.find("mie-decoder") != std::string::npos);
+        REQUIRE(out.find("aero1553") != std::string::npos);
     }
 
     SECTION("help after `--` is a path, so it rescues nothing") {
@@ -837,7 +837,7 @@ TEST_CASE("exit codes classify the failure", "[cli][L3-CPP-016]") {
 }
 
 TEST_CASE("count writes the integer alone to stdout", "[cli][L3-CPP-017]") {
-    // `n=$(mie-decoder count x.mie)` must not need to strip prose, so the
+    // `n=$(aero1553 count x.mie)` must not need to strip prose, so the
     // human-readable sentence goes to stderr and stdout carries the number and
     // a newline -- nothing else.
     const TempFile input("mie-cli-count.mie", valid_recording());

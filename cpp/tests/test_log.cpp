@@ -31,7 +31,7 @@ using mie_test::LogCapture;
 
 }  // namespace
 
-#define MIE_LOG_MODULE "mie_decoder::test_log"
+#define MIE_LOG_MODULE "aero1553::test_log"
 
 // ---------------------------------------------------------------------------
 // Level names
@@ -170,7 +170,7 @@ TEST_CASE("a line is LEVEL [module] message with one trailing newline", "[log]")
     MIE_LOG_WARN(std::string("something happened"));
 
     REQUIRE(capture.count() == 1);
-    CHECK(capture.lines()[0] == "WARN [mie_decoder::test_log] something happened\n");
+    CHECK(capture.lines()[0] == "WARN [aero1553::test_log] something happened\n");
 }
 
 TEST_CASE("emit() writes unconditionally", "[log]") {
@@ -187,7 +187,7 @@ TEST_CASE("an empty message still produces a well-formed line", "[log]") {
     const LogCapture capture(lg::LEVEL_DEBUG);
     MIE_LOG_INFO(std::string());
     REQUIRE(capture.count() == 1);
-    CHECK(capture.lines()[0] == "INFO [mie_decoder::test_log] \n");
+    CHECK(capture.lines()[0] == "INFO [aero1553::test_log] \n");
 }
 
 TEST_CASE("a message containing newlines is passed through verbatim", "[log]") {
@@ -197,7 +197,7 @@ TEST_CASE("a message containing newlines is passed through verbatim", "[log]") {
     const LogCapture capture(lg::LEVEL_DEBUG);
     MIE_LOG_ERROR(std::string("first\nsecond"));
     REQUIRE(capture.count() == 1);
-    CHECK(capture.lines()[0] == "ERROR [mie_decoder::test_log] first\nsecond\n");
+    CHECK(capture.lines()[0] == "ERROR [aero1553::test_log] first\nsecond\n");
 }
 
 TEST_CASE("each emission is delivered as exactly one write", "[log]") {

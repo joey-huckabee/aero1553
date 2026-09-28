@@ -1,6 +1,6 @@
-# MIE-Decoder — Maintainer Guide
+# Aero1553 — Maintainer Guide
 
-Operational reference for anyone modifying the MIE-Decoder codebase. Covers the workflows you'll repeat: adding requirements, tests, conformance fixtures, error variants, and CLI flags; running the trace matrix; bumping coverage; releasing.
+Operational reference for anyone modifying the Aero1553 codebase. Covers the workflows you'll repeat: adding requirements, tests, conformance fixtures, error variants, and CLI flags; running the trace matrix; bumping coverage; releasing.
 
 This guide is for **maintainers**. End-user CLI usage belongs in [`docs/USER-GUIDE.md`](USER-GUIDE.md); error/exit-code reference for operators lives in [`docs/ERROR-CATALOG.md`](ERROR-CATALOG.md); LLM-session project conventions live in [`CLAUDE.md`](../CLAUDE.md).
 
@@ -9,7 +9,7 @@ This guide is for **maintainers**. End-user CLI usage belongs in [`docs/USER-GUI
 ## 1. Repo layout
 
 ```
-mie-decoder/
+aero1553/
 ├── rust/                   Rust crate (edition 2024, MSRV 1.88)
 │   ├── Cargo.toml / Cargo.lock
 │   ├── .cargo/config.toml  cargo-llvm-cov coverage aliases (cov / cov-lcov / cov-ci)
@@ -39,7 +39,7 @@ mie-decoder/
 ├── python/                 Python package (supports 3.10–3.14)
 │   ├── pyproject.toml      Poetry + PEP 621 hybrid; pytest markers registered here
 │   ├── poetry.lock         pinned dependencies; committed
-│   ├── src/mie_decoder/    package source (mirrors Rust module names)
+│   ├── src/aero1553/       package source (mirrors Rust module names)
 │   └── tests/              pytest suite
 ├── scripts/
 │   ├── build-trace-matrix.py    generates docs/TRACE-MATRIX.md
@@ -67,7 +67,7 @@ mie-decoder/
 │   ├── USER-GUIDE.md       end-to-end walkthrough for analysts / operators
 │   ├── VENDOR-CSV-DIFFS.md alignment statement vs DDC vendor CSV
 │   ├── MAINTAINER-GUIDE.md (this file)
-│   └── diagrams/           PlantUML sources and rendered SVGs
+│   └── diagrams/           hand-written SVG diagrams (the source of truth)
 ├── config/default.toml     fully-commented reference TOML schema
 └── .github/workflows/      ci.yml, cpp-ci.yml, differential.yml, fuzz.yml,
                             codeql.yml, sonarcloud.yml
@@ -92,11 +92,11 @@ cargo test
 
 ```bash
 pipx install poetry==2.3.4   # or via your usual install
-poetry -C python sync         # creates the venv, installs locked deps + mie_decoder
+poetry -C python sync         # creates the venv, installs locked deps + aero1553
 poetry -C python run pytest
 ```
 
-The Python package is installed in editable mode via `poetry sync`'s root-package step. If `python -m mie_decoder` ever fails to import in your local Poetry env, re-run sync.
+The Python package is installed in editable mode via `poetry sync`'s root-package step. If `python -m aero1553` ever fails to import in your local Poetry env, re-run sync.
 
 ### Cross-impl conformance (needs all three)
 
@@ -133,11 +133,11 @@ cargo semver-checks check-release --baseline-rev "$(git describe --tags --abbrev
 poetry -C python run pytest                      # all tests
 poetry -C python run pytest tests/test_e2e.py -k delta -v
 poetry -C python run mypy src                    # strict type check (CI-gated)
-poetry -C python run pylint src/mie_decoder      # lint (CI-gated, fails below 10/10)
+poetry -C python run pylint src/aero1553         # lint (CI-gated, fails below 10/10)
 poetry -C python run ruff check                  # ruff lint (CI-gated)
 poetry -C python run ruff format                 # auto-format (CI runs `ruff format --check`)
 poetry -C python run vulture                     # dead-code scan (CI-gated)
-poetry -C python run bandit -r src/mie_decoder   # security scan / SAST (CI-gated)
+poetry -C python run bandit -r src/aero1553      # security scan / SAST (CI-gated)
 poetry -C python run pytest --cov               # coverage gate (fail_under=92 in pyproject.toml)
 poetry -C python run python ../tests/conformance/run.py
 
@@ -153,39 +153,18 @@ python scripts/build-trace-matrix.py --check     # what CI does — exits 1 on d
 # (reads the vendor CSV only — no MIE file, no decoder run)
 python scripts/diagnose-vendor-delta.py vendor.csv
 
-# PlantUML diagrams
-plantuml -tsvg docs/diagrams/*.puml              # regenerate committed SVGs
-
 # CLI dry-runs against a real file
 (cd rust && cargo run --release -- decode path/to/recording.mie -o decoded.csv)
-poetry -C python run mie-decoder decode path/to/recording.mie -o decoded.csv
+poetry -C python run aero1553 decode path/to/recording.mie -o decoded.csv
 ```
 
-Commit each `docs/diagrams/*.puml` source with its matching rendered
-`docs/diagrams/*.svg`. Regenerate the SVG whenever the PlantUML source changes —
-**CI will not catch a stale SVG** (it cannot; see §9 and `ROADMAP.md`). It
-*will* catch a source that stops parsing or renders truncated, which the job
-could not do before v2.15.0.
-
-Two traps when regenerating:
-
-- **The output file is named after `@startuml <name>`, not the source.**
-  `plantuml -tsvg docs/diagrams/class.puml` writes
-  `MIE-Decoder Class Diagram.svg`. Rename it onto `class.svg` yourself.
-- **PlantUML exits 0 on a crashed render**, leaving a truncated SVG. Grep the
-  render output for `Exception`, and sanity-check the result (`class.svg`
-  should contain every type declared in `class.puml`; a whole
-  `component.svg` is ~60 KB, a crashed one ~14 KB).
-
-Render with PlantUML **1.2026.7** or newer — the version CI pins. It is the
-first *stable* release on which `component.puml` does not crash in the smetana
-layout engine; 1.2026.5 and 1.2026.6 both produce a truncated stub while
-exiting 0. The committed SVGs predate it and carry `1.2026.7beta11`, the
-rolling snapshot that was the only working build at the time. Read the
-`<?plantuml VERSION?>` processing instruction inside any committed `*.svg` to
-confirm what produced it. Note also that PlantUML lays out using the JVM's font
-metrics, so re-rendering an *unchanged* source on a different machine will
-still shift the canvas; expect byte differences that are not content changes.
+The diagrams in `docs/diagrams/` (`class.svg`, `component.svg`,
+`dataflow.svg`) are hand-written SVG and are their own source -- there is no
+generator. Edit the SVG directly: every box, note and edge is a `<g id="...">`
+preceded by a comment naming it. Keep the text ASCII, the file LF with a final
+newline, and the colours on the CSS custom properties at the top so the light
+and dark themes stay in step. No CI job checks the diagrams, so update them in
+the same change as the code they depict.
 
 ---
 
@@ -344,7 +323,7 @@ Always tag new tests with `/// Requirements:` so the trace matrix credits them.
 
 ### Rust CLI acceptance
 
-CLI acceptance tests in `rust/tests/cli.rs` spawn the actual built binary located via `env!("CARGO_BIN_EXE_mie-decoder")` (Cargo populates this per test target and appends `.exe` on Windows automatically — no per-OS code paths needed) and use `std::process::Command::output()` to invoke it. Style conventions:
+CLI acceptance tests in `rust/tests/cli.rs` spawn the actual built binary located via `env!("CARGO_BIN_EXE_aero1553")` (Cargo populates this per test target and appends `.exe` on Windows automatically — no per-OS code paths needed) and use `std::process::Command::output()` to invoke it. Style conventions:
 
 - Use the `TempDir` helper in the same file: per-test scratch directories under `std::env::temp_dir()`, keyed by pid + atomic counter, removed on drop. Tests can then use plain `dir/input.mie`, `dir/output.csv` paths.
 - Use the `run([...])` helper rather than `Command::new` directly. It echoes any captured stderr into test output so a Windows CI failure can be triaged from the runner log without re-running locally.
@@ -437,14 +416,14 @@ When a new error class is needed (per `docs/ERROR-CATALOG.md` taxonomy), land it
 4. Add a match arm to the `impl fmt::Display for MieError` block with the user-facing message.
 5. Classify it: add it to `is_record_error()` (tied to one record's byte offset), to `is_file_error()` (an I/O failure on the input itself), or to **neither** — whole-file rejections and destination guards deliberately answer `false` to both. Then list it in the matching arm of `every_error_kind_is_deliberately_classified` in `rust/src/error.rs`, which fails if a variant appears in no list, and mirror the decision in the Python test. Carrying an `offset` does not by itself make a variant record-class: `HomogeneousPayload` and `TimestampFormatMismatch` cite an offset but reject the whole file.
 
-### Python (`python/src/mie_decoder/exceptions.py`)
+### Python (`python/src/aero1553/exceptions.py`)
 
 1. Add a new class extending `MieFileError` or `MieRecordError` as appropriate. Follow the existing pattern: `__init__` sets typed attributes and calls `super().__init__(message)`.
 2. Add a class-level docstring naming the L1/L2 requirement(s) it satisfies.
 
 ### CLI exit-code mapping
 
-`rust/src/cli.rs` and `python/src/mie_decoder/cli.py` both have a try/except (or `match`) chain that maps errors to exit codes. Decide which class the new error belongs to (see `docs/ERROR-CATALOG.md` section 1):
+`rust/src/cli.rs` and `python/src/aero1553/cli.py` both have a try/except (or `match`) chain that maps errors to exit codes. Decide which class the new error belongs to (see `docs/ERROR-CATALOG.md` section 1):
 
 - Wrong-file-type / file-shape errors → exit 2 (alongside `NoValidRecords`)
 - Unrecoverable mid-file → exit 3 (alongside `UnrecoverableSyncLoss`)
@@ -474,7 +453,7 @@ L1-CLI-001 only requires the two CLIs to offer the same capabilities; their synt
 
 The CLI argparse is hand-rolled. Add the flag in the relevant subcommand's parser. Wire it into the appropriate path (`run_decode`, `run_count`, `run_dump`). Add `parse_*` unit tests for the new flag (greedy / non-greedy / repeats / `=value`) following the existing `filter_flag_*` pattern.
 
-### Python (`python/src/mie_decoder/cli.py`)
+### Python (`python/src/aero1553/cli.py`)
 
 Add an `argparse` argument to the relevant subparser. Wire it the same way.
 
@@ -505,15 +484,14 @@ shows up as a gap rather than silently drifting:
 | `cargo-semver-checks` | `cargo semver-checks check-release` vs the latest release tag (`baseline-rev`, `release-type: minor`) — fails a PR that makes a **breaking** public-API change without a major bump; additive changes pass | `ubuntu-latest` | Block merge |
 | `python` | `poetry sync` + `poetry run pytest`; `poetry check --strict --lock` + `poetry build` Linux/3.12-only | 5 versions × Linux (3.10–3.14), 2 versions × Windows (3.12, 3.14) | Block merge |
 | `mypy` | `poetry run mypy src` — strict type check, analyzed as Python 3.10 (config in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
-| `pylint` | `poetry run pylint src/mie_decoder` — lints the package; curated disables + line length in `python/pyproject.toml` `[tool.pylint.*]` (gate fails below 10/10) | `ubuntu-latest` (3.12) | Block merge |
+| `pylint` | `poetry run pylint src/aero1553` — lints the package; curated disables + line length in `python/pyproject.toml` `[tool.pylint.*]` (gate fails below 10/10) | `ubuntu-latest` (3.12) | Block merge |
 | `ruff` | `poetry run ruff check` + `poetry run ruff format --check` — fast lint + formatter check over the package **and tests** (config in `python/pyproject.toml` `[tool.ruff]`); run `ruff format` to fix | `ubuntu-latest` (3.12) | Block merge |
 | `vulture` | `poetry run vulture` — dead-code scan over the package **and tests**; scan paths + intentional-name ignores (interface args, documented constants) in `python/pyproject.toml` `[tool.vulture]` | `ubuntu-latest` (3.12) | Block merge |
-| `bandit` | `poetry run bandit -r src/mie_decoder` — Python security static analysis (SAST) over the package source; fails on any finding at the default severity/confidence | `ubuntu-latest` (3.12) | Block merge |
+| `bandit` | `poetry run bandit -r src/aero1553` — Python security static analysis (SAST) over the package source; fails on any finding at the default severity/confidence | `ubuntu-latest` (3.12) | Block merge |
 | `python-coverage` | `poetry run pytest --cov` — 92% combined line+branch floor (`fail_under` in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
 | `conformance` | `pip install -e ./python` then `python tests/conformance/run.py --skip cpp` — every fixture, Rust and Python. The opt-out is explicit: the runner defaults to every registered implementation and fails if one is missing, so this job cannot pass by silently testing fewer | `ubuntu-latest`, `windows-latest` | Block merge |
 | `trace-matrix` | `python scripts/build-trace-matrix.py --check` — fails if `docs/TRACE-MATRIX.md` is stale relative to the spec docs + test markers | `ubuntu-latest` | Block merge |
 | `repo-hygiene` | `bash scripts/repo-hygiene.sh` — re-runs the pre-commit hook's file-level checks (final newline, CRLF, merge markers, 1 MB cap, `*.mie`, `Cargo.lock` parity, `dbg!()`, `unsafe`/`SAFETY:`) over the whole tracked tree, so a `--no-verify` commit is still caught, plus the doc-drift checks that have no hook counterpart (this table lists every `ci.yml` job; the config-key set agrees across its three text sources; no TRACE-MATRIX row claims Implemented with no artifact; the declared Rust MSRV agrees across `Cargo.toml`, CI and the docs; `ROADMAP.md` doesn't restate a `TRACE-MATRIX.md` status; the Python exception hierarchy matches its ASCII-tree and UML drawings; every shipped string literal in all three implementations is ASCII, via `scripts/assert-ascii-output.py` — L2-CLI-014) | `ubuntu-latest` | Block merge |
-| `diagrams` | Renders every `docs/diagrams/*.puml` with the pinned PlantUML version into a scratch directory and fails if any source does not parse or does not render whole — the log is scanned for exceptions (PlantUML **exits 0 on a crashed render**) and every output SVG must exceed 20 KB (a crashed `component.puml` yields a ~14 KB stub against a ~60 KB whole one). It does **not** check the committed `*.svg` for staleness: PlantUML lays out with the JVM's font metrics, so a CI render never byte-matches a locally-committed SVG and such a diff would fail every PR. See the "Diagram rendering" section of `ROADMAP.md` | `ubuntu-latest` | Block merge |
 
 The jobs above are `.github/workflows/ci.yml`, which gates the Rust and Python
 implementations. The C++ implementation gates separately in
@@ -531,7 +509,7 @@ and a C++ change never waits on the Python matrix. Its jobs:
 | `static-analysis` | `cppcheck` over `cpp/src` and `cpp/tests`. Vendored Catch2 excluded — it is third-party code the project is forbidden to edit | `ubuntu-24.04` | Any finding |
 | `clang-tidy` | `bear` generates a compilation database from the real build, then `make tidy` runs clang-tidy with `--warnings-as-errors`. Without that flag clang-tidy exits 0 on warnings and the gate reports success while printing findings | `ubuntu-24.04` | Any finding |
 | `format` | `make format-check`. Covers **both** platform backends, not just the one this host compiles — the inactive backend is checked by no other tier | `ubuntu-24.04` | Any diff |
-| `cpp-conformance` | The C++ binary against the **same** byte-exact oracles in `tests/conformance/expected/`, via `run.py --only cpp`. Needs no cargo and no installed `mie_decoder`, because it compares against the committed oracles rather than against the other CLIs. The C++ build runs **every** case in the manifest, so nothing is skipped | `ubuntu-24.04`, `windows-2022` | Block merge |
+| `cpp-conformance` | The C++ binary against the **same** byte-exact oracles in `tests/conformance/expected/`, via `run.py --only cpp`. Needs no cargo and no installed `aero1553`, because it compares against the committed oracles rather than against the other CLIs. The C++ build runs **every** case in the manifest, so nothing is skipped | `ubuntu-24.04`, `windows-2022` | Block merge |
 | `invariants` | The three properties that make the portability claim true rather than aspirational: OS headers confined to the platform backends, no locale-sensitive parsing or formatting, and the Makefile and CMake resolving the same source list | `ubuntu-24.04` | Any violation |
 
 Each of the three `invariants` gates has been verified to fail on a planted
@@ -556,8 +534,6 @@ unpick the integration. clang-tidy 22, cppcheck, ASan, UBSan, LSan and Valgrind
 already cover the rest.
 
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
-
-The `diagrams` job pins PlantUML to `1.2026.5`, which is **not** the version that produced the committed SVGs (`1.2026.7beta11`, from the unpinnable rolling `snapshot` pre-release — read the `<?plantuml VERSION?>` processing instruction inside any `docs/diagrams/*.svg`). That mismatch went unnoticed because the job never compares the tracked files at all. Three independent defects and the reproducibility constraint on any replacement are written up under "Diagram rendering" in `ROADMAP.md`.
 
 A separate scheduled workflow, `.github/workflows/fuzz.yml`, runs a deeper L1-ROB-001 fuzz burn-in daily (and on manual `workflow_dispatch`), across **all three** implementations and on **both** Linux and Windows. The normal `rust` / `python` / C++ suites run the fixed 256-iteration default; the burn-in sets `MIE_FUZZ_ITERATIONS` (default 25 000) so the deterministic harness sweeps a much larger input space. `docs/FUZZING.md` is the full map of what is fuzzed and what is not; this section covers the CI wiring.
 
@@ -640,7 +616,7 @@ cargo cov-lcov       # lcov.info for IDE coverage overlays
 
 ### Python
 
-The CI gate runs `poetry -C python run pytest --cov --cov-report=term-missing`. Configuration lives in `python/pyproject.toml` under `[tool.coverage.run]` (source set, branch tracking, exclusions) and `[tool.coverage.report]`. The floor is `fail_under = 92` (combined line+branch) in `[tool.coverage.report]` — the single source of truth, so a bare `pytest --cov` enforces it without a CLI flag. `__main__.py` is excluded because it's the `python -m mie_decoder` entry shim (parallel to Rust's `bin/mie-decoder.rs` exclusion).
+The CI gate runs `poetry -C python run pytest --cov --cov-report=term-missing`. Configuration lives in `python/pyproject.toml` under `[tool.coverage.run]` (source set, branch tracking, exclusions) and `[tool.coverage.report]`. The floor is `fail_under = 92` (combined line+branch) in `[tool.coverage.report]` — the single source of truth, so a bare `pytest --cov` enforces it without a CLI flag. `__main__.py` is excluded because it's the `python -m aero1553` entry shim (parallel to Rust's `bin/aero1553.rs` exclusion).
 
 ```bash
 # What CI runs (use this before pushing)
@@ -666,7 +642,7 @@ make coverage-report   # same measurement, no gate, with per-branch detail
 
 Two files are excluded, both deliberately. `src/main.cpp` is the executable
 entry point and nothing else — its body is three calls, and the Rust gate
-ignores its own `bin/mie-decoder.rs` for the same reason, which keeps the two
+ignores its own `bin/aero1553.rs` for the same reason, which keeps the two
 numbers comparable. `src/platform_win32.cpp` is not compiled on Linux so gcov
 never sees it; it is named in the exclusion list anyway, so that the omission is
 a stated fact rather than an accident of which host ran the build. It is covered
@@ -690,7 +666,7 @@ cd rust
 cargo build --release
 ```
 
-The resulting binary at `rust/target/release/mie-decoder` is the deliverable artifact.
+The resulting binary at `rust/target/release/aero1553` is the deliverable artifact.
 
 ### Python package
 
@@ -699,7 +675,7 @@ poetry -C python check --strict --lock
 poetry -P python build   # -P (not -C): -C doubles the src path on Windows; -P needs Poetry >= 2.0
 ```
 
-This produces `python/dist/mie_decoder-<version>.tar.gz` and `mie_decoder-<version>-py3-none-any.whl`.
+This produces `python/dist/aero1553-<version>.tar.gz` and `aero1553-<version>-py3-none-any.whl`.
 
 ### C++ implementation
 
@@ -726,7 +702,7 @@ Tagging scheme:
 Bump versions when:
 
 - **Rust (`rust/Cargo.toml`)** — any change to the public crate API, the CLI surface, or the on-disk output.
-- **Python (`python/pyproject.toml` only)** — same axes for the Python package. `python/src/mie_decoder/__init__.py::__version__` reads from package metadata via `importlib.metadata.version("mie-decoder")`, so `pyproject.toml` is the single source of truth — no second file to keep in lockstep. `poetry check --strict --lock` catches `pyproject.toml`/`poetry.lock` drift in CI.
+- **Python (`python/pyproject.toml` only)** — same axes for the Python package. `python/src/aero1553/__init__.py::__version__` reads from package metadata via `importlib.metadata.version("aero1553")`, so `pyproject.toml` is the single source of truth — no second file to keep in lockstep. `poetry check --strict --lock` catches `pyproject.toml`/`poetry.lock` drift in CI.
 
 ### CHANGELOG discipline
 
@@ -744,7 +720,7 @@ The version bump itself rolls up the accumulated `[Unreleased]` entries into a d
 1. Renames `[Unreleased]` to `[<version>] — YYYY-MM-DD` in `CHANGELOG.md` and seeds a new empty `[Unreleased]` section.
 2. Updates the compare-URL footer (`[<version>]: .../compare/<previous>...<version>`) — see the warning below; this is the step most often missed.
 3. Updates the version in **all six places**, because a joint cut ships one number from one tag:
-   `rust/Cargo.toml`, `rust/Cargo.lock` (the `mie-decoder` entry — a `cargo build` refreshes it),
+   `rust/Cargo.toml`, `rust/Cargo.lock` (the `aero1553` entry — a `cargo build` refreshes it),
    `python/pyproject.toml`, `cpp/src/cli.cpp` (`kVersion`, which is what `--version` prints),
    `cpp/CMakeLists.txt` (`project(... VERSION ...)`), and the **two CLI smoke assertions** in
    `.github/workflows/cpp-ci.yml` — one bash, one PowerShell — which compare `--version` output
