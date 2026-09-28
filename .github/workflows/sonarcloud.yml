@@ -268,9 +268,19 @@ jobs:
           # so renaming the default branch does not silently break the guard.
           DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
         run: |
+          # The declared release version, so the "Previous version" new-code
+          # definition restarts at each release. Without it every analysis
+          # reported the same (absent) version, and "new code" silently meant
+          # "everything since the project's first analysis".
+          version="$(grep -m1 '^version = ' rust/Cargo.toml | cut -d'"' -f2)"
           args=(
             "-Dsonar.projectKey=${SONAR_PROJECT_KEY}"
             "-Dsonar.organization=${SONAR_ORGANIZATION}"
+            "-Dsonar.projectVersion=${version}"
+            # SonarCloud has no UI setting for the display name; an analysis
+            # parameter is the only way to set it, and it applies on the next
+            # main-branch scan. Pinned here so the name lives in code.
+            "-Dsonar.projectName=Aero1553"
             "-Dsonar.sources=rust/src,python/src,cpp/src,cpp/include"
             "-Dsonar.tests=rust/tests,python/tests,tests/conformance,cpp/tests"
             # cpp/third_party is vendored Catch2 (BSL-1.0) -- not ours to fix,
@@ -291,7 +301,7 @@ jobs:
             # pythonsecurity:S8707 ("Agentic workflows should not be vulnerable
             # to path injection") fires on `--config <path>` reaching
             # `Path.read_text()` in config.py. It is a false positive for this
-            # program shape: mie-decoder is an operator-run CLI, the config path
+            # program shape: aero1553 is an operator-run CLI, the config path
             # IS the interface, and the process holds exactly the permissions of
             # the user who typed the command — there is no sandbox to escape and
             # no privilege boundary to cross. The rule's premise (an agent
@@ -375,7 +385,7 @@ jobs:
             #
             # Fires on the `std::fwrite` inside `emit()`. The taint source is the
             # operator-named input file, and the sink is STDOUT -- which is the
-            # entire purpose of `mie-decoder dump`: render the bytes of the file
+            # entire purpose of `aero1553 dump`: render the bytes of the file
             # the operator asked about.
             #
             # S2083 is path injection. There is no path here. `emit()` writes to
@@ -638,13 +648,13 @@ jobs:
             "-Dsonar.issue.ignore.multicriteria.tempFilePermissions.ruleKey=cpp:S2612"
             "-Dsonar.issue.ignore.multicriteria.tempFilePermissions.resourceKey=cpp/src/platform_posix.cpp"
             "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.ruleKey=pythonsecurity:S8707"
-            "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.resourceKey=python/src/mie_decoder/config.py"
+            "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.resourceKey=python/src/aero1553/config.py"
             "-Dsonar.issue.ignore.multicriteria.readerPathInjection.ruleKey=pythonsecurity:S2083"
-            "-Dsonar.issue.ignore.multicriteria.readerPathInjection.resourceKey=python/src/mie_decoder/reader.py"
+            "-Dsonar.issue.ignore.multicriteria.readerPathInjection.resourceKey=python/src/aero1553/reader.py"
             "-Dsonar.issue.ignore.multicriteria.readerAgenticPathInjection.ruleKey=pythonsecurity:S8707"
-            "-Dsonar.issue.ignore.multicriteria.readerAgenticPathInjection.resourceKey=python/src/mie_decoder/reader.py"
+            "-Dsonar.issue.ignore.multicriteria.readerAgenticPathInjection.resourceKey=python/src/aero1553/reader.py"
             "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.ruleKey=pythonsecurity:S8707"
-            "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.resourceKey=python/src/mie_decoder/merge.py"
+            "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.resourceKey=python/src/aero1553/merge.py"
           )
 
           # A manual or scheduled run on a NON-default ref must be labelled as

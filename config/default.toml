@@ -1,11 +1,11 @@
 # ============================================================================
-# MIE-Decoder Configuration File
+# Aero1553 Configuration File
 # ============================================================================
 #
-# This file controls the behavior of mie-decoder. Copy it and customize
+# This file controls the behavior of aero1553. Copy it and customize
 # as needed, then pass it to the CLI with:
 #
-#     mie-decoder --config my-config.toml decode recording.mie
+#     aero1553 --config my-config.toml decode recording.mie
 #
 # CLI arguments take precedence over values in this file. For example,
 # --log-level DEBUG will override the level set here.

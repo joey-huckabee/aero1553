@@ -188,6 +188,13 @@ jobs:
 
   cargo-semver-checks:
     name: Rust SemVer (cargo-semver-checks)
+    # DISABLED until the v4.0.0 tag exists -- RE-ENABLE AT THE v4.0.0 CUT.
+    # The crate was renamed mie-decoder -> aero1553, and cargo-semver-checks
+    # matches the baseline by package name: v3.0.0 has no `aero1553`, so the
+    # comparison cannot run at all ("package `aero1553` not found"). Once
+    # v4.0.0 is tagged the baseline carries the new name and the gate works
+    # again unchanged.
+    if: false
     runs-on: ubuntu-latest
 
     steps:
@@ -384,14 +391,14 @@ jobs:
         run: poetry -C python sync --no-interaction --no-ansi
 
       - name: Run pylint
-        # Lints the package source (src/mie_decoder). The config — curated
+        # Lints the package source (src/aero1553). The config — curated
         # disables (lazy imports, the too-many-* family already covered by
         # SonarCloud, etc.) and max-line-length — lives in
         # python/pyproject.toml's [tool.pylint.*]. working-directory: python so
         # pylint picks up that config and resolves the package's imports. The
         # gate fails on any message (pylint exits non-zero below 10/10).
         working-directory: python
-        run: poetry run pylint src/mie_decoder
+        run: poetry run pylint src/aero1553
 
   ruff:
     name: Python lint + format (ruff)
@@ -477,10 +484,10 @@ jobs:
 
       - name: Run bandit
         # Security static analysis (SAST) over the package source. Scans
-        # src/mie_decoder only — not tests, whose asserts bandit's B101 would
+        # src/aero1553 only — not tests, whose asserts bandit's B101 would
         # flag. Exits non-zero on any finding at the default severity/confidence.
         working-directory: python
-        run: poetry run bandit -r src/mie_decoder
+        run: poetry run bandit -r src/aero1553
 
   conformance:
     name: Rust/Python conformance (${{ matrix.os }})
@@ -514,21 +521,21 @@ jobs:
           cache: pip
           cache-dependency-path: python/pyproject.toml
 
-      - name: Install mie-decoder and runtime dependencies
+      - name: Install aero1553 and runtime dependencies
         # The conformance job runs both CLIs and diffs CSV output. It
         # does not need Poetry-locked dependency versions — only the
-        # mie-decoder package and its declared runtime deps available
-        # to `python -m mie_decoder`. Installing directly into the
+        # aero1553 package and its declared runtime deps available
+        # to `python -m aero1553`. Installing directly into the
         # actions/setup-python interpreter with pip is the simplest
         # form that works the same way on every hosted runner.
         run: python -m pip install -e ./python
 
-      - name: Verify mie_decoder is importable
-        run: python -c "import mie_decoder; print('mie_decoder at:', mie_decoder.__file__)"
+      - name: Verify aero1553 is importable
+        run: python -c "import aero1553; print('aero1553 at:', aero1553.__file__)"
 
       - name: Run cross-implementation conformance suite
         # run.py already handles the .exe suffix on Windows when
-        # locating rust/target/debug/mie-decoder, so the same invocation
+        # locating rust/target/debug/aero1553, so the same invocation
         # works on both runners.
         #
         # `--skip cpp` is explicit rather than implied: the runner defaults to

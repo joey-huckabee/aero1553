@@ -1,8 +1,8 @@
-@startuml MIE-Decoder Class Diagram
+@startuml Aero1553 Class Diagram
 !theme plain
 !pragma layout smetana
 scale max 4000*4000
-title MIE-Decoder - Class Diagram (Rust + Python)
+title Aero1553 - Class Diagram (Rust + Python)
 
 ' ============================================================================
 '  Cross-implementation note
@@ -263,16 +263,16 @@ package "Errors" {
       <b>both</b> predicates; match on <i>kind()</i> for those.
     end note
 
-    class MieDecoderError <<abstract>>
+    class Aero1553Error <<abstract>>
     class MieFileError    <<abstract>>
     class MieRecordError  <<abstract>>
     class MieWriterError
     class MieNonMonotonicInputError       /' v2.11: NOT a MieFileError '/
 
-    MieDecoderError <|-- MieFileError
-    MieDecoderError <|-- MieRecordError
-    MieDecoderError <|-- MieWriterError
-    MieDecoderError <|-- MieNonMonotonicInputError
+    Aero1553Error <|-- MieFileError
+    Aero1553Error <|-- MieRecordError
+    Aero1553Error <|-- MieWriterError
+    Aero1553Error <|-- MieNonMonotonicInputError
 
     class MieFileNotFoundError
     class MieFileEmptyError

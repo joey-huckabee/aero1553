@@ -155,7 +155,7 @@ jobs:
         run: |
           BIN=$(make -C cpp -s print-decoder-bin)
           "cpp/${BIN#cpp/}" --version | od -c | head -3
-          test "$("cpp/${BIN#cpp/}" --version)" = "mie-decoder 3.0.0"
+          test "$("cpp/${BIN#cpp/}" --version)" = "aero1553 3.0.0"
 
   # Fidelity job: the SLES 12 SP5 system compiler, via a mirror of the official
   # gcc:4.8 image (Debian 7 "wheezy", glibc 2.13, GCC 4.8.5).
@@ -214,14 +214,14 @@ jobs:
         shell: pwsh
         run: |
           $psi = New-Object System.Diagnostics.ProcessStartInfo
-          $psi.FileName = "cpp\build-msvc\Release\mie-decoder.exe"
+          $psi.FileName = "cpp\build-msvc\Release\aero1553.exe"
           $psi.Arguments = "--version"
           $psi.RedirectStandardOutput = $true
           $psi.UseShellExecute = $false
           $out = [System.Diagnostics.Process]::Start($psi).StandardOutput.ReadToEnd()
           $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
           if ($bytes -contains 13) { throw "stdout contained CR: binary mode is not in effect" }
-          if ($out.TrimEnd("`n") -ne "mie-decoder 3.0.0") { throw "unexpected --version output: $out" }
+          if ($out.TrimEnd("`n") -ne "aero1553 3.0.0") { throw "unexpected --version output: $out" }
 
   # ASan (heap/stack overflow, use-after-free), UBSan (undefined behaviour) and
   # LSan (leaks), all fatal on first finding. Modern toolchain only: GCC 4.8 has
@@ -353,7 +353,7 @@ jobs:
   # about a build succeeding.
   #
   # `--only cpp` compares against the committed oracles rather than against the
-  # other two CLIs, so this job needs no cargo and no installed mie_decoder. The
+  # other two CLIs, so this job needs no cargo and no installed aero1553. The
   # cases that need the unported merge are skipped BY NAME in the log, so the
   # gap stays visible instead of looking like coverage.
   #
@@ -400,7 +400,7 @@ jobs:
         run: python tests/conformance/run.py --only cpp
       - name: Run conformance (Windows)
         if: runner.os == 'Windows'
-        run: python tests/conformance/run.py --only cpp --cpp-bin cpp/build-msvc/Release/mie-decoder.exe
+        run: python tests/conformance/run.py --only cpp --cpp-bin cpp/build-msvc/Release/aero1553.exe
 
   # The differential checks, over ALL THREE implementations at once.
   #

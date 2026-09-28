@@ -1,6 +1,6 @@
 # MIE-Decoder
 
-[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=mie-decoder&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=mie-decoder)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=aero1553&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=aero1553)
 
 Decoder for DDC MIL-STD-1553 MIE binary recording files.
 

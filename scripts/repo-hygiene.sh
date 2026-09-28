@@ -115,7 +115,7 @@ done
 # ── 6. Cargo.lock parity ──────────────────────────────────────────────
 step "rust/Cargo.lock version matches rust/Cargo.toml"
 toml_ver=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' rust/Cargo.toml)
-lock_ver=$(awk '/^name = "mie-decoder"$/{getline; gsub(/[" ]/,""); sub(/version=/,""); print; exit}' rust/Cargo.lock)
+lock_ver=$(awk '/^name = "aero1553"$/{getline; gsub(/[" ]/,""); sub(/version=/,""); print; exit}' rust/Cargo.lock)
 if [[ -z "$toml_ver" || -z "$lock_ver" ]]; then
     bad "could not read version from Cargo.toml ($toml_ver) / Cargo.lock ($lock_ver)"
 elif [[ "$toml_ver" != "$lock_ver" ]]; then
@@ -127,7 +127,7 @@ fi
 # same version from one tag. Nothing enforced that. The version lives in five
 # places and the release checklist named four of them -- C++ was added to the
 # repository after that checklist was written and never got added to it, so
-# `mie-decoder --version` could report a different number depending on which
+# `aero1553 --version` could report a different number depending on which
 # implementation the operator happened to run.
 step "all three implementations declare the same version"
 py_ver=$(awk '/^\[(tool\.poetry|project)\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/pyproject.toml)
@@ -138,7 +138,7 @@ cmake_ver=$(awk '/^ *VERSION [0-9]/{print $2; exit}' cpp/CMakeLists.txt)
 # to use this gate still missed them: the gate passed while CI failed on
 # `mie-decoder 2.12.0` != `mie-decoder 2.13.0`. Both are checked here now, and
 # distinct values are collapsed so one wrong line is enough to fail.
-smoke_vers=$(grep -o 'mie-decoder [0-9][0-9.]*' .github/workflows/cpp-ci.yml \
+smoke_vers=$(grep -o 'aero1553 [0-9][0-9.]*' .github/workflows/cpp-ci.yml \
              | awk '{print $2}' | sort -u)
 smoke_count=$(printf '%s\n' "$smoke_vers" | grep -c .)
 if [[ -z "$py_ver" || -z "$cpp_ver" || -z "$cmake_ver" || -z "$smoke_vers" ]]; then
@@ -380,16 +380,16 @@ if [[ -z "$PY_BIN" ]]; then
 elif ! "$PY_BIN" - <<'PY'
 import re, sys, pathlib
 
-src = pathlib.Path("python/src/mie_decoder/exceptions.py").read_text(encoding="utf-8")
-truth = dict(re.findall(r'^class (Mie\w+)\((\w+)\):', src, re.M))
+src = pathlib.Path("python/src/aero1553/exceptions.py").read_text(encoding="utf-8")
+truth = dict(re.findall(r'^class (Mie\w+|Aero1553Error)\((\w+)\):', src, re.M))
 
 # ERROR-CATALOG §2 ASCII tree: depth comes from the column the "── " marker
 # sits in, so a stack of (depth, name) recovers each node's parent.
 doc = pathlib.Path("docs/ERROR-CATALOG.md").read_text(encoding="utf-8")
-block = doc.split("### Python (`mie_decoder.exceptions`)", 1)[1].split("```")[1]
+block = doc.split("### Python (`aero1553.exceptions`)", 1)[1].split("```")[1]
 tree, stack = {}, []
 for line in block.splitlines():
-    m = re.match(r'^(.*?)(?:└──|├──) (Mie\w+)', line)
+    m = re.match(r'^(.*?)(?:└──|├──) (Mie\w+|Aero1553Error)', line)
     if not m:
         continue
     depth, name = len(m.group(1)), m.group(2)
@@ -399,7 +399,7 @@ for line in block.splitlines():
     stack.append((depth, name))
 
 puml = pathlib.Path("docs/diagrams/class.puml").read_text(encoding="utf-8")
-uml = {c: p for p, c in re.findall(r'^\s*(Mie\w+) <\|-- (Mie\w+)', puml, re.M)}
+uml = {c: p for p, c in re.findall(r'^\s*(Mie\w+|Aero1553Error) <\|-- (Mie\w+)', puml, re.M)}
 
 bad = False
 # Labels stay ASCII: this prints to a Windows console under cp437 as readily
@@ -407,7 +407,7 @@ bad = False
 # check failure rather than a terminal limitation.
 for label, drawing in (("ERROR-CATALOG.md section 2 tree", tree), ("class.puml", uml)):
     for name, parent in sorted(truth.items()):
-        if name == "MieDecoderError":
+        if name == "Aero1553Error":
             continue          # the root; drawn as a child of Exception
         if name not in drawing:
             bad = True
@@ -416,7 +416,7 @@ for label, drawing in (("ERROR-CATALOG.md section 2 tree", tree), ("class.puml",
             bad = True
             print(f"  {label}: {name} drawn under {drawing[name]}, "
                   f"exceptions.py says {parent}", file=sys.stderr)
-    for name in sorted(set(drawing) - set(truth) - {"MieDecoderError"}):
+    for name in sorted(set(drawing) - set(truth) - {"Aero1553Error"}):
         bad = True
         print(f"  {label}: draws {name}, which exceptions.py does not define",
               file=sys.stderr)
@@ -424,7 +424,7 @@ for label, drawing in (("ERROR-CATALOG.md section 2 tree", tree), ("class.puml",
 sys.exit(1 if bad else 0)
 PY
 then
-    bad "the drawn Python exception hierarchy differs from python/src/mie_decoder/exceptions.py"
+    bad "the drawn Python exception hierarchy differs from python/src/aero1553/exceptions.py"
 fi
 
 # ── 14. No trace-matrix row claims Implemented with no artifact ───────
