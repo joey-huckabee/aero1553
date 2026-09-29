@@ -10,7 +10,6 @@ covered by ``test_e2e.py``; the byte-image equivalence by
 
 from __future__ import annotations
 
-import dataclasses
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -24,16 +23,14 @@ from aero1553.exceptions import (
 from aero1553.models import MieMessage
 from aero1553.reader import MieFileReader
 from aero1553.writer import WriteOptions, write_csv_split
-from tests.conftest import RECORD_RT15_SA11_RCV
+from tests.conftest import RECORD_RT15_SA11_RCV, replace
 
 
 def _normal_and_errored(tmp_path: Path) -> tuple[MieMessage, MieMessage]:
     fpath = tmp_path / "in.mie"
     fpath.write_bytes(RECORD_RT15_SA11_RCV)
     normal = next(iter(MieFileReader(fpath)))
-    errored = dataclasses.replace(
-        normal, type_word=dataclasses.replace(normal.type_word, error=True)
-    )
+    errored = replace(normal, type_word=replace(normal.type_word, error=True))
     assert errored.error_label == "ERROR"
     return normal, errored
 

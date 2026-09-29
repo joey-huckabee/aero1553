@@ -30,15 +30,20 @@ fn os_error(py: Python<'_>, source: std::io::Error) -> Bound<'_, PyAny> {
 
 fn build(py: Python<'_>, err: MieError) -> PyResult<PyErr> {
     let module = py.import("aero1553.exceptions")?;
+    // The originating OSError, for the two variants that wrap one. The Python
+    // decoder raised those `from exc`, so the same instance is both the
+    // exception's `source`/`cause` attribute and its `__cause__`.
+    let mut cause: Option<Bound<'_, PyAny>> = None;
     let (class, args): (&str, Bound<'_, PyTuple>) = match err {
         MieError::FileNotFound { path: p } => {
             ("MieFileNotFoundError", (path(&p),).into_pyobject(py)?)
         }
         MieError::FileEmpty { path: p } => ("MieFileEmptyError", (path(&p),).into_pyobject(py)?),
-        MieError::FileIo { path: p, source } => (
-            "MieFileIoError",
-            (path(&p), os_error(py, source)).into_pyobject(py)?,
-        ),
+        MieError::FileIo { path: p, source } => {
+            let source = os_error(py, source);
+            cause = Some(source.clone());
+            ("MieFileIoError", (path(&p), source).into_pyobject(py)?)
+        }
         MieError::InvalidTypeWord {
             offset,
             raw_type_word,
@@ -96,10 +101,11 @@ fn build(py: Python<'_>, err: MieError) -> PyResult<PyErr> {
         MieError::WriterError {
             destination,
             source,
-        } => (
-            "MieWriterError",
-            (destination, os_error(py, source)).into_pyobject(py)?,
-        ),
+        } => {
+            let source = os_error(py, source);
+            cause = Some(source.clone());
+            ("MieWriterError", (destination, source).into_pyobject(py)?)
+        }
         MieError::InputOutputCollision { path: p } => (
             "MieInputOutputCollisionError",
             (path(&p),).into_pyobject(py)?,
@@ -150,5 +156,9 @@ fn build(py: Python<'_>, err: MieError) -> PyResult<PyErr> {
         other => return Ok(PyRuntimeError::new_err(other.to_string())),
     };
     let instance = module.getattr(class)?.call1(args)?;
-    Ok(PyErr::from_value(instance))
+    let raised = PyErr::from_value(instance);
+    if let Some(cause) = cause {
+        raised.set_cause(py, Some(PyErr::from_value(cause)));
+    }
+    Ok(raised)
 }

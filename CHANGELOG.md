@@ -67,6 +67,22 @@ shared behavior) holds at any compatible version pair. See
   - `--max-sort-group abc --help` prints help and exits 0 (it exited 4).
 
   `main()` and `main_cli()` and the `EXIT_*` constants are unchanged.
+
+- **The Python reader is the Rust reader.** `aero1553.MieFileReader` keeps its
+  constructor, properties and behaviour, and iterating it is about 29x
+  faster (500,000 records: 28,601 -> 835,511 records/s on the reference
+  machine). The records it yields -- `MieMessage` and the `TypeWord`,
+  `CommandWord`, `IrigTimestamp` and `StandardTimestamp` values in them --
+  are compiled classes with the same fields, properties, constructors,
+  equality, hashing, repr, pickling and `with_delta()`; nested values are
+  built only when a field is read. The enums are unchanged, still `IntEnum`
+  (`msg.bus is Bus.A`). Decoder log lines still reach Python `logging` under
+  the same logger names (`aero1553.reader`), and errors are the same
+  `aero1553.exceptions` classes with the same messages and attributes.
+
+  | Was | Now |
+  |---|---|
+  | The record types were frozen dataclasses | **They are not dataclasses**: `dataclasses.replace` / `asdict` / `fields` do not apply. Use `copy.replace(msg, delta=...)` (Python 3.13+) or `msg.__replace__(...)`, and read fields by name. |
   `main_cli()` (the console-script entry point) now restores the default
   SIGINT handler, so Ctrl-C ends a long decode immediately, as it ends the
   binary.

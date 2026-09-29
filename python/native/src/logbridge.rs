@@ -53,17 +53,47 @@ fn python_level(level: Level) -> i32 {
     }
 }
 
-/// Set the decoder's level from the `aero1553` Python logger's effective
-/// level, and its day-of-year advisory switch from `aero1553.logger`.
+/// The most verbose effective level among the `aero1553` logger and every
+/// existing `aero1553.*` logger.
 ///
-/// Called where a reader is created and where iteration starts. The decoder
-/// formats a line only when its own level lets it through, so matching that
-/// level to Python's means a line Python would drop is never built.
-pub fn sync_level(py: Python<'_>) -> PyResult<()> {
-    let effective: i32 = logging(py)?
+/// The decoder has one global level, while Python levels are per logger: an
+/// application (or pytest's `caplog.at_level(..., logger="aero1553.reader")`)
+/// may turn up one module alone. Taking the most verbose means the decoder
+/// produces every line SOME aero1553 logger wants; each logger's own level and
+/// handlers still decide what is shown, so the cost of erring verbose is only
+/// the formatting of a line Python then drops.
+fn most_verbose_level(py: Python<'_>) -> PyResult<i32> {
+    let logging = logging(py)?;
+    let mut level: i32 = logging
         .call_method1("getLogger", ("aero1553",))?
         .call_method0("getEffectiveLevel")?
         .extract()?;
+    let logger_class = logging.getattr("Logger")?;
+    let registry = logging
+        .getattr("root")?
+        .getattr("manager")?
+        .getattr("loggerDict")?
+        .call_method0("copy")?;
+    for (name, logger) in registry.cast_into::<pyo3::types::PyDict>()?.iter() {
+        let name: String = name.extract()?;
+        // A PlaceHolder (an intermediate name nobody has asked for) has no level.
+        if name.starts_with("aero1553.") && logger.is_instance(&logger_class)? {
+            let own: i32 = logger.call_method0("getEffectiveLevel")?.extract()?;
+            level = level.min(own);
+        }
+    }
+    Ok(level)
+}
+
+/// Set the decoder's level from the Python loggers (see
+/// [`most_verbose_level`]), and its day-of-year advisory switch from
+/// `aero1553.logger`.
+///
+/// Called where a reader is created and where iteration starts. The decoder
+/// formats a line only when its own level lets it through, so matching that
+/// level to Python's means a line no Python logger would take is never built.
+pub fn sync_level(py: Python<'_>) -> PyResult<()> {
+    let effective = most_verbose_level(py)?;
     log::set_level(match effective {
         i32::MIN..=10 => Level::Debug,
         11..=20 => Level::Info,

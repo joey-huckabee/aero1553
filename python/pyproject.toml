@@ -110,6 +110,9 @@ fail_under = 92
 # with no body: it reports every stub parameter as unused and every stub
 # function as undocumented.
 ignore-patterns = ['.*\.pyi$']
+# pylint reads a compiled module's names only by importing it, which it does
+# only for modules listed here. CI builds the extension before pylint runs.
+extension-pkg-allow-list = ["aero1553._native"]
 
 [tool.pylint.basic]
 # Keep pylint's default "good" short names and allow `tomllib` — the module
@@ -290,4 +293,10 @@ ignore_names = [
     # pytest autouse fixtures are invoked by the framework, never by name.
     "_restore_package_logger_state",
     "_cwd_with_flag_named_files",
+    # sync.py helpers whose only caller was the pure-Python reader, retired in
+    # step 3 of the PyO3 binding. Whether sync.py's functions stay public API is
+    # decided with the rest of the pure-Python modules (step 5); until then they
+    # are kept, not deleted.
+    "is_homogeneous_payload",
+    "diagnose_header_scan_failure",
 ]

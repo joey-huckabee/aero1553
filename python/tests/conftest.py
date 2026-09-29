@@ -11,6 +11,7 @@ import logging
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 import pytest
 
@@ -312,6 +313,22 @@ def conformance_input(name: str) -> bytes:
 def standard_timestamp_data() -> bytes:
     """A Standard-format (free-running counter) recording."""
     return conformance_input("standard-timestamps")
+
+
+T = TypeVar("T")
+
+
+def replace(obj: T, **changes: object) -> T:
+    """A copy of a record value with some fields changed.
+
+    The record types (``MieMessage``, ``TypeWord``, ...) are compiled classes,
+    not dataclasses, so ``dataclasses.replace`` does not apply. They implement
+    the ``copy.replace`` protocol instead; ``copy.replace`` itself is Python
+    3.13+, and the package supports 3.10, so this calls the protocol method
+    directly.
+    """
+    result: T = obj.__replace__(**changes)  # type: ignore[attr-defined]
+    return result
 
 
 @dataclass(frozen=True)

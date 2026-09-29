@@ -6,7 +6,6 @@ implementations agree on the extraction rule and the MUX cell output.
 
 from __future__ import annotations
 
-import dataclasses
 import io
 from pathlib import Path
 
@@ -15,7 +14,7 @@ import pytest
 from aero1553.decode import mux_from_filename
 from aero1553.reader import MieFileReader
 from aero1553.writer import message_to_row, write_csv
-from tests.conftest import RECORD_RT15_SA11_RCV
+from tests.conftest import RECORD_RT15_SA11_RCV, replace
 
 _OP_NAME = "full_loadout.draw.data.1553.aa.unused.mie_irig"
 
@@ -66,5 +65,5 @@ def test_writer_emits_mux_and_quotes(tmp_path: Path) -> None:
 
     # A MUX value containing the delimiter is RFC4180-quoted by the csv module.
     buf = io.StringIO()
-    write_csv([dataclasses.replace(msg, mux="a,b")], output=buf)
+    write_csv([replace(msg, mux="a,b")], output=buf)
     assert '"a,b"' in buf.getvalue()

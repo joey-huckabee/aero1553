@@ -20,7 +20,7 @@ from aero1553.models import Bus, Direction, MessageFormat, MieMessage, Timestamp
 from aero1553.order import order_rows
 from aero1553.reader import MieFileReader
 from aero1553.writer import CSV_HEADER, write_csv
-from tests.conftest import RunCli
+from tests.conftest import RunCli, replace
 from tests.fuzz_support import FUZZ_SEED, fuzz_logging
 from tests.fuzz_support import fill as fuzz_fill
 from tests.fuzz_support import iterations as fuzz_iterations
@@ -2028,8 +2028,6 @@ class TestSeparateModeCommitOrder:
     def test_errors_commit_failure_leaves_main_not_orphan_errors(self, tmp_path: Path) -> None:
         """If the errors-file commit fails, the already-committed main CSV
         remains and no orphan errors file (or temp) is left behind."""
-        import dataclasses
-
         from aero1553.exceptions import MieWriterError
         from aero1553.writer import write_csv_split
         from tests.conftest import RECORD_RT15_SA11_RCV
@@ -2037,9 +2035,7 @@ class TestSeparateModeCommitOrder:
         fpath = tmp_path / "in.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV)
         normal = next(iter(MieFileReader(fpath)))
-        errored = dataclasses.replace(
-            normal, type_word=dataclasses.replace(normal.type_word, error=True)
-        )
+        errored = replace(normal, type_word=replace(normal.type_word, error=True))
         assert errored.error_label == "ERROR"
 
         dest = tmp_path / "out.csv"
