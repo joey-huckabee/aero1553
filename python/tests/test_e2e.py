@@ -604,12 +604,10 @@ class TestAtomicWriteSafety:
                     dest.write_text("created by someone else", encoding="utf-8")
                 yield msg
 
+        records = records_while_someone_creates_the_destination()
+        options = WriteOptions(no_clobber=True)
         with pytest.raises(MieClobberRefusedError):
-            write_csv(
-                records_while_someone_creates_the_destination(),
-                dest,
-                WriteOptions(no_clobber=True),
-            )
+            write_csv(records, dest, options)
         assert dest.read_text(encoding="utf-8") == "created by someone else"
         assert [p.name for p in tmp_path.iterdir() if ".tmp." in p.name] == []
 
@@ -630,8 +628,9 @@ class TestAtomicWriteSafety:
         dest.mkdir()
         (dest / "keep.txt").write_text("untouched", encoding="utf-8")
 
+        reader = MieFileReader(tmp_mie_file)
         with pytest.raises(MieWriterError) as caught:
-            write_csv(MieFileReader(tmp_mie_file), dest)
+            write_csv(reader, dest)
         assert isinstance(caught.value.__cause__, OSError)
         assert (dest / "keep.txt").read_text(encoding="utf-8") == "untouched"
         assert [p.name for p in tmp_path.iterdir() if ".tmp." in p.name] == []
@@ -2122,8 +2121,9 @@ class TestDumpDiagnostics:
                 lambda out: hex_dump_raw(fpath, stream=out),
                 lambda out: hex_dump_records(fpath, stream=out),
             ):
+                stream = Failing()
                 with pytest.raises(type(raised)) as caught:
-                    dump(Failing())
+                    dump(stream)
                 assert caught.value is raised
 
     @pytest.mark.requirement("L2-CLI-009")
@@ -2134,12 +2134,14 @@ class TestDumpDiagnostics:
 
         fpath = tmp_path / "errored.mie"
         fpath.write_bytes(bytes.fromhex("04460F18F2DA265D3E7C2001"))
+        sink = io.StringIO()
         with pytest.raises(ValueError, match="start_offset"):
-            hex_dump_raw(fpath, start_offset=-1, stream=io.StringIO())
+            hex_dump_raw(fpath, start_offset=-1, stream=sink)
         with pytest.raises(ValueError, match="length"):
-            hex_dump_raw(fpath, length=-1, stream=io.StringIO())
+            hex_dump_raw(fpath, length=-1, stream=sink)
         with pytest.raises(ValueError, match="max_records"):
-            hex_dump_records(fpath, max_records=-1, stream=io.StringIO())
+            hex_dump_records(fpath, max_records=-1, stream=sink)
+        assert sink.getvalue() == "", "a refused call writes nothing"
 
         # A count past anything addressable means "to the end", not an error.
         out = io.StringIO()
@@ -2293,11 +2295,10 @@ class TestStreamWriteFailures:
         from aero1553.exceptions import MieWriterError
         from aero1553.writer import write_csv
 
+        reader = MieFileReader(tmp_mie_file)
+        stream = _FailingStream(OSError(errno.ENOSPC, "No space left on device"))
         with pytest.raises(MieWriterError):
-            write_csv(
-                MieFileReader(tmp_mie_file),
-                _FailingStream(OSError(errno.ENOSPC, "No space left on device")),
-            )
+            write_csv(reader, stream)
 
     def test_any_other_exception_from_the_stream_propagates_unchanged(
         self, tmp_mie_file: Path
@@ -2305,8 +2306,10 @@ class TestStreamWriteFailures:
         from aero1553.writer import write_csv
 
         failure = TypeError("this stream takes bytes")
+        reader = MieFileReader(tmp_mie_file)
+        stream = _FailingStream(failure)
         with pytest.raises(TypeError) as caught:
-            write_csv(MieFileReader(tmp_mie_file), _FailingStream(failure))
+            write_csv(reader, stream)
         assert caught.value is failure
 
     @pytest.mark.requirement("L2-WRT-018")

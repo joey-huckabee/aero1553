@@ -404,18 +404,16 @@ def _option_kwargs(opts: WriteOptions) -> _OptionArgs:
 
 def _outcome(raw: tuple[int, int, tuple[Path, Path | None, int, int] | None]) -> WriteOutcome:
     normal, errors, partial = raw
-    return WriteOutcome(
-        normal_count=normal,
-        error_count=errors,
-        partial=None
-        if partial is None
-        else PartialCommit(
-            main_path=Path(partial[0]),
-            errors_path=None if partial[1] is None else Path(partial[1]),
-            offset=partial[2],
-            sync_losses=partial[3],
-        ),
-    )
+    commit = None
+    if partial is not None:
+        main_path, errors_path, offset, sync_losses = partial
+        commit = PartialCommit(
+            main_path=Path(main_path),
+            errors_path=None if errors_path is None else Path(errors_path),
+            offset=offset,
+            sync_losses=sync_losses,
+        )
+    return WriteOutcome(normal_count=normal, error_count=errors, partial=commit)
 
 
 def write_csv(
