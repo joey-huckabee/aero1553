@@ -15,21 +15,46 @@ dependencies = [
 [project.scripts]
 aero1553 = "aero1553.cli:main_cli"
 
-[tool.poetry]
-packages = [{include = "aero1553", from = "src"}]
+# PEP 735 dependency groups: `uv sync` installs `dev` by default. The ranges
+# are the ones the Poetry `^` specifiers expressed; uv.lock pins the exact
+# versions CI runs.
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-cov>=7.0,<8",
+    "mypy>=1.13,<2",
+    "pylint>=4.0.6,<5",
+    "ruff>=0.15.20,<0.16",
+    "vulture>=2.16,<3",
+    "bandit>=1.9.4,<2",
+]
 
-[tool.poetry.group.dev.dependencies]
-pytest = "^8.0"
-pytest-cov = "^7.0"
-mypy = "^1.13"
-pylint = "^4.0.6"
-ruff = "^0.15.20"
-vulture = "^2.16"
-bandit = "^1.9.4"
-
+# The package is pure Python plus one compiled module, `aero1553._native`,
+# built from native/ -- a PyO3 binding over the Rust crate in ../rust.
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["maturin>=1.9,<2"]
+build-backend = "maturin"
+
+[tool.maturin]
+manifest-path = "native/Cargo.toml"
+python-source = "src"
+module-name = "aero1553._native"
+# Switched on here rather than in native/Cargo.toml so a plain `cargo test`
+# of the binding crate still links libpython.
+features = ["pyo3/extension-module"]
+
+[tool.uv]
+# An editable install is rebuilt only when one of these changes. The Rust
+# sources are listed -- the binding's AND the core crate's -- because a
+# change to either changes the compiled module, and without them `uv run`
+# would keep importing a stale build.
+cache-keys = [
+    { file = "pyproject.toml" },
+    { file = "native/Cargo.toml" },
+    { file = "native/src/**/*.rs" },
+    { file = "../rust/Cargo.toml" },
+    { file = "../rust/src/**/*.rs" },
+]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -76,7 +101,7 @@ fail_under = 92
 
 # Pylint lints the package source (src/aero1553). Genuine correctness/hygiene
 # checks stay on; checks that conflict with deliberate design choices or
-# duplicate SonarCloud are disabled below. Run: `poetry -C python run pylint src`.
+# duplicate SonarCloud are disabled below. Run: `uv run pylint src` (from python/).
 [tool.pylint.basic]
 # Keep pylint's default "good" short names and allow `tomllib` — the module
 # alias for the TOML backend (mirrors the stdlib module name; config.py binds
@@ -112,13 +137,13 @@ disable = [
 
 # Ruff formats and lints the Python package + tests. Line length matches the
 # pylint gate (100); the default lint ruleset (E/F) is kept and the formatter
-# owns code style. Run: `poetry -C python run ruff format` / `ruff check`.
+# owns code style. Run: `uv run ruff format` / `uv run ruff check` (from python/).
 [tool.ruff]
 line-length = 100
 target-version = "py310"
 # Required for the `DOC` (pydoclint) family selected below, which is still a
 # preview rule set. Safe to depend on here because CI installs with
-# `poetry sync` against poetry.lock, so ruff is pinned to an exact version --
+# `uv sync --locked` against uv.lock, so ruff is pinned to an exact version --
 # a preview rule can only change behaviour on a deliberate lock bump, never
 # under an unattended CI run.
 #
@@ -253,7 +278,7 @@ allowed-confusables = ["–", "—", "×", "µ"]
 # `option_string` is the argparse Action.__call__ interface arg; the two
 # constants are documented module reference values (MAX_RECORD_BYTES is also in
 # docs/diagrams/class.svg) that stay part of the surface though unused in-tree.
-# Run: `poetry -C python run vulture`.
+# Run: `uv run vulture` (from python/).
 [tool.vulture]
 paths = ["src", "tests"]
 ignore_names = [
