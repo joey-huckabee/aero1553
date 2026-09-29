@@ -643,6 +643,19 @@ if ! grep -qE '^license-files *= *\["LICENSE"\]' python/pyproject.toml; then
     bad "python/pyproject.toml does not declare license-files = [\"LICENSE\"]"
 fi
 
+# ── 22. The Python extension is built like the Rust binary ────────────
+# Cargo takes [profile.release] from the crate being BUILT, so the binding
+# crate (python/native) needs its own copy of the core crate's profile. Before
+# it had one, a decode from Python ran 17% behind the binary built from the
+# identical source. A copy drifts; this keeps the two sections identical.
+step "python/native release profile matches rust/Cargo.toml"
+profile_of() { awk '/^\[profile\.release\]/{p=1;next} /^\[/{p=0} p && NF && !/^#/' "$1"; }
+if [[ "$(profile_of rust/Cargo.toml)" != "$(profile_of python/native/Cargo.toml)" ]]; then
+    list "rust/Cargo.toml:" $(profile_of rust/Cargo.toml) \
+         "python/native/Cargo.toml:" $(profile_of python/native/Cargo.toml)
+    bad "[profile.release] differs between rust/ and python/native/ -- the extension and the binary would be built differently"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────
 if (( failures )); then
     printf '%shygiene: %d check(s) failed%s\n' "$RED" "$failures" "$RESET" >&2
