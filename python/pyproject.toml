@@ -196,29 +196,12 @@ select = [
     # pydoclint (preview -- selected by exact code, see explicit-preview-rules).
     # DOC502 is deliberately NOT selected: it flags a documented exception the
     # function does not `raise` itself, and every finding here documents one
-    # that PROPAGATES from a helper -- `write_csv` naming `MieClobberRefusedError`,
-    # `decode.py` naming `struct.error` from an unpack. Which exceptions escape
-    # is what a caller needs; where in the call tree they originate is not.
+    # that PROPAGATES from a helper -- `write_csv` naming `MieClobberRefusedError`.
+    # Which exceptions escape is what a caller needs; where in the call tree they originate is not.
     # Complying would mean DELETING true documentation.
     "DOC201",    # a `return` is documented
     "DOC402",    # a `yield` is documented
     "DOC501",    # a `raise` is documented
-]
-
-ignore = [
-    # `open()` is idiomatic and correct; `Path.open()` is a style preference,
-    # not a fix. It also sits on the input path SonarCloud has a scoped
-    # suppression for (see .github/workflows/sonarcloud.yml) -- rewriting the
-    # call to satisfy a style rule would disturb a taint flow that was analysed
-    # and documented deliberately.
-    "PTH123",
-    # `os.replace()` IS the atomic-rename primitive the writer needs
-    # (L2-WRT-015). `Path.replace()` calls it; naming it directly says what the
-    # guarantee is.
-    "PTH105",
-    # A `try`/`except` inside the record loop is the per-record error contract,
-    # not an oversight: a bad record is reported and the walk continues.
-    "PERF203",
 ]
 
 # Deliberately NOT disabling the confusable-character rules. The en and em
@@ -276,7 +259,6 @@ allowed-confusables = ["–", "—", "×", "µ"]
 [tool.vulture]
 paths = ["src", "tests"]
 ignore_names = [
-    "MAX_RECORD_BYTES",
     "ALL_KNOWN_ERROR_CODES",
     "file_size",
     # pytest autouse fixtures are invoked by the framework, never by name.
@@ -288,7 +270,14 @@ ignore_names = [
     "time_format",
     # A DecoderConfig field, filled by keyword from the compiled loader's result.
     "output_time_format",
-    # decode.py's record-size constants; the module retires with sync.py.
-    "MIN_RECORD_BYTES",
-    "MIN_RECORD_WORDS",
+    # MessageFormat members: the compiled decoder produces them by value.
+    "RECEIVE_BROADCAST",
+    "RT_TO_RT_BROADCAST",
+    "MODE_CODE_TX_DATA",
+    "MODE_CODE_RX_DATA",
+    "MODE_CODE_NO_DATA",
+    "MODE_CODE_BCAST_NO_DATA",
+    "MODE_CODE_BCAST_DATA",
+    # A published constant with no internal reader since the decoders moved.
+    "TIMESTAMP_WORD_COUNTS",
 ]

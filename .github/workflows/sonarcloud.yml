@@ -303,8 +303,10 @@ jobs:
             "-Dsonar.python.version=3.10"
             "-Dsonar.python.coverage.reportPaths=python/coverage.xml"
             # pythonsecurity:S8707 ("Agentic workflows should not be vulnerable
-            # to path injection") fires on `--config <path>` reaching
-            # `Path.read_text()` in config.py. It is a false positive for this
+            # to path injection") fires on `--config <path>` reaching the
+            # filesystem in config.py (since v4.0.0 only an existence check --
+            # the read itself is the compiled extension's). It is a false
+            # positive for this
             # program shape: aero1553 is an operator-run CLI, the config path
             # IS the interface, and the process holds exactly the permissions of
             # the user who typed the command — there is no sandbox to escape and
@@ -313,9 +315,10 @@ jobs:
             # does not have and does not claim.
             #
             # The read-safety hardening that WAS warranted is implemented and
-            # kept: config.py requires a *regular file* before reading, so
+            # kept: the loader requires a *regular file* before reading, so
             # `--config <dir>` and `--config /dev/zero` are rejected rather than
-            # raising IsADirectoryError or hanging (see load_config).
+            # raising IsADirectoryError or hanging (rust/src/config.rs
+            # load_config, which config.py runs).
             #
             # Scoped to the one rule in the one file so any other finding there,
             # and this rule anywhere else, still fails the build.
@@ -323,81 +326,19 @@ jobs:
             # The operator-facing statement of the same decision lives in
             # docs/CONFIG-REFERENCE.md "Trust boundary". Keep the two in step.
             # ----------------------------------------------------------------
-            # reader.py: the manifest-contents taint flow (S2083 + S8707)
+            # reader.py / merge.py / dump.py: no suppressions since v4.0.0
             # ----------------------------------------------------------------
             #
-            # Both fire on the `open(self._path, "rb")` in reader.py. The
-            # ROADMAP entry that deferred these described them as the CLI input
-            # path being operator-supplied; the actual taint flow SonarCloud
-            # reports says otherwise, and the difference matters:
-            #
-            #   merge.py:58    Source: the CONTENTS of a --manifest file
-            #   merge.py:60-61 -> line -> trimmed
-            #   cli.py:637     -> paths
-            #   cli.py:1131    -> input_paths
-            #   reader.py:240  -> open()
-            #
-            # So the tainted value is not the argument the operator typed. It is
-            # each line of the manifest file the operator pointed at. The
-            # justification is therefore NOT the config.py one ("the path is the
-            # interface") but a narrower claim: a manifest's contents are exactly
-            # as trusted as the operator who chose that manifest. Reading the
-            # files it lists is the documented purpose of --manifest
-            # (L2-MRG-001), the process holds precisely the permissions of the
-            # user who ran it, and the decoder only reads those files and writes
-            # the CSV that same user asked for. There is no privilege boundary
-            # being crossed and no sandbox to escape; S8707's premise of an agent
-            # escaping filesystem restrictions presumes a confinement this tool
-            # does not have and does not claim.
-            #
-            # Someone who can write the manifest can already run the decoder with
-            # any argument they like, so the flow adds no capability.
-            #
-            # PRECEDENT. S8707 on this SAME flow is already resolved Won't Fix at
-            # merge.py:58 (the source itself), dump.py:70 and dump.py:119. These
-            # two are the same judgement on the same flow, recorded in the
-            # repository rather than only in SonarCloud so it survives for
-            # someone reading the source.
-            #
-            # ----------------------------------------------------------------
-            # merge.py: the same flow, at its SOURCE
-            # ----------------------------------------------------------------
-            #
-            # S8707 fires again on `read_manifest`, which is where the taint
-            # the reader.py entry above describes actually enters: the CONTENTS
-            # of a --manifest file. The justification is identical and is
-            # written out there -- a manifest's contents are exactly as trusted
-            # as the operator who chose that manifest, and reading the files it
-            # lists is the documented purpose of --manifest (L2-MRG-001).
-            #
-            # WHY IT IS HERE NOW AND WAS NOT BEFORE. It was resolved Won't Fix
-            # in SonarCloud against merge.py:58. v2.16.0 rewrote that function
-            # to open the stream with `newline=""` (the manifest grammar fix),
-            # the line moved, and the finding came back as NEW code -- failing
-            # a gate on a judgement that had already been made. That is exactly
-            # the failure mode the comment above warns about: a resolution that
-            # lives only in SonarCloud does not survive the code being edited.
-            # Recording it here makes it survive.
-            # This is the first S2083 suppression in this repository, taken
-            # deliberately rather than as a step in a release -- which is what
-            # docs/ROADMAP.md asked for. Both entries stay scoped to one rule in
-            # one file: any other finding in reader.py, and either rule anywhere
-            # else, still fails the build.
-            # ----------------------------------------------------------------
-            # dump.py: pythonsecurity:S8707, the `dump` input path
-            # ----------------------------------------------------------------
-            #
-            # Fires on `fpath.read_bytes()` in hex_dump_raw and
-            # hex_dump_records. The path is the positional argument of
-            # `aero1553 dump`, and reading that file is the whole of what the
-            # subcommand does -- the config.py judgement above, on the one other
-            # file that reads an operator-named path.
-            #
-            # WHY IT IS HERE NOW. This was the "dump.py:70 and dump.py:119"
-            # Won't Fix cited as precedent in the reader.py entry. It lived only
-            # in SonarCloud, and the v4.0.0 rename replaced the SonarCloud
-            # project, so it came back with every other UI-only resolution.
-            # Same lesson as merge.py, taken a second time: record it here.
+            # These three carried S2083 / S8707 entries for the operator-named
+            # input path and the contents of a --manifest file reaching open()
+            # / read_bytes(). Since v4.0.0 none of them opens a file: the
+            # reader, the manifest read and the dump are the Rust crate's, run
+            # through the compiled extension, so the Python code no longer
+            # contains the sinks the entries were for. The judgement they
+            # recorded -- a manifest's contents are exactly as trusted as the
+            # operator who chose it, and reading the named files is the
+            # documented purpose (L2-MRG-001) -- is unchanged, and is the same
+            # one the dump.cpp entry below records for C++.
             # ----------------------------------------------------------------
             # config.hpp: cpp:S1820 "no more than 20 fields"
             # ----------------------------------------------------------------
@@ -622,7 +563,7 @@ jobs:
             #   cppcheck 2.13 cannot parse `throw() = default` and reports
             #   internalAstError, degrading its analysis of the whole file.
             #   Attempted twice, reverted twice; the sites carry NOLINT now.
-            "-Dsonar.issue.ignore.multicriteria=agenticPathInjection,readerPathInjection,readerAgenticPathInjection,mergeAgenticPathInjection,dumpAgenticPathInjection,cppConfigFieldCount,dumpEmitTaint,tempFilePermissions,cppMemberInitNsdmi,readerMsvcCast,decodeSectionBanner,cppRawForLoop,cppHiddenFriend,cppEnumClass,cppCArray,cppLogModuleMacro,cppParamCount,cppCognitiveComplexity,cppNestedBreak,cppMutableGlobal,cppRelaxedAtomic,cppEqualsDefaultThrow,cppOptionalImplicit,cppPlatformVoidPtr,cppTopLevelCatch,cppEmptyCatch,cppCatchAll,cppLookaheadLoop,cppNonOwningIter,cppSinkFnPointer,cppReinterpretFd,cppMunmapConstCast,cppRealpathFree"
+            "-Dsonar.issue.ignore.multicriteria=agenticPathInjection,cppConfigFieldCount,dumpEmitTaint,tempFilePermissions,cppMemberInitNsdmi,readerMsvcCast,decodeSectionBanner,cppRawForLoop,cppHiddenFriend,cppEnumClass,cppCArray,cppLogModuleMacro,cppParamCount,cppCognitiveComplexity,cppNestedBreak,cppMutableGlobal,cppRelaxedAtomic,cppEqualsDefaultThrow,cppOptionalImplicit,cppPlatformVoidPtr,cppTopLevelCatch,cppEmptyCatch,cppCatchAll,cppLookaheadLoop,cppNonOwningIter,cppSinkFnPointer,cppReinterpretFd,cppMunmapConstCast,cppRealpathFree"
             "-Dsonar.issue.ignore.multicriteria.cppHiddenFriend.ruleKey=cpp:S2807"
             "-Dsonar.issue.ignore.multicriteria.cppHiddenFriend.resourceKey=cpp/**"
             "-Dsonar.issue.ignore.multicriteria.cppEnumClass.ruleKey=cpp:S3642"
@@ -679,14 +620,6 @@ jobs:
             "-Dsonar.issue.ignore.multicriteria.tempFilePermissions.resourceKey=cpp/src/platform_posix.cpp"
             "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.ruleKey=pythonsecurity:S8707"
             "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.resourceKey=python/src/aero1553/config.py"
-            "-Dsonar.issue.ignore.multicriteria.readerPathInjection.ruleKey=pythonsecurity:S2083"
-            "-Dsonar.issue.ignore.multicriteria.readerPathInjection.resourceKey=python/src/aero1553/reader.py"
-            "-Dsonar.issue.ignore.multicriteria.readerAgenticPathInjection.ruleKey=pythonsecurity:S8707"
-            "-Dsonar.issue.ignore.multicriteria.readerAgenticPathInjection.resourceKey=python/src/aero1553/reader.py"
-            "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.ruleKey=pythonsecurity:S8707"
-            "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.resourceKey=python/src/aero1553/merge.py"
-            "-Dsonar.issue.ignore.multicriteria.dumpAgenticPathInjection.ruleKey=pythonsecurity:S8707"
-            "-Dsonar.issue.ignore.multicriteria.dumpAgenticPathInjection.resourceKey=python/src/aero1553/dump.py"
             "-Dsonar.issue.ignore.multicriteria.cppConfigFieldCount.ruleKey=cpp:S1820"
             "-Dsonar.issue.ignore.multicriteria.cppConfigFieldCount.resourceKey=cpp/include/mie/config.hpp"
           )

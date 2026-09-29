@@ -3,7 +3,7 @@
 // Pure binary-to-struct conversion. No I/O, no logging, no allocation beyond
 // the strings in a violation's detail text.
 //
-// Mirrors `rust/src/decode.rs` and `python/src/aero1553/decode.py`. Every
+// Mirrors `rust/src/decode.rs` (which the Python package also runs). Every
 // bit position and threshold here is wire format, documented in
 // docs/MIE-FORMAT.md; a change is a change to what the decoder reads.
 //

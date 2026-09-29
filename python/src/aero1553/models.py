@@ -47,18 +47,11 @@ Error Handling:
 
 from __future__ import annotations
 
-import mmap
 from dataclasses import dataclass
 from enum import IntEnum, unique
 from typing import Final, TypeAlias
 
 from aero1553 import _native
-
-#: A read-only byte source accepted by the low-level decode/sync helpers:
-#: an in-memory buffer (bytes/memoryview) or a memory-mapped file. The
-#: reader passes an ``mmap.mmap``; tests and conformance fixtures pass
-#: ``bytes``. All three support the indexing and slicing these helpers do.
-ByteSource = bytes | memoryview | mmap.mmap
 
 
 @unique

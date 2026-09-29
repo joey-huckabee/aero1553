@@ -24,15 +24,15 @@ Aero1553 ships as a Rust crate (`rust/src/`), a Python package (`python/src/aero
 | Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` | `cpp/src/reader.cpp` |
 | Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/aero1553/merge.py` | `cpp/src/merge.cpp` |
 | Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/aero1553/delta.py` | `cpp/src/delta.cpp` |
-| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | `python/src/aero1553/decode.py` | `cpp/src/decode.cpp` |
-| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | `python/src/aero1553/sync.py` | `cpp/src/sync.cpp` |
+| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | -- (the Rust module, via the extension) | `cpp/src/decode.cpp` |
+| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | -- (the Rust module, via the extension) | `cpp/src/sync.cpp` |
 | Domain models + error code constants | `rust/src/models.rs` | `python/src/aero1553/models.py` | `cpp/src/models.cpp` |
 | Error types | `rust/src/error.rs` (single enum) | `python/src/aero1553/exceptions.py` (class hierarchy) | `cpp/src/error.cpp` (single enum + kind) |
-| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (streaming, stdlib `csv`) | `cpp/src/writer.cpp` (streaming) |
+| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (the Rust writer, via the extension) | `cpp/src/writer.cpp` (streaming) |
 | Logging | `rust/src/log.rs` (hand-rolled) | `python/src/aero1553/logger.py` (stdlib `logging`) | `cpp/src/log.cpp` (hand-rolled) |
 | Hex dump | `rust/src/dump.rs` | `python/src/aero1553/dump.py` | `cpp/src/dump.cpp` |
 
-The sync helpers (`sync.rs` / `sync.py` / `sync.cpp`) are **pure** in all three implementations — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
+The sync helpers (`sync.rs` / `sync.cpp`; the Python package runs the Rust one) are **pure** — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
 
 Per L1-CONF-001 all three implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*` / `L3-CPP-*`) cover the technology-specific obligations (the compiled Rust extension for Python; memmap2 / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
 

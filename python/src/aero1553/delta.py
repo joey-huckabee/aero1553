@@ -22,7 +22,7 @@ This module does not log
 
 :meth:`DeltaTracker.observe` returns a :class:`DeltaOutcome` describing what
 happened and the caller decides whether to say anything — the same rule
-:mod:`aero1553.sync` follows, for the same reason. A tracker cannot know
+the core crate's sync helpers follow, for the same reason. A tracker cannot know
 whether a backward step is worth a WARN (single-file decode: yes, once per key)
 or is already reported at file granularity (a merge naming its unsorted inputs,
 L2-MRG-006).

@@ -42,15 +42,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from aero1553._native import NativeReader
-from aero1553.decode import (
+from aero1553._native import (
     DEFAULT_DETECT_RECORDS,
+    DEFAULT_LOOKAHEAD_RECORDS,
     DEFAULT_MUX_DELIMITER,
     DEFAULT_MUX_ENABLED,
     DEFAULT_MUX_FIELD,
+    NativeReader,
 )
 from aero1553.models import TimestampFormat
-from aero1553.sync import DEFAULT_LOOKAHEAD_RECORDS
 
 if TYPE_CHECKING:
     from collections.abc import Iterator

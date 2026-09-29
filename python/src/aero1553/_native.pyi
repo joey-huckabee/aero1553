@@ -274,6 +274,9 @@ class DeltaTracker:
 
 DEFAULT_DETECT_RECORDS: int
 DEFAULT_LOOKAHEAD_RECORDS: int
+DEFAULT_MUX_ENABLED: bool
+DEFAULT_MUX_DELIMITER: str
+DEFAULT_MUX_FIELD: int
 
 def hex_dump_raw(path: Path, start_offset: int, length: int | None, stream: TextIO, /) -> None: ...
 def hex_dump_records(

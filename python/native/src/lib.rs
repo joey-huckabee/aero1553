@@ -58,6 +58,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         "DEFAULT_LOOKAHEAD_RECORDS",
         aero1553::sync::DEFAULT_LOOKAHEAD_RECORDS,
     )?;
+    m.add("DEFAULT_MUX_ENABLED", aero1553::decode::DEFAULT_MUX_ENABLED)?;
+    m.add(
+        "DEFAULT_MUX_DELIMITER",
+        aero1553::decode::DEFAULT_MUX_DELIMITER,
+    )?;
+    m.add("DEFAULT_MUX_FIELD", aero1553::decode::DEFAULT_MUX_FIELD)?;
     // A value read from the core crate, so importing the module proves the
     // extension links the decoder and not just PyO3.
     m.add(

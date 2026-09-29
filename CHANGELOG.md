@@ -93,6 +93,37 @@ shared behavior) holds at any compatible version pair. See
   subclasses, the C++ `mie::` namespace and `include/mie/` headers, and the
   `MIE_FUZZ_*` environment variables. CSV output is byte-identical.
 
+- **The rest of the Python package is the Rust crate too.** Every
+  user-level module keeps its public API and now runs the core crate's code
+  through the compiled extension, so the library and the CLI cannot disagree:
+
+  | Module | Now runs |
+  |---|---|
+  | `aero1553.filters.apply_filters`, `aero1553.order.order_rows` | `filter.rs`, `order.rs` |
+  | `aero1553.writer` (`write_csv`, `write_csv_split`, `message_to_row`, ...) | `writer.rs` -- the CLI's CSV bytes, the same atomic commit, `.partial` and `--no-clobber` rules |
+  | `aero1553.merge` (`merge_readers`, `read_manifest`, `glob_match`, `expand_glob`) | `merge.rs` |
+  | `aero1553.delta.DeltaTracker` | `delta.rs` |
+  | `aero1553.dump` (`hex_dump_raw`, `hex_dump_records`) | `dump.rs` |
+  | `aero1553.config.load_config`, `parse_utc_offset` | `config.rs`; `DecoderConfig` / `FilterConfig` are still Python dataclasses |
+
+  A chain `reader -> apply_filters -> order_rows -> write_csv` (or a merge
+  feeding it) never leaves Rust: each stage returns a native `RecordIterator`
+  the next stage takes over. Any Python iterable of `MieMessage` is still
+  accepted, and an exception it raises reaches the caller unchanged. What a
+  caller can observe differently:
+
+  | Was | Now |
+  |---|---|
+  | `aero1553.decode` and `aero1553.sync` (the pure-Python word decoders and sync helpers) | **Removed.** Nothing called them once the reader became Rust's. Their defaults are on the extension (`DEFAULT_DETECT_RECORDS`, `DEFAULT_LOOKAHEAD_RECORDS`, `DEFAULT_MUX_*`) and remain `MieFileReader`'s parameter defaults. |
+  | `aero1553.models.ByteSource` | **Removed** with the helpers it typed. |
+  | Config rejection messages, e.g. `Invalid [decode] strict: expected boolean, got str ('yes')` | The CLI's wording, e.g. `[decode] strict must be a boolean`. Exception classes are unchanged, except that a duplicate key or re-declared section raises `ValueError` rather than its `tomllib` subclass `TOMLDecodeError`. |
+  | `message_to_row(msg)` listed `WD01`..`WD32` last | Keys follow CSV column order. Dict equality is unaffected. |
+  | A calendar-rendering refusal named the record, `(record at offset 0x..)`, for freerun / Standard records | The writer's message, without the offset. |
+  | A negative `start_offset` / `length` / `max_records` to the dump produced a meaningless report | `ValueError` naming the argument. |
+
+  **The Python package now declares no runtime dependency.** `tomli` served
+  only the Python 3.10 TOML path, and the TOML loader is Rust's.
+
 ### Changed
 
 - **The Python package is built with maturin and developed with uv; Poetry
@@ -123,6 +154,14 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- Rust: `log::set_sink` / `LogSink` route log lines to an embedder (the
+  Python binding forwards them to `logging`); `log::with_stderr` pins a scope
+  to stderr, which is how the CLI keeps its log output where it was.
+- Rust: `merge::MergedRecordIter::new_detached` builds a merge that outlives
+  its readers, sharing each reader's mapping as `iter_detached` does.
+- Rust: `delta` is a public module (`DeltaTracker`, `DeltaOutcome`,
+  `delta_key`) and `config::parse_utc_offset` is public, so an embedder uses
+  the one definition of the DELTA key and of the UTC-offset grammar.
 - Rust: `MieFileReader::iter_detached()` returns a `RecordIter<'static>` --
   the same records as `iter()`, from an iterator that shares the file mapping
   instead of borrowing the reader, so it can outlive it. For embedders whose

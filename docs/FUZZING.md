@@ -113,9 +113,10 @@ Adjacent but **not fuzzing** — exhaustive rather than generated, and the
 strongest cross-implementation check in the tree:
 `rust/examples/decode_digest.rs` sweeps every possible Type Word, every possible
 Command Word and every timestamp field bit through the Rust decoders and prints
-an FNV-1a digest. `cpp/tests/test_decode_exhaustive.cpp` and
-`python/tests/test_decode_exhaustive.py` recompute those four constants from
-their own decoders, so one differing field in ~390 000 decodes fails the build.
+an FNV-1a digest. `cpp/tests/test_decode_exhaustive.cpp` recomputes those four
+constants from its own decoders, so one differing field in ~390 000 decodes
+fails the build. (The Python package has no decoders of its own since v4.0.0 --
+it runs the Rust ones -- so it has nothing to recompute; see L3-PY-017.)
 
 ---
 

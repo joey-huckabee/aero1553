@@ -220,6 +220,11 @@ two proposed options were both framed around it.
 `.github/workflows/sonarcloud.yml`, scoped to those rules in that one file, with
 the flow and the reasoning written out next to the exclusion.
 
+**Since v4.0.0** the Python reader, manifest read and dump are the Rust crate's,
+run through the compiled extension, so the `reader.py` / `merge.py` / `dump.py`
+suppressions were removed: the code they covered no longer exists. The judgement
+below is unchanged and is what the C++ `dump.cpp` entry records.
+
 The justification is narrower than the `config.py` one: a manifest's contents are
 exactly as trusted as the operator who chose that manifest. Reading the files it
 lists is the documented purpose of `--manifest` (`L2-MRG-001`); the process holds
