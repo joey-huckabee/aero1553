@@ -15,9 +15,11 @@ and stderr descriptors, not to ``sys.stdout``.
 
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -106,6 +108,50 @@ class TestEntryPoints:
             assert signal.getsignal(signal.SIGINT) == signal.SIG_DFL
         finally:
             signal.signal(signal.SIGINT, original)
+
+    def test_main_cli_off_the_main_thread_leaves_signals_alone(self) -> None:
+        """``signal.signal`` raises outside the main thread, so the SIGINT
+        restore is skipped there -- and the command line still runs."""
+        original = signal.getsignal(signal.SIGINT)
+        results: list[int] = []
+        worker = threading.Thread(target=lambda: results.append(cli.main_cli(["--version"])))
+        worker.start()
+        worker.join(timeout=60)
+        assert results == [EXIT_OK]
+        assert signal.getsignal(signal.SIGINT) is original
+
+    @pytest.mark.requirement("L2-WRT-018")
+    def test_main_cli_neutralises_a_dead_stdout(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        """A stdout that cannot be flushed must not turn a clean exit into
+        CPython's shutdown-failure 120 (L2-WRT-018).
+
+        ``main_cli`` repoints the descriptor at the null device, so the flush
+        CPython performs at shutdown writes nowhere and cannot fail. Observed
+        here on a descriptor the test owns: after the call, writes to it no
+        longer reach the file behind it.
+        """
+        target = tmp_path / "stdout.bin"
+        fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_TRUNC)
+        try:
+
+            class DeadStdout:
+                def write(self, text: str) -> int:
+                    return len(text)
+
+                def flush(self) -> None:
+                    raise BrokenPipeError("consumer went away")
+
+                def fileno(self) -> int:
+                    return fd
+
+            monkeypatch.setattr(sys, "stdout", DeadStdout())
+            assert cli.main_cli(["no-such-command"]) == EXIT_USAGE
+            os.write(fd, b"after")
+        finally:
+            os.close(fd)
+        assert target.read_bytes() == b"", "the descriptor now points at the null device"
 
     def test_python_dash_m_runs_the_cli(self) -> None:
         proc = subprocess.run(

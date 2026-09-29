@@ -83,6 +83,7 @@ shared behavior) holds at any compatible version pair. See
   | Was | Now |
   |---|---|
   | The record types were frozen dataclasses | **They are not dataclasses**: `dataclasses.replace` / `asdict` / `fields` do not apply. Use `copy.replace(msg, delta=...)` (Python 3.13+) or `msg.__replace__(...)`, and read fields by name. |
+  | `aero1553.sync.is_homogeneous_payload`, `diagnose_header_scan_failure` and `HOMOGENEITY_SAMPLE_RECORDS` | **Removed.** They were the pure-Python reader's header-scan helpers and had no other caller; the reader's own checks (L2-SYN-018, L2-RDR-004) run in Rust and behave as before. |
   `main_cli()` (the console-script entry point) now restores the default
   SIGINT handler, so Ctrl-C ends a long decode immediately, as it ends the
   binary.
