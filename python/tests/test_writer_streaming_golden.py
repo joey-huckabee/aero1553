@@ -66,7 +66,22 @@ def stream_mie_file(tmp_path: Path) -> Path:
     return fpath
 
 
-@pytest.mark.requirement("L3-PY-012")
+@pytest.mark.requirement("L3-PY-004")
+def test_library_writer_is_byte_identical_to_the_cli(stream_mie_file: Path, tmp_path: Path) -> None:
+    """One CSV encoder: the library's ``write_csv`` and the CLI's ``decode``
+    produce the same bytes from the same recording (L3-PY-004). The input's
+    name carries no MUX field, so the CLI's default MUX population and the
+    reader's agree trivially."""
+    from aero1553.cli import main
+
+    from_library = tmp_path / "library.csv"
+    write_csv(MieFileReader(stream_mie_file), output=from_library)
+    from_cli = tmp_path / "cli.csv"
+    assert main(["decode", str(stream_mie_file), "-o", str(from_cli)]) == 0
+    assert from_library.read_bytes() == from_cli.read_bytes()
+
+
+@pytest.mark.requirement("L3-PY-012", "L3-PY-004")
 def test_inline_file_output_is_byte_exact(stream_mie_file: Path, tmp_path: Path) -> None:
     """``write_csv`` to a file path matches the golden bytes exactly."""
     out = tmp_path / "inline.csv"

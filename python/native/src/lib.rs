@@ -17,6 +17,7 @@ mod models;
 mod reader;
 mod stages;
 mod stream;
+mod writer;
 
 /// Run the `aero1553` command line and return its exit status.
 ///
@@ -62,6 +63,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<stream::PyRecordIterator>()?;
     m.add_function(wrap_pyfunction!(stages::apply_filters, m)?)?;
     m.add_function(wrap_pyfunction!(stages::order_rows, m)?)?;
+    m.add_function(wrap_pyfunction!(writer::write_csv, m)?)?;
+    m.add_function(wrap_pyfunction!(writer::write_csv_split, m)?)?;
+    m.add_function(wrap_pyfunction!(writer::csv_header, m)?)?;
+    m.add_function(wrap_pyfunction!(writer::message_to_row, m)?)?;
+    m.add_function(wrap_pyfunction!(writer::commit_targets, m)?)?;
+    m.add_function(wrap_pyfunction!(writer::paths_refer_to_same_file, m)?)?;
     // From here on the library's log lines reach Python's `logging`; the CLI
     // keeps writing to stderr (see `logbridge`).
     logbridge::install();

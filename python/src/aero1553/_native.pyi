@@ -7,7 +7,8 @@ and nothing else checks it against the binary.
 
 from collections.abc import Iterable, Iterator
 from os import PathLike
-from typing import Any, final
+from pathlib import Path
+from typing import Any, TextIO, final
 
 from aero1553.models import Bus, Direction, MessageFormat, TimeRender
 
@@ -204,3 +205,42 @@ def apply_filters(
     include_subaddresses: list[int],
 ) -> RecordIterator: ...
 def order_rows(messages: Iterable[MieMessage], max_group: int) -> RecordIterator: ...
+
+# CSV writer. `output` is a path (atomic file write) or a text stream; the
+# result is (normal_count, error_count, partial), partial being
+# (main_path, errors_path, offset, sync_losses).
+_Outcome = tuple[int, int, tuple[Path, Path | None, int, int] | None]
+
+def write_csv(
+    messages: Iterable[MieMessage],
+    output: str | PathLike[str] | TextIO,
+    *,
+    destination: str,
+    input_path: str | PathLike[str] | None,
+    no_clobber: bool,
+    allow_partial: bool,
+    time_format: int,
+    year: int | None,
+    utc_offset_minutes: int,
+) -> _Outcome: ...
+def write_csv_split(
+    messages: Iterable[MieMessage],
+    output: str | PathLike[str],
+    *,
+    input_path: str | PathLike[str] | None,
+    no_clobber: bool,
+    allow_partial: bool,
+    time_format: int,
+    year: int | None,
+    utc_offset_minutes: int,
+) -> _Outcome: ...
+def csv_header() -> list[str]: ...
+def message_to_row(
+    msg: MieMessage, *, time_format: int, year: int | None, utc_offset_minutes: int
+) -> list[str]: ...
+def commit_targets(
+    output: str | PathLike[str], split_errors: bool, allow_partial: bool
+) -> list[Path]: ...
+def paths_refer_to_same_file(
+    input_path: str | PathLike[str], output_path: str | PathLike[str]
+) -> bool: ...

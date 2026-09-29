@@ -8,6 +8,7 @@ from DDC vendor output.
 from __future__ import annotations
 
 import csv
+import errno
 import io
 import subprocess
 import sys
@@ -580,7 +581,60 @@ class TestCsvWriter:
 
 
 class TestAtomicWriteSafety:
-    """L2-WRT-014 through L2-WRT-018 enforcement tests for the Python writer."""
+    """L2-WRT-014 through L2-WRT-024 enforcement tests for the Python writer."""
+
+    @pytest.mark.requirement("L2-WRT-023")
+    def test_no_clobber_refuses_a_destination_created_after_the_preflight(
+        self, tmp_mie_file: Path, tmp_path: Path
+    ) -> None:
+        """``--no-clobber`` is enforced at the commit, not by the pre-flight.
+
+        The destination does not exist when the write starts, so the pre-flight
+        passes; the record source then creates it mid-decode, exactly the race
+        a pre-flight cannot see. The commit must refuse rather than replace it.
+        """
+        from aero1553.exceptions import MieClobberRefusedError
+        from aero1553.writer import WriteOptions, write_csv
+
+        dest = tmp_path / "race.csv"
+
+        def records_while_someone_creates_the_destination() -> Iterator[MieMessage]:
+            for i, msg in enumerate(MieFileReader(tmp_mie_file)):
+                if i == 1:
+                    dest.write_text("created by someone else", encoding="utf-8")
+                yield msg
+
+        with pytest.raises(MieClobberRefusedError):
+            write_csv(
+                records_while_someone_creates_the_destination(),
+                dest,
+                WriteOptions(no_clobber=True),
+            )
+        assert dest.read_text(encoding="utf-8") == "created by someone else"
+        assert [p.name for p in tmp_path.iterdir() if ".tmp." in p.name] == []
+
+    @pytest.mark.requirement("L2-WRT-024")
+    def test_a_failed_commit_is_a_writer_error_and_leaves_nothing_behind(
+        self, tmp_mie_file: Path, tmp_path: Path
+    ) -> None:
+        """A commit whose move fails surfaces as ``MieWriterError`` chaining
+        the OS error, leaves the destination unmodified, and leaves no temp.
+
+        The destination is an existing directory: every row writes fine to the
+        temp, and the failure lands on the final move onto the destination.
+        """
+        from aero1553.exceptions import MieWriterError
+        from aero1553.writer import write_csv
+
+        dest = tmp_path / "out.csv"
+        dest.mkdir()
+        (dest / "keep.txt").write_text("untouched", encoding="utf-8")
+
+        with pytest.raises(MieWriterError) as caught:
+            write_csv(MieFileReader(tmp_mie_file), dest)
+        assert isinstance(caught.value.__cause__, OSError)
+        assert (dest / "keep.txt").read_text(encoding="utf-8") == "untouched"
+        assert [p.name for p in tmp_path.iterdir() if ".tmp." in p.name] == []
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_paths_refer_to_same_file_existing(self, tmp_path: Path) -> None:
@@ -737,6 +791,22 @@ class TestAtomicWriteSafety:
         # Every target stays beside the destination, so each rename is
         # same-filesystem and stays atomic (L2-WRT-015).
         assert {p.parent for p in commit_targets(out, True, True)} == {out.parent}
+
+    @pytest.mark.requirement("L2-WRT-014")
+    def test_python_path_helpers_name_the_paths_the_writer_commits(self) -> None:
+        """``error_path_for`` / ``partial_path_for`` are Python; the commit
+        target list is the Rust writer's own. They must name the same paths, or
+        the path the API reports is not the path that gets written."""
+        from aero1553.writer import commit_targets, error_path_for, partial_path_for
+
+        for out in (Path("dir") / "capture.csv", Path("x.y.tar"), Path("noext"), Path(".hidden")):
+            errors = error_path_for(out)
+            assert commit_targets(out, True, True) == [
+                out,
+                errors,
+                partial_path_for(out),
+                partial_path_for(errors),
+            ]
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_write_csv_split_rejects_collision_on_the_derived_errors_path(
@@ -2128,3 +2198,75 @@ class TestBrokenPipeSubprocess:
         assert rc == 0, f"expected clean exit on broken pipe, got {rc}; stderr:\n{stderr}"
         assert "Traceback" not in stderr
         assert "Exception ignored" not in stderr
+
+
+class _FailingStream:
+    """A text stream whose every ``write`` raises ``exc``."""
+
+    def __init__(self, exc: BaseException) -> None:
+        self.exc = exc
+
+    def write(self, _text: str) -> int:
+        raise self.exc
+
+
+class TestStreamWriteFailures:
+    """How ``write_csv`` classifies a failing text stream (L2-WRT-018).
+
+    The writer is the compiled one; the rule for which Python exceptions mean
+    "the consumer closed the pipe" is ``aero1553.writer.is_broken_pipe``, which
+    it asks.
+    """
+
+    @pytest.mark.requirement("L2-WRT-018")
+    def test_broken_pipe_on_a_stream_is_a_clean_stop(self, tmp_mie_file: Path) -> None:
+        from aero1553.writer import write_csv
+
+        outcome = write_csv(
+            MieFileReader(tmp_mie_file), _FailingStream(BrokenPipeError("consumer closed"))
+        )
+        assert outcome.partial is None
+
+    @pytest.mark.requirement("L2-WRT-018")
+    def test_a_real_write_failure_is_a_writer_error(self, tmp_mie_file: Path) -> None:
+        from aero1553.exceptions import MieWriterError
+        from aero1553.writer import write_csv
+
+        with pytest.raises(MieWriterError):
+            write_csv(
+                MieFileReader(tmp_mie_file),
+                _FailingStream(OSError(errno.ENOSPC, "No space left on device")),
+            )
+
+    def test_any_other_exception_from_the_stream_propagates_unchanged(
+        self, tmp_mie_file: Path
+    ) -> None:
+        from aero1553.writer import write_csv
+
+        failure = TypeError("this stream takes bytes")
+        with pytest.raises(TypeError) as caught:
+            write_csv(MieFileReader(tmp_mie_file), _FailingStream(failure))
+        assert caught.value is failure
+
+    @pytest.mark.requirement("L2-WRT-018")
+    @pytest.mark.parametrize(
+        ("platform", "exc", "expected"),
+        [
+            ("linux", BrokenPipeError(), True),
+            ("win32", BrokenPipeError(), True),
+            # Windows reports a closed pipe as a bare OSError with EINVAL/EPIPE...
+            ("win32", OSError(errno.EINVAL, "Invalid argument"), True),
+            ("win32", OSError(errno.EPIPE, "Broken pipe"), True),
+            # ...which on POSIX is a genuine failure and must stay one.
+            ("linux", OSError(errno.EINVAL, "Invalid argument"), False),
+            ("win32", OSError(errno.ENOSPC, "No space"), False),
+            ("linux", ValueError("not an I/O error"), False),
+        ],
+    )
+    def test_is_broken_pipe(
+        self, monkeypatch: pytest.MonkeyPatch, platform: str, exc: BaseException, expected: bool
+    ) -> None:
+        from aero1553 import writer
+
+        monkeypatch.setattr(writer.sys, "platform", platform)
+        assert writer.is_broken_pipe(exc) is expected

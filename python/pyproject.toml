@@ -293,4 +293,8 @@ ignore_names = [
     # pytest autouse fixtures are invoked by the framework, never by name.
     "_restore_package_logger_state",
     "_cwd_with_flag_named_files",
+    # Raised by the compiled extension, which looks the class up by name.
+    "MieCalendarUnavailableError",
+    # A TypedDict key in writer.py -- read by the compiled writer as a keyword.
+    "time_format",
 ]

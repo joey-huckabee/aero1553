@@ -38,8 +38,8 @@ All other L3 categories mirror the L2 category they refine (e.g., `L3-WRT-*` dec
 (Per-category and total requirement counts are intentionally omitted — they
 drift as requirements are added. The requirement entries below, and the
 auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.
-`L3-RS-007` and `L3-CPP-015` are withdrawn; their IDs are reserved and not reused — see their entries
-below.)
+`L3-RS-007`, `L3-CPP-015`, `L3-PY-018` and `L3-PY-019` are withdrawn; their IDs are reserved and not
+reused — see their entries below.)
 
 Most L2 requirements are sufficiently testable at the L2 level (the statement names the exact behavior the test asserts) and do not require an L3 decomposition. L3 entries are added only where there is genuine implementation detail that cannot be inferred from the L2 statement — chiefly the per-implementation technology constraints (`L3-PY-*`, `L3-RS-*`, `L3-CPP-*`) and a small set of cross-implementation naming patterns (`L3-WRT-*`).
 
@@ -103,7 +103,7 @@ Python dependencies SHALL be managed by uv, with development tools declared as a
 The Python package SHALL use the `src/aero1553` layout and SHALL expose the `aero1553` console script via `[project.scripts]` (PEP 621) in `python/pyproject.toml`. (Project metadata and the console-script entry point live in the standard `[project]` table; `maturin` is the build backend, with `[tool.maturin] python-source = "src"` pointing at the `src/` layout and `module-name = "aero1553._native"` placing the compiled PyO3 extension inside the package.) The console-script registration is verified by test (`tests/test_package_api.py`, via `importlib.metadata`); the `src/` layout by inspection.
 
 **L3-PY-004** · Parent: L2-WRT-001 · Verification: T
-Python CSV generation SHALL stream rows directly to the output handle via the standard-library `csv` module with `lineterminator="\n"` (and file destinations opened with `newline=""`), satisfying L2-WRT-012 regardless of host operating system. No DataFrame or full-file buffering SHALL be used (see L3-PY-012).
+Python CSV generation SHALL be the Rust writer's, run through the package's compiled extension: the package SHALL NOT contain a second CSV encoder, so `aero1553.writer.write_csv` produces byte-for-byte the rows the CLI produces (LF line endings on every host, L2-WRT-012). Before v4.0.0 this requirement mandated the standard-library `csv` module; one encoder is what makes a Python-to-CLI divergence impossible rather than merely tested for. No DataFrame or full-file buffering SHALL be used (see L3-PY-012).
 
 **L3-PY-005** · Parent: L2-CFG-001 · Verification: I
 Python TOML parsing SHALL use the standard-library `tomllib` module on Python 3.11 and newer, and SHALL fall back to the `tomli` package on Python 3.10. No other TOML parser SHALL be used.
@@ -127,7 +127,7 @@ Python message counting SHALL be available through the `count` subcommand (match
 Python inline error output SHALL be the default: error and SPURIOUS_DATA records appear in the same CSV as clean records, with the `ERROR` and `ERROR_CODE` columns populated per L2-ERR-010. Separate-file output SHALL be available through the `--separate-errors` flag on the `decode` subcommand (matching the Rust CLI, `L3-RS-009`). Stdout output is always inline (you cannot split stdout), so `--separate-errors` SHALL be ignored there with a WARN. The former `--inline-errors` flag SHALL NOT be accepted — it was removed when inline became the default, and passing it SHALL be a usage error (exit 4) rather than a silent no-op.
 
 **L3-PY-012** · Parent: L2-WRT-001 · Verification: T
-Python memory usage during decode SHALL be O(1) in the number of records: the writer streams each row straight to the output handle via the standard-library `csv` module with no DataFrame or full-file buffering. Constant overhead is bounded by the output stream's buffer plus the `delta` tracker, whose keys are bounded by `RT × SA × direction`. This matches the Rust guarantee (`L3-RS-012`) and is verified by a memory test asserting the write-side peak stays within a small constant factor as the record count grows ~33x.
+Python memory usage during decode SHALL be O(1) in the number of records: the writer (the Rust writer, L3-PY-004) streams each row straight to the output handle with no DataFrame or full-file buffering. Constant overhead is bounded by the output stream's buffer plus the `delta` tracker, whose keys are bounded by `RT × SA × direction`. This matches the Rust guarantee (`L3-RS-012`) and is verified by a memory test asserting the write-side peak stays within a small constant factor as the record count grows ~33x.
 
 **L3-PY-013** · Parent: L2-FLT-001 · Verification: T
 The Python package SHALL provide include filters equivalent to the Rust crate (`L3-RS-010`): `--include-types`, `--include-rts`, `--include-buses`, `--include-subaddresses` on the `decode` subcommand, with the same "passes only if contained in every active include set" semantics and the same comma-separated, repeatable argument syntax. Include filters are CLI-only overrides (no config-file key), matching Rust.
@@ -144,17 +144,9 @@ The Python canonical row ordering SHALL be implemented in a dedicated module `ae
 **L3-PY-017** · Parent: L2-CONF-005 · Verification: T
 The Python word decoders SHALL be verified **exhaustively** against the Rust implementation, not by sampled cases: every one of the 65 536 Type Words, every one of the 65 536 Command Words, and every bit position of every IRIG and Standard timestamp field SHALL be swept through an FNV-1a digest whose expected values are those printed by `rust/examples/decode_digest.rs` — the same four constants `cpp/tests/test_decode_exhaustive.cpp` pins. Each digest SHALL be accompanied by a discrimination case proving the hash reads its input, because a digest test that cannot fail reports success forever. Until v2.16.0 this check existed only in the C++ tree, so the strongest cross-implementation check in the project covered two decoders out of three.
 
-**L3-PY-018** · Parent: L2-WRT-023 · Verification: T
-The Python no-replace commit SHALL be `os.link` followed by unlinking the temp, falling back to an exclusive-create (`open(dest, "x")`) reservation plus `os.replace` when the link fails for any reason other than `FileExistsError`. `os.link` raises `FileExistsError` when the destination exists on POSIX and on Windows alike (it calls `CreateHardLinkW` there), which is the refusal; on success it publishes the complete file under its final name in one step, so a concurrent reader never observes a partial or empty destination. The fallback exists because hard links are absent on FAT/exFAT and refused by some network filesystems, and it is a fallback rather than the primary because its reservation is briefly visible as a zero-byte destination.
+**L3-PY-018** · *Withdrawn.* Previously mandated the Python writer's own non-replacing commit (`os.link` plus an exclusive-create fallback). Since v4.0.0 the Python package writes through the Rust writer, so the obligation is L3-RS-017's; L2-WRT-023 remains verified from Python through the public `write_csv`. The ID is reserved (not reused) so historical references and the trace matrix stay coherent.
 
-The unlink after a successful link SHALL be best-effort and SHALL NOT be allowed to fail the commit: the destination is committed either way, and leaving the writer's `_committed` flag unset when the unlink fails hands `close()` a second attempt at the temp.
-
-**L3-PY-019** · Parent: L2-WRT-024 · Verification: T
-`_AtomicCsvFile._close_stream` SHALL be called from **inside** the commit's exception wrapper, so a failure of the final `flush()` is reported as `MieWriterError` and the temp is unlinked. `_AtomicCsvFile.close` SHALL swallow an `OSError` from closing the stream, so that the unlink it exists to perform still runs when the buffered data cannot be written; the commit path has already reported the real error, and re-raising from cleanup would replace it with a duplicate while leaking the temp file.
-
-This is a Python-specific requirement because the shape only arises here. Rust's `BufWriter::into_inner` returns the flush error as a value the commit already maps, and C++'s `AtomicFile::abort` is called from a destructor that cannot propagate — in both, the failure had nowhere to escape to.
-
----
+**L3-PY-019** · *Withdrawn.* Previously mandated where `_AtomicCsvFile` closed its stream, so that a failing final flush was reported as `MieWriterError`. Since v4.0.0 the Python package writes through the Rust writer, whose commit covers the flush (L2-WRT-024); that requirement remains verified from Python through the public `write_csv`. The ID is reserved (not reused) so historical references and the trace matrix stay coherent.
 
 ## L3-RS: Rust implementation technology
 
