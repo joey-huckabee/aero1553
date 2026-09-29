@@ -23,3 +23,13 @@ aero1553 = { path = "../../rust" }
 # ([tool.maturin] features), not here, so `cargo test` of this crate still
 # links libpython.
 pyo3 = { version = "0.29.2", features = ["abi3-py310"] }
+
+# The same release profile as rust/Cargo.toml. Cargo takes the profile from
+# the crate being BUILT, not from its dependencies, so without this the
+# extension compiled the decoder with plain release defaults -- no LTO, 16
+# codegen units -- and a Python decode ran measurably behind the binary built
+# from the identical source.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"
