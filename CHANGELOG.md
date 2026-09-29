@@ -106,6 +106,13 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- Rust: `MieFileReader::iter_detached()` returns a `RecordIter<'static>` --
+  the same records as `iter()`, from an iterator that shares the file mapping
+  instead of borrowing the reader, so it can outlive it. For embedders whose
+  iterator lifetime is not a Rust scope (the Python binding keeps one inside
+  a Python object). No cost per record: decode throughput is unchanged.
+- Rust: `cli::run_to_code(argv) -> u8`, the exit status as a number.
+  `cli::run` returns `std::process::ExitCode`, which cannot be read back.
 - `python/benchmarks/bench_decode.py`: a throughput benchmark for the Python
   package (reader iteration, whole-file decode, `count`, and the Rust CLI as
   the native ceiling), checked against the expected record count so a fast
