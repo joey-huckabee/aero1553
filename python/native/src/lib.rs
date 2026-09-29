@@ -10,6 +10,12 @@ use std::io::Write;
 
 use pyo3::prelude::*;
 
+mod enums;
+mod errors;
+mod logbridge;
+mod models;
+mod reader;
+
 /// Run the `aero1553` command line and return its exit status.
 ///
 /// `argv[0]` is the program name, as in `sys.argv`. The CLI writes straight to
@@ -45,5 +51,15 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         aero1553::decode::TERMINATOR_TYPE_WORD,
     )?;
     m.add_function(wrap_pyfunction!(run_cli, m)?)?;
+    m.add_class::<models::PyTypeWord>()?;
+    m.add_class::<models::PyCommandWord>()?;
+    m.add_class::<models::PyIrigTimestamp>()?;
+    m.add_class::<models::PyStandardTimestamp>()?;
+    m.add_class::<models::PyMieMessage>()?;
+    m.add_class::<reader::PyReader>()?;
+    m.add_class::<reader::PyRecordIterator>()?;
+    // From here on the library's log lines reach Python's `logging`; the CLI
+    // keeps writing to stderr (see `logbridge`).
+    logbridge::install();
     Ok(())
 }
