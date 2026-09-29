@@ -244,3 +244,30 @@ def commit_targets(
 def paths_refer_to_same_file(
     input_path: str | PathLike[str], output_path: str | PathLike[str]
 ) -> bool: ...
+
+# Multi-file merge (readers are the NativeReader behind each MieFileReader).
+def merge_readers(
+    readers: list[NativeReader],
+    *,
+    standard_tick_rate_hz: float | None,
+    allow_partial: bool,
+    strict: bool,
+    collapse_duplicates: bool,
+    collapse_window_us: int,
+    max_collapse_survivors: int,
+    delta_scope: int,
+) -> RecordIterator: ...
+def read_manifest(path: str | PathLike[str]) -> list[Path]: ...
+def glob_match(pattern: str, name: str) -> bool: ...
+def expand_glob(pattern: str) -> list[Path]: ...
+
+# DELTA tracking. observe() returns
+# (kind, seconds, prev_us, curr_us, key, first_for_key), kind a DeltaKind value.
+def delta_key(rt: int, subaddress: int, transmit: bool) -> int: ...
+
+@final
+class DeltaTracker:
+    def __init__(self, tick_rate_hz: float | None = None) -> None: ...
+    def observe(
+        self, command_word: CommandWord | None, timestamp: IrigTimestamp | StandardTimestamp
+    ) -> tuple[int, float | None, int | None, int | None, int | None, bool]: ...

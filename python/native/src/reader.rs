@@ -31,7 +31,7 @@ fn timestamp_format_from(value: u8) -> PyResult<TimestampFormat> {
 /// The decoder's reader for one recording.
 #[pyclass(frozen, name = "NativeReader", module = "aero1553._native")]
 pub struct PyReader {
-    inner: MieFileReader,
+    pub(crate) inner: MieFileReader,
 }
 
 #[pymethods]

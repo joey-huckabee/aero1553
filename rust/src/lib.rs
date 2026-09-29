@@ -22,10 +22,12 @@
 pub mod cli;
 pub mod config;
 pub mod decode;
-/// Private: `DeltaTracker` is an internal collaborator of `reader` and
-/// `merge`, not part of the published surface. Keeping it crate-visible
-/// means extracting it costs nothing in SemVer terms.
-mod delta;
+// Public since v4.0.0: the Python package's `aero1553.delta.DeltaTracker` is
+// this tracker, so the gap arithmetic has one implementation. (It was
+// crate-private while only `reader` and `merge` used it.) A plain comment, not
+// a doc comment: combined with the module's own `//!` docs, an outer doc here
+// would make rustdoc resolve those docs' links from the crate root.
+pub mod delta;
 pub mod dump;
 pub mod error;
 pub mod filter;

@@ -13,6 +13,7 @@ use pyo3::prelude::*;
 mod enums;
 mod errors;
 mod logbridge;
+mod merge;
 mod models;
 mod reader;
 mod stages;
@@ -69,6 +70,12 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(writer::message_to_row, m)?)?;
     m.add_function(wrap_pyfunction!(writer::commit_targets, m)?)?;
     m.add_function(wrap_pyfunction!(writer::paths_refer_to_same_file, m)?)?;
+    m.add_function(wrap_pyfunction!(merge::merge_readers, m)?)?;
+    m.add_function(wrap_pyfunction!(merge::read_manifest, m)?)?;
+    m.add_function(wrap_pyfunction!(merge::glob_match, m)?)?;
+    m.add_function(wrap_pyfunction!(merge::expand_glob, m)?)?;
+    m.add_function(wrap_pyfunction!(merge::delta_key, m)?)?;
+    m.add_class::<merge::PyDeltaTracker>()?;
     // From here on the library's log lines reach Python's `logging`; the CLI
     // keeps writing to stderr (see `logbridge`).
     logbridge::install();
