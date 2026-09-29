@@ -348,7 +348,7 @@ def test_cli_merge_allow_partial_open_failure_writes_dot_partial(tmp_path: Path)
 @pytest.mark.requirement("L2-WRT-014")
 def test_cli_merge_allow_partial_single_survivor_still_guards_output(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
     """Regression: a merge (two inputs *requested*) where ``--allow-partial``
     drops one input to a single surviving reader must STILL reject an output path
@@ -369,7 +369,7 @@ def test_cli_merge_allow_partial_single_survivor_still_guards_output(
     rc = main(["decode", str(fg), str(fe), "-o", str(fg), "--allow-partial"])
     assert rc == EXIT_RUNTIME
     # The collision guard fired specifically (not an incidental write error).
-    assert "resolves to merge input" in capsys.readouterr().err
+    assert "resolves to merge input" in capfd.readouterr().err
     assert fg.read_bytes() == before  # input left intact, never overwritten
 
 
@@ -377,7 +377,7 @@ def test_cli_merge_allow_partial_single_survivor_still_guards_output(
 @pytest.mark.requirement("L2-MRG-001")
 def test_cli_merge_rejects_input_a_derived_output_would_overwrite(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
     """A merge must check every path it could commit, not just the destination.
 
@@ -402,7 +402,7 @@ def test_cli_merge_rejects_input_a_derived_output_would_overwrite(
 
     rc = main(["decode", str(first), str(victim), "-o", str(dest), "--separate-errors"])
     assert rc == EXIT_RUNTIME
-    assert "resolves to merge input" in capsys.readouterr().err
+    assert "resolves to merge input" in capfd.readouterr().err
     assert victim.read_bytes() == before, "input modified despite the rejection"
     assert not dest.exists(), "no output may be created once the run is refused"
 

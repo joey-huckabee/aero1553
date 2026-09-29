@@ -104,6 +104,13 @@ fail_under = 92
 # Pylint lints the package source (src/aero1553). Genuine correctness/hygiene
 # checks stay on; checks that conflict with deliberate design choices or
 # duplicate SonarCloud are disabled below. Run: `uv run pylint src` (from python/).
+[tool.pylint.main]
+# Type stubs (the compiled extension's `_native.pyi`) are read by mypy, which
+# is where they are checked. None of pylint's checks apply to a declaration
+# with no body: it reports every stub parameter as unused and every stub
+# function as undocumented.
+ignore-patterns = ['.*\.pyi$']
+
 [tool.pylint.basic]
 # Keep pylint's default "good" short names and allow `tomllib` — the module
 # alias for the TOML backend (mirrors the stdlib module name; config.py binds
@@ -235,14 +242,6 @@ ignore = [
 allowed-confusables = ["–", "—", "×", "µ"]
 
 [tool.ruff.lint.per-file-ignores]
-# The CLI's whole job is writing to stdout: the `count` integer, `--help`, the
-# `dump` report. T20 stays enabled everywhere else, which is where a stray
-# debugging `print` would actually be a defect.
-#
-# ARG002: argparse calls `Action.__call__(parser, namespace, values,
-# option_string=...)` BY NAME. The unused parameters are the interface;
-# renaming them to `_parser` breaks the call.
-"src/aero1553/cli.py" = ["T201", "ARG002"]
 
 # SIM115: these files outlive the opening scope BY DESIGN -- the reader owns a
 # mapping and the writer owns a temp file until `commit()` renames it. A `with`
@@ -277,16 +276,18 @@ allowed-confusables = ["–", "—", "×", "µ"]
 
 # Vulture finds dead code. Scan src + tests together so test usage counts (a
 # function used only by tests is not "dead"). The ignored names are intentional:
-# `option_string` is the argparse Action.__call__ interface arg; the two
-# constants are documented module reference values (MAX_RECORD_BYTES is also in
-# docs/diagrams/class.svg) that stay part of the surface though unused in-tree.
+# the two constants are documented module reference values (MAX_RECORD_BYTES is
+# also in docs/diagrams/class.svg) that stay part of the surface though unused
+# in-tree, and `file_size` is a documented public property of MieFileReader whose
+# only in-tree reader was the pure-Python CLI.
 # Run: `uv run vulture` (from python/).
 [tool.vulture]
 paths = ["src", "tests"]
 ignore_names = [
-    "option_string",
     "MAX_RECORD_BYTES",
     "ALL_KNOWN_ERROR_CODES",
+    "file_size",
     # pytest autouse fixtures are invoked by the framework, never by name.
     "_restore_package_logger_state",
+    "_cwd_with_flag_named_files",
 ]

@@ -32,9 +32,8 @@ absolute numbers mean little across machines.
 from __future__ import annotations
 
 import argparse
-import contextlib
-import io
 import json
+import os
 import platform
 import subprocess
 import sys
@@ -126,12 +125,32 @@ def bench_decode(path: Path, out: Path) -> int:
 
 
 def bench_count(path: Path) -> int:
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        code = cli_main(["count", str(path)])
+    """Run ``count``, capturing its stdout at the FILE DESCRIPTOR.
+
+    The CLI writes to fd 1 directly (as the binary does), so swapping
+    ``sys.stdout`` would capture nothing; fd 2 is silenced the same way so the
+    status line does not interleave with the report.
+    """
+    with tempfile.TemporaryFile() as out_sink, tempfile.TemporaryFile() as err_sink:
+        sys.stdout.flush()
+        sys.stderr.flush()
+        saved = (os.dup(1), os.dup(2))
+        os.dup2(out_sink.fileno(), 1)
+        os.dup2(err_sink.fileno(), 2)
+        try:
+            code = cli_main(["count", str(path)])
+            sys.stdout.flush()
+            sys.stderr.flush()
+        finally:
+            os.dup2(saved[0], 1)
+            os.dup2(saved[1], 2)
+            os.close(saved[0])
+            os.close(saved[1])
+        out_sink.seek(0)
+        text = out_sink.read().decode("ascii", errors="replace")
     if code != 0:
         raise SystemExit(f"count exited {code}")
-    digits = "".join(ch for ch in buf.getvalue() if ch.isdigit())
+    digits = "".join(ch for ch in text if ch.isdigit())
     return int(digits) if digits else -1
 
 

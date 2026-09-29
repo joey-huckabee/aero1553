@@ -40,6 +40,25 @@ shared behavior) holds at any compatible version pair. See
   or catches `MieDecoderError`, and anything that parses log tags or looks
   for leftover `.mie-decoder.tmp.*` files.
 
+- **The Python package's command line is the Rust CLI.** `aero1553` (the
+  console script), `python -m aero1553` and `aero1553.cli.main()` now run
+  the Rust implementation in-process through the package's compiled
+  extension, so flags, help text, log lines, exit codes and CSV bytes are
+  identical to the Rust binary's by construction. A whole-file decode is
+  about 22x faster (`count` over 100x). Two consequences for code that
+  drives the CLI from Python:
+
+  | Was | Now |
+  |---|---|
+  | `aero1553.cli.build_parser()` returned an `argparse` parser | **Removed.** The command line has one parser, in Rust. Run a command line with `aero1553.cli.main(argv)` and read its exit status. |
+  | A usage error raised `SystemExit` | `main()` **returns** the status (`EXIT_USAGE`, 4); `--help` / `--version` return `EXIT_OK` |
+  | Output could be captured by swapping `sys.stdout` (or pytest's `capsys`) | The CLI writes to the stdout / stderr **file descriptors**, as the binary does. Capture there (pytest's `capfd`, or a subprocess). Log lines arrive on stderr, not through Python's `logging`. |
+
+  `main()` and `main_cli()` and the `EXIT_*` constants are unchanged.
+  `main_cli()` (the console-script entry point) now restores the default
+  SIGINT handler, so Ctrl-C ends a long decode immediately, as it ends the
+  binary.
+
   **Unchanged**: names that describe the MIE *file format* rather than the
   product — `MieFileReader`, `MieMessage`, `MieError`, the `Mie*Error`
   subclasses, the C++ `mie::` namespace and `include/mie/` headers, and the

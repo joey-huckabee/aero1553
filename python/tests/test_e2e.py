@@ -20,6 +20,7 @@ from aero1553.models import Bus, Direction, MessageFormat, MieMessage, Timestamp
 from aero1553.order import order_rows
 from aero1553.reader import MieFileReader
 from aero1553.writer import CSV_HEADER, write_csv
+from tests.conftest import RunCli
 from tests.fuzz_support import FUZZ_SEED, fuzz_logging
 from tests.fuzz_support import fill as fuzz_fill
 from tests.fuzz_support import iterations as fuzz_iterations
@@ -930,7 +931,7 @@ class TestAtomicWriteSafety:
 
     @pytest.mark.requirement("L2-DEC-015")
     def test_cli_detect_records_flag_rejects_out_of_range(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """--detect-records above the max (32) is rejected at parse
         time with a non-zero exit and the offending value in
@@ -949,7 +950,7 @@ class TestAtomicWriteSafety:
             ]
         )
         assert rc != 0
-        captured = capsys.readouterr()
+        captured = capfd.readouterr()
         assert "--detect-records" in captured.err
         assert "999" in captured.err
 
@@ -958,7 +959,7 @@ class TestAtomicWriteSafety:
     @pytest.mark.requirement("L2-CLI-011")
     @pytest.mark.requirement("L1-EXIT-007")
     def test_cli_standard_tick_rate_hz_flag_rejects_nonpositive(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """--standard-tick-rate-hz <= 0 is a CLI usage error: exit 4
         (L2-CLI-011/L2-CLI-012) with the offending flag in stderr."""
@@ -976,14 +977,14 @@ class TestAtomicWriteSafety:
             ]
         )
         assert rc == 4
-        captured = capsys.readouterr()
+        captured = capfd.readouterr()
         assert "--standard-tick-rate-hz" in captured.err
 
     @pytest.mark.requirement("L2-CLI-012")
     @pytest.mark.requirement("L2-DEC-017")
     @pytest.mark.requirement("L2-RDR-019")
     def test_cli_standard_tick_rate_hz_enables_delta(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """With --standard-tick-rate-hz set, Standard-timestamp records
         get a non-empty DELTA; without it, DELTA stays empty. Uses the
@@ -1081,7 +1082,7 @@ class TestAtomicWriteSafety:
 
     @pytest.mark.requirement("L1-EXIT-010")
     def test_cli_count_empty_recording_prints_zero_exit_0(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """L1-EXIT-010: count of an empty recording prints 0 and exits 0."""
         from aero1553.cli import main
@@ -1090,7 +1091,7 @@ class TestAtomicWriteSafety:
         f.write_bytes(b"\x00\x00")
         rc = main(["count", str(f)])
         assert rc == 0
-        assert capsys.readouterr().out.strip() == "0"
+        assert capfd.readouterr().out.strip() == "0"
 
     @pytest.mark.requirement("L2-CLI-011")
     @pytest.mark.requirement("L1-EXIT-002")
@@ -1183,74 +1184,41 @@ class TestCliEndToEnd:
 
     @pytest.mark.requirement("L1-EXIT-005")
     def test_cli_emits_exit_class_summary_on_complete_decode(
-        self,
-        tmp_mie_file: Path,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
+        self, tmp_mie_file: Path, tmp_path: Path, run_cli: RunCli
     ) -> None:
         """L1-EXIT-005: decode SHALL log a one-line exit-class summary
         naming one of {complete, partial-recovered, partial-unrecoverable,
         no-records}. This case exercises the `complete` branch."""
-        import logging
-
-        from aero1553.cli import main
-
         out = tmp_path / "summary.csv"
-        with caplog.at_level(logging.INFO, logger="aero1553.cli"):
-            rc = main(["--log-level", "INFO", "decode", str(tmp_mie_file), "-o", str(out)])
-        assert rc == 0
-        summary_lines = [
-            r.getMessage() for r in caplog.records if "decode exit class:" in r.getMessage()
-        ]
+        result = run_cli(["--log-level", "INFO", "decode", str(tmp_mie_file), "-o", str(out)])
+        assert result.rc == 0
+        summary_lines = [line for line in result.err.splitlines() if "decode exit class:" in line]
         assert summary_lines, (
-            "expected at least one `decode exit class:` summary line; "
-            f"got {[r.getMessage() for r in caplog.records]}"
+            f"expected at least one `decode exit class:` summary line; got {result.err!r}"
         )
         assert any("complete" in line for line in summary_lines), (
             f"expected `complete` in summary; got {summary_lines}"
         )
 
     @pytest.mark.requirement("L1-EXIT-005")
-    def test_cli_emits_no_records_exit_class_summary(
-        self,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
+    def test_cli_emits_no_records_exit_class_summary(self, tmp_path: Path, run_cli: RunCli) -> None:
         """L1-EXIT-005: the `no-records` exit-class summary branch."""
-        import logging
-
-        from aero1553.cli import main
-
         bad = tmp_path / "garbage.bin"
         bad.write_bytes(b"\xff" * 1024)
         out = tmp_path / "summary.csv"
-        with caplog.at_level(logging.INFO, logger="aero1553.cli"):
-            rc = main(["--log-level", "INFO", "decode", str(bad), "-o", str(out)])
-        assert rc == 2
-        summary_lines = [
-            r.getMessage() for r in caplog.records if "decode exit class:" in r.getMessage()
-        ]
+        result = run_cli(["--log-level", "INFO", "decode", str(bad), "-o", str(out)])
+        assert result.rc == 2
+        summary_lines = [line for line in result.err.splitlines() if "decode exit class:" in line]
         assert any("no-records" in line for line in summary_lines), (
             f"expected `no-records` in summary; got {summary_lines}"
         )
 
     @pytest.mark.requirement("L2-WRT-007")
-    def test_cli_decode_stdout(self, tmp_mie_file: Path) -> None:
+    def test_cli_decode_stdout(self, tmp_mie_file: Path, run_cli: RunCli) -> None:
         """CLI decode should produce CSV on stdout."""
-        import sys
-
-        from aero1553.cli import main
-
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = buf
-        try:
-            rc = main(["decode", str(tmp_mie_file)])
-        finally:
-            sys.stdout = old_stdout
-        assert rc == 0
-        lines = buf.getvalue().strip().split("\n")
-        assert len(lines) == 4
+        result = run_cli(["decode", str(tmp_mie_file)])
+        assert result.rc == 0
+        assert len(result.out.strip().split("\n")) == 4
 
     @pytest.mark.requirement("L2-CLI-002")
     def test_cli_decode_output_file(self, tmp_mie_file: Path, tmp_path: Path) -> None:
@@ -1264,7 +1232,7 @@ class TestCliEndToEnd:
 
     @pytest.mark.requirement("L2-CLI-002")
     def test_output_dash_is_a_filename_not_stdout(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """``-o -`` writes a file *called* ``-``. stdout is selected by omitting
         the flag, and that is the only way to select it.
@@ -1281,11 +1249,11 @@ class TestCliEndToEnd:
         assert rc == 0
         assert dash.exists(), "no file named '-' was created"
         assert "MSG" in dash.read_text(encoding="utf-8")
-        assert capsys.readouterr().out == "", "`-o -` must not write to stdout"
+        assert capfd.readouterr().out == "", "`-o -` must not write to stdout"
 
     @pytest.mark.requirement("L3-PY-010")
     def test_cli_count_subcommand(
-        self, tmp_mie_file: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """The `count` subcommand prints the integer count to stdout and a
         human-readable status line to stderr."""
@@ -1293,7 +1261,7 @@ class TestCliEndToEnd:
 
         rc = main(["count", str(tmp_mie_file)])
         assert rc == 0
-        captured = capsys.readouterr()
+        captured = capfd.readouterr()
         # L3-PY-010: stdout is ONLY the integer + a single newline — no
         # prose, no path, no leading/trailing whitespace (byte-exact so a
         # regression that prints extra whitespace is caught).
@@ -1301,7 +1269,7 @@ class TestCliEndToEnd:
         assert "counted 3 messages in" in captured.err
 
     @pytest.mark.requirement("L2-CLI-005")
-    def test_cli_decode_missing_file(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_cli_decode_missing_file(self, capfd: pytest.CaptureFixture[str]) -> None:
         """CLI decode with nonexistent file should return exit code 1."""
         from aero1553.cli import main
 
@@ -1329,132 +1297,113 @@ class TestCliEndToEnd:
 
     @pytest.mark.requirement("L2-CFG-003")
     def test_cli_toml_logging_level_is_honored_when_no_cli_override(
-        self,
-        tmp_mie_file: Path,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
+        self, tmp_mie_file: Path, tmp_path: Path, run_cli: RunCli
     ) -> None:
         """L2-CFG-003 precedence: TOML [logging] level takes effect when
         no --log-level CLI flag is passed. Regression coverage for the
         bug where the TOML value was parsed into config.log_level but
         the CLI never re-configured the logger after loading."""
-        import logging
-
-        from aero1553.cli import main
-
         config_path = tmp_path / "config.toml"
         config_path.write_text('[logging]\nlevel = "INFO"\n', encoding="utf-8")
         out = tmp_path / "decoded.csv"
 
-        with caplog.at_level(logging.INFO, logger="aero1553"):
-            rc = main(
-                [
-                    "--config",
-                    str(config_path),  # global: before subcommand
-                    "decode",
-                    str(tmp_mie_file),
-                    "-o",
-                    str(out),
-                ]
-            )
+        result = run_cli(
+            ["--config", str(config_path), "decode", str(tmp_mie_file), "-o", str(out)]
+        )
 
-        assert rc == 0
-        # `decode exit class:` is INFO-level; it appears only if the
-        # aero1553 logger is effectively at INFO or finer.
-        summary_lines = [
-            r.getMessage() for r in caplog.records if "decode exit class:" in r.getMessage()
-        ]
-        assert summary_lines, (
-            "expected `decode exit class:` (INFO) line after TOML set "
-            "level=INFO; got: "
-            f"{[r.getMessage() for r in caplog.records]}"
+        assert result.rc == 0
+        # `decode exit class:` is INFO-level; it appears only if the level
+        # the TOML asked for actually took effect.
+        assert "decode exit class:" in result.err, (
+            f"expected `decode exit class:` (INFO) line after TOML set level=INFO; got: "
+            f"{result.err!r}"
         )
 
     @pytest.mark.requirement("L2-CFG-003")
     def test_cli_log_level_overrides_toml_logging_level(
-        self,
-        tmp_mie_file: Path,
-        tmp_path: Path,
-        caplog: pytest.LogCaptureFixture,
+        self, tmp_mie_file: Path, tmp_path: Path, run_cli: RunCli
     ) -> None:
         """L2-CFG-003 precedence: --log-level CLI flag overrides the
         TOML [logging] level (CLI > TOML > default)."""
-        import logging
-
-        from aero1553.cli import main
-
-        # TOML asks for DEBUG (most verbose); CLI asks for ERROR
-        # (suppresses INFO). CLI must win — no `decode exit class:`
-        # INFO line should appear.
+        # TOML asks for DEBUG (most verbose); CLI asks for ERROR. CLI must
+        # win -- no line below ERROR may appear.
         config_path = tmp_path / "config.toml"
         config_path.write_text('[logging]\nlevel = "DEBUG"\n', encoding="utf-8")
         out = tmp_path / "decoded.csv"
 
-        with caplog.at_level(logging.DEBUG, logger="aero1553"):
-            rc = main(
-                [
-                    "--log-level",
-                    "ERROR",
-                    "--config",
-                    str(config_path),  # both global: before subcommand
-                    "decode",
-                    str(tmp_mie_file),
-                    "-o",
-                    str(out),
-                ]
-            )
+        # The control: the TOML alone really does produce sub-ERROR lines, so
+        # their absence below is the override and not a quiet decode.
+        toml_only = run_cli(
+            ["--config", str(config_path), "decode", str(tmp_mie_file), "-o", str(out)]
+        )
+        assert "INFO " in toml_only.err
 
-        assert rc == 0
-        info_lines = [r.getMessage() for r in caplog.records if r.levelno < logging.ERROR]
-        assert not info_lines, (
-            f"CLI --log-level ERROR should suppress all sub-ERROR records "
-            f"even when TOML set level=DEBUG; got: {info_lines}"
+        result = run_cli(
+            [
+                "--log-level",
+                "ERROR",
+                "--config",
+                str(config_path),
+                "decode",
+                str(tmp_mie_file),
+                "-o",
+                str(out),
+            ]
+        )
+
+        assert result.rc == 0
+        below_error = [
+            line
+            for line in result.err.splitlines()
+            if line.startswith(("DEBUG ", "INFO ", "WARN "))
+        ]
+        assert not below_error, (
+            f"CLI --log-level ERROR should suppress all sub-ERROR lines "
+            f"even when TOML set level=DEBUG; got: {below_error}"
         )
 
     @pytest.mark.requirement("L2-CFG-003")
-    def test_cli_dump_honors_toml_logging_level(
-        self,
-        tmp_mie_file: Path,
-        tmp_path: Path,
-    ) -> None:
+    def test_cli_dump_honors_toml_logging_level(self, tmp_path: Path) -> None:
         """L2-CFG-003 precedence: TOML [logging] level applies to the
-        dump subcommand too (mirrors Rust where --config is global).
-        dump.py emits no INFO messages of its own, so the assertion is
-        on the effective log level after the run rather than captured
-        records."""
-        import io
-        import logging
-        import sys
+        dump subcommand too (--config is global).
 
-        from aero1553.cli import main
+        `dump` logs exactly one line of its own: the INFO note that a closed
+        stdout consumer is a clean exit. So the level is observed through it --
+        dumping into a pipe that closes early -- with and without a TOML that
+        raises the level to INFO.
+        """
+        from tests.conftest import normal_record_rt15_sa11_us
 
+        big = tmp_path / "big.mie"
+        big.write_bytes(b"".join(normal_record_rt15_sa11_us(i * 100) for i in range(3000)))
         config_path = tmp_path / "config.toml"
-        config_path.write_text('[logging]\nlevel = "DEBUG"\n', encoding="utf-8")
+        config_path.write_text('[logging]\nlevel = "INFO"\n', encoding="utf-8")
 
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = buf
-        try:
-            rc = main(
-                [
-                    "--config",
-                    str(config_path),  # global: before subcommand
-                    "dump",
-                    str(tmp_mie_file),
-                    "--records",
-                    "1",
-                ]
+        def dump_into_closed_pipe(*globals_: str) -> tuple[int, str]:
+            proc = subprocess.Popen(
+                [sys.executable, "-m", "aero1553", *globals_, "dump", str(big)],
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
             )
-        finally:
-            sys.stdout = old_stdout
+            assert proc.stdout is not None
+            assert proc.stderr is not None
+            assert proc.stdout.read(64)
+            proc.stdout.close()
+            err = proc.stderr.read().decode(errors="replace")
+            return proc.wait(timeout=60), err
 
+        rc, err = dump_into_closed_pipe()
         assert rc == 0
-        assert logging.getLogger("aero1553").getEffectiveLevel() == logging.DEBUG
+        assert "broken-pipe" not in err, "the default level (WARNING) hides the INFO note"
+
+        rc, err = dump_into_closed_pipe("--config", str(config_path))
+        assert rc == 0
+        assert "broken-pipe" in err, f"TOML level=INFO should reach dump; stderr: {err!r}"
 
     @pytest.mark.requirement("L2-CFG-001")
     @pytest.mark.requirement("L2-CLI-004")
     def test_cli_logging_level_off_does_not_crash(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, run_cli: RunCli
     ) -> None:
         """A config with `logging.level = "OFF"` decodes cleanly and silently.
 
@@ -1462,18 +1411,15 @@ class TestCliEndToEnd:
         uncaught ValueError when applied (stdlib has no logging.OFF). It
         now silences all output, matching Rust.
         """
-        import logging
-
-        from aero1553.cli import main
-
         config_path = tmp_path / "off.toml"
         config_path.write_text('[logging]\nlevel = "OFF"\n', encoding="utf-8")
         out = tmp_path / "decoded.csv"
-        rc = main(["--config", str(config_path), "decode", str(tmp_mie_file), "-o", str(out)])
-        assert rc == 0  # not a crash, not exit 5
+        result = run_cli(
+            ["--config", str(config_path), "decode", str(tmp_mie_file), "-o", str(out)]
+        )
+        assert result.rc == 0  # not a crash, not exit 5
         assert out.exists()
-        # OFF silences logging — no records on the aero1553 logger stream.
-        assert logging.getLogger("aero1553").getEffectiveLevel() > logging.CRITICAL
+        assert result.err == "", f"OFF must silence all logging; got {result.err!r}"
 
     @pytest.mark.requirement("L2-CLI-004")
     def test_cli_log_level_accepts_full_set_case_insensitively(self, tmp_mie_file: Path) -> None:
@@ -1492,69 +1438,39 @@ class TestCliEndToEnd:
 
     @pytest.mark.requirement("L2-CLI-004")
     def test_cli_version_and_help_short_circuit_before_log_level_validation(
-        self,
+        self, run_cli: RunCli
     ) -> None:
         """--version / --help are honored even alongside an invalid
-        --log-level, matching the Rust CLI (which pulls those flags before
-        validating the level). Regression for the prior order-dependent
-        behavior where a bad --log-level before --version exited 4."""
-        from aero1553.cli import main
-
+        --log-level: those flags are pulled before the level is validated.
+        Regression for the prior order-dependent behavior where a bad
+        --log-level before --version exited 4."""
         for tail in (["--version"], ["--help"]):
-            # argparse's version/help actions exit 0 via SystemExit.
-            with pytest.raises(SystemExit) as exc_info:
-                main(["--log-level", "BOGUS", *tail])
-            assert exc_info.value.code in (0, None), f"{tail} should exit 0"
+            assert run_cli(["--log-level", "BOGUS", *tail]).rc == 0, f"{tail} should exit 0"
 
     @pytest.mark.requirement("L2-CLI-005")
-    def test_cli_version_flag_all_spellings(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_cli_version_flag_all_spellings(self, run_cli: RunCli) -> None:
         """Every accepted spelling of the version flag — both short forms
         (``-V``/``-v``) and the long form in any letter case — prints the version
-        and exits 0, matching the Rust CLI."""
-        from aero1553.cli import main
-
+        and exits 0."""
         for flag in ("-V", "-v", "--version", "--VERSION", "--Version", "--vErSiOn"):
-            with pytest.raises(SystemExit) as exc_info:
-                main([flag])
-            assert exc_info.value.code in (0, None), f"{flag} should exit 0"
-            assert "aero1553" in capsys.readouterr().out, f"{flag} should print the version"
+            result = run_cli([flag])
+            assert result.rc == 0, f"{flag} should exit 0"
+            assert "aero1553" in result.out, f"{flag} should print the version"
 
     @pytest.mark.requirement("L2-CLI-009")
-    def test_cli_dump_records(self, tmp_mie_file: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_cli_dump_records(self, tmp_mie_file: Path, run_cli: RunCli) -> None:
         """CLI dump should print record-aware hex dump to stdout."""
-        import sys
-
-        from aero1553.cli import main
-
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = buf
-        try:
-            rc = main(["dump", str(tmp_mie_file), "--records", "2"])
-        finally:
-            sys.stdout = old_stdout
-        assert rc == 0
-        output = buf.getvalue()
-        assert "Record #0" in output
-        assert "Record #1" in output
+        result = run_cli(["dump", str(tmp_mie_file), "--records", "2"])
+        assert result.rc == 0
+        assert "Record #0" in result.out
+        assert "Record #1" in result.out
 
     @pytest.mark.requirement("L2-CLI-009")
-    def test_cli_dump_raw(self, tmp_mie_file: Path) -> None:
+    def test_cli_dump_raw(self, tmp_mie_file: Path, run_cli: RunCli) -> None:
         """CLI dump --raw should print raw hex to stdout."""
-        import sys
-
-        from aero1553.cli import main
-
-        buf = io.StringIO()
-        old_stdout = sys.stdout
-        sys.stdout = buf
-        try:
-            rc = main(["dump", str(tmp_mie_file), "--raw", "--length", "32"])
-        finally:
-            sys.stdout = old_stdout
-        assert rc == 0
-        output = buf.getvalue()
-        assert "00000000" in output
+        result = run_cli(["dump", str(tmp_mie_file), "--raw", "--length", "32"])
+        assert result.rc == 0
+        assert "00000000" in result.out
 
     @pytest.mark.requirement("L2-CLI-009")
     def test_cli_dump_missing_file(self) -> None:
@@ -1576,15 +1492,10 @@ class TestCliEndToEnd:
 
     @pytest.mark.requirement("L2-CLI-011")
     @pytest.mark.requirement("L1-EXIT-007")
-    def test_cli_unknown_flag_is_usage_error(self) -> None:
-        """An unknown flag is a usage error: exit 4. argparse defaults to 2,
-        which would collide with no-records; the parser remaps it to 4."""
-        from aero1553.cli import main
-
-        # argparse usage errors raise SystemExit rather than returning.
-        with pytest.raises(SystemExit) as exc_info:
-            main(["decode", "--no-such-flag", "rec.mie"])
-        assert exc_info.value.code == 4
+    def test_cli_unknown_flag_is_usage_error(self, run_cli: RunCli) -> None:
+        """An unknown flag is a usage error: exit 4 -- never 2, which is the
+        no-records status."""
+        assert run_cli(["decode", "--no-such-flag", "rec.mie"]).rc == 4
 
     @pytest.mark.requirement("L2-CLI-011")
     @pytest.mark.requirement("L1-EXIT-008")
@@ -1972,7 +1883,7 @@ class TestDumpDiagnostics:
 
     @pytest.mark.requirement("L2-CLI-014")
     def test_dump_report_is_pure_ascii_and_lf(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+        self, tmp_path: Path, capfdbinary: pytest.CaptureFixture[bytes]
     ) -> None:
         """The dump report is a stdout *payload* -- piped, redirected, diffed
         against the Rust and C++ reports -- so it is pure ASCII with LF endings.
@@ -1980,31 +1891,26 @@ class TestDumpDiagnostics:
         This replaces a test that asserted the opposite. The annotation used to
         contain box-drawing, arrow and en-dash characters, which raised
         ``UnicodeEncodeError`` on a redirected Windows stdout (cp1252) and
-        aborted the dump; the CLI forced UTF-8 on the stream to compensate. The
-        characters are gone instead, so the report needs no such compensation
-        and now matches the other two implementations byte for byte -- pinned by
-        the ``dump-*`` conformance cases.
+        aborted the dump. The characters are gone instead, so the report
+        matches the other two implementations byte for byte -- pinned by the
+        ``dump-*`` conformance cases.
 
-        Asserted on the BYTES, not the decoded text: a payload that decodes
-        identically under cp1252 and UTF-8 is exactly one containing no byte
-        above 0x7F, which is the property that makes it safe on any console.
+        Asserted on the BYTES that reach the file descriptor: a payload that
+        decodes identically under cp1252 and UTF-8 is exactly one containing no
+        byte above 0x7F, which is the property that makes it safe on any
+        console.
         """
-        import sys
-
         from aero1553.cli import main
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "in.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV)
 
-        raw = io.BytesIO()
-        monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252", newline=""))
-
+        capfdbinary.readouterr()
         rc = main(["dump", str(fpath)])
-        sys.stdout.flush()
+        payload = capfdbinary.readouterr().out
 
         assert rc == 0
-        payload = raw.getvalue()
         assert payload, "the dump produced no output"
 
         high = [b for b in payload if b > 0x7F]
@@ -2014,7 +1920,7 @@ class TestDumpDiagnostics:
         assert payload.decode("cp1252") == payload.decode("utf-8")
 
     @pytest.mark.requirement("L2-CLI-014")
-    def test_help_text_is_pure_ascii(self, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_help_text_is_pure_ascii(self, capfdbinary: pytest.CaptureFixture[bytes]) -> None:
         """Help text is *prose*, and L2-CLI-014 binds prose to the same ASCII
         rule as payload.
 
@@ -2027,21 +1933,13 @@ class TestDumpDiagnostics:
 
         ``scripts/assert-ascii-output.py`` enforces the rule at the source across
         all three implementations; this is the runtime half, on the bytes that
-        actually reach the stream.
+        actually reach the file descriptor.
         """
-        import sys
-
         from aero1553.cli import main
 
-        raw = io.BytesIO()
-        monkeypatch.setattr(sys, "stdout", io.TextIOWrapper(raw, encoding="cp1252", newline=""))
-
-        with pytest.raises(SystemExit) as exc:
-            main(["--help"])
-        sys.stdout.flush()
-
-        assert exc.value.code == 0
-        payload = raw.getvalue()
+        capfdbinary.readouterr()
+        assert main(["--help"]) == 0
+        payload = capfdbinary.readouterr().out
         assert payload, "--help produced no output"
 
         high = [b for b in payload if b > 0x7F]

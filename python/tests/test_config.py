@@ -28,6 +28,7 @@ from aero1553.models import (
     TypeWord,
 )
 from aero1553.sync import DEFAULT_LOOKAHEAD_RECORDS
+from tests.conftest import RunCli
 
 
 def _make_msg(
@@ -735,16 +736,13 @@ class TestErrorModeConfig:
 
     @pytest.mark.requirement("L3-PY-011")
     def test_separate_errors_on_stdout_warns_and_falls_back_to_inline(
-        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+        self, tmp_path: Path, run_cli: RunCli
     ) -> None:
         """A stream cannot be split, so --separate-errors degrades to inline.
 
         The request was explicit, so it must be reported rather than silently
         ignored — matching the same WARN in the Rust CLI.
         """
-        import logging
-
-        from aero1553.cli import main
         from tests.conftest import (
             errored_record_rt15_sa11_us,
             normal_record_rt15_sa11_us,
@@ -752,12 +750,10 @@ class TestErrorModeConfig:
 
         mie = tmp_path / "with_error.mie"
         mie.write_bytes(normal_record_rt15_sa11_us(100) + errored_record_rt15_sa11_us(16100))
-        with caplog.at_level(logging.WARNING, logger="aero1553"):
-            rc = main(["decode", str(mie), "--separate-errors"])
-        assert rc == 0
-        assert any("forces inline" in r.getMessage() for r in caplog.records), (
-            f"expected a WARN that stdout forces inline; got "
-            f"{[r.getMessage() for r in caplog.records]}"
+        result = run_cli(["decode", str(mie), "--separate-errors"])
+        assert result.rc == 0
+        assert "forces inline" in result.err, (
+            f"expected a WARN that stdout forces inline; got {result.err!r}"
         )
 
     @pytest.mark.requirement("L3-PY-011")
@@ -773,9 +769,9 @@ class TestErrorModeConfig:
 
         mie = tmp_path / "rec.mie"
         mie.write_bytes(normal_record_rt15_sa11_us(100))
-        with pytest.raises(SystemExit) as excinfo:
-            main(["decode", str(mie), "-o", str(tmp_path / "o.csv"), "--inline-errors"])
-        assert excinfo.value.code == EXIT_USAGE
+        assert main(["decode", str(mie), "-o", str(tmp_path / "o.csv"), "--inline-errors"]) == (
+            EXIT_USAGE
+        )
 
 
 class TestSchemaValidation:
