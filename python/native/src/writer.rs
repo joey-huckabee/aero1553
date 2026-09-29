@@ -75,15 +75,29 @@ fn is_broken_pipe(py: Python<'_>, err: &PyErr) -> bool {
 /// `BrokenPipe` so the writer can treat it as a clean stop (L2-WRT-018); any
 /// other `OSError` becomes an I/O error, reported as `MieWriterError`; any
 /// other exception is parked in the stream's error slot and raised unchanged.
-struct PyTextSink {
+///
+/// With `pass_through` set, EVERY exception is parked -- a broken pipe and an
+/// `OSError` included -- for a caller whose Python contract is that the
+/// stream's own exception propagates (`aero1553.dump`).
+pub(crate) struct PyTextSink {
     stream: Py<PyAny>,
     buf: Vec<u8>,
     slot: ErrorSlot,
+    pass_through: bool,
 }
 
 const SINK_CHUNK: usize = 64 * 1024;
 
 impl PyTextSink {
+    pub(crate) fn new(stream: Py<PyAny>, slot: ErrorSlot, pass_through: bool) -> Self {
+        Self {
+            stream,
+            buf: Vec::new(),
+            slot,
+            pass_through,
+        }
+    }
+
     fn hand_over(&mut self) -> io::Result<()> {
         if self.buf.is_empty() {
             return Ok(());
@@ -102,6 +116,10 @@ impl PyTextSink {
     }
 
     fn classify(&self, py: Python<'_>, err: PyErr) -> io::Error {
+        if self.pass_through {
+            *self.slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(err);
+            return io::Error::other("a Python exception raised by the output stream");
+        }
         if is_broken_pipe(py, &err) {
             return io::Error::new(io::ErrorKind::BrokenPipe, err.to_string());
         }
@@ -201,11 +219,7 @@ fn to_stream(
     render: TimeRender,
     allow_partial: bool,
 ) -> Result<u64, MieError> {
-    let sink = PyTextSink {
-        stream: sink_stream,
-        buf: Vec::new(),
-        slot: slot.clone(),
-    };
+    let sink = PyTextSink::new(sink_stream, slot.clone(), false);
     let mut writer = CsvWriter::new(sink, destination)?.with_time_render(render);
     let mut failure: Option<MieError> = None;
     for item in source {

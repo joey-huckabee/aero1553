@@ -8,13 +8,17 @@ from pathlib import Path
 import pytest
 
 from aero1553.config import (
+    DETECT_RECORDS_MAX,
+    DETECT_RECORDS_MIN,
+    LOOKAHEAD_RECORDS_MAX,
+    LOOKAHEAD_RECORDS_MIN,
     DecoderConfig,
     FilterConfig,
-    _parse_bus_names,
-    _parse_type_names,
     load_config,
+    parse_utc_offset,
 )
 from aero1553.filters import apply_filters
+from aero1553.merge import MAX_COLLAPSE_SURVIVORS_MAX, MAX_COLLAPSE_SURVIVORS_MIN
 from aero1553.models import (
     Bus,
     CommandWord,
@@ -26,8 +30,9 @@ from aero1553.models import (
     MieMessage,
     TimestampFormat,
     TypeWord,
+    parse_delta_scope,
+    parse_timestamp_format,
 )
-from aero1553.sync import DEFAULT_LOOKAHEAD_RECORDS
 from tests.conftest import RunCli
 
 
@@ -101,85 +106,88 @@ class TestFilterConfig:
         assert fc.should_exclude(0x02, 15, Bus.A, 11) is False
 
 
+def _filter_config(tmp_path: Path, key: str, array: str) -> FilterConfig:
+    """Load a config whose only line is ``[filter] <key> = <array>``."""
+    cfg = tmp_path / "filter.toml"
+    cfg.write_text(f"[filter]\n{key} = {array}\n", encoding="utf-8")
+    return load_config(cfg).filters
+
+
 class TestParseTypeNames:
-    """Tests for type name parsing."""
+    """Message-type identifiers in a ``[filter]`` array, through the loader."""
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_by_name(self) -> None:
-        result = _parse_type_names(["BC_TO_RT", "RT_TO_BC"])
-        assert result == {0x02, 0x04}
+    def test_by_name(self, tmp_path: Path) -> None:
+        result = _filter_config(tmp_path, "exclude_types", '["BC_TO_RT", "RT_TO_BC"]')
+        assert result.exclude_types == {0x02, 0x04}
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_case_insensitive(self) -> None:
-        result = _parse_type_names(["bc_to_rt"])
-        assert result == {0x02}
+    def test_case_insensitive(self, tmp_path: Path) -> None:
+        result = _filter_config(tmp_path, "exclude_types", '["bc_to_rt"]')
+        assert result.exclude_types == {0x02}
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_by_hex(self) -> None:
-        result = _parse_type_names(["0x02", "0x20"])
-        assert result == {0x02, 0x20}
+    def test_by_hex(self, tmp_path: Path) -> None:
+        result = _filter_config(tmp_path, "exclude_types", '["0x02", "0x20"]')
+        assert result.exclude_types == {0x02, 0x20}
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_invalid_name_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown"):
-            _parse_type_names(["NONEXISTENT"])
+    def test_invalid_name_raises(self, tmp_path: Path) -> None:
+        with pytest.raises(ValueError, match="Unknown message type"):
+            _filter_config(tmp_path, "exclude_types", '["NONEXISTENT"]')
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_invalid_hex_raises(self) -> None:
+    def test_invalid_hex_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="Invalid hex"):
-            _parse_type_names(["0xZZ"])
+            _filter_config(tmp_path, "exclude_types", '["0xZZ"]')
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_integer_codes_accepted(self) -> None:
-        # A TOML array may carry bare integers; accept them bounded to u8,
-        # matching the Rust parse_type_value (rust/src/config.rs). Previously this
-        # crashed with an AttributeError on .strip().
-        result = _parse_type_names([0x02, 32, "RT_TO_BC"])
-        assert result == {0x02, 0x20, 0x04}
+    def test_integer_codes_accepted(self, tmp_path: Path) -> None:
+        # A TOML array may carry bare integers; accept them bounded to u8.
+        result = _filter_config(tmp_path, "exclude_types", '[2, 32, "RT_TO_BC"]')
+        assert result.exclude_types == {0x02, 0x20, 0x04}
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_integer_out_of_range_raises(self) -> None:
+    def test_integer_out_of_range_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="out of range"):
-            _parse_type_names([256])
+            _filter_config(tmp_path, "exclude_types", "[256]")
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_hex_out_of_range_raises(self) -> None:
-        # 0x100 = 256 > u8 max; Rust rejects it, so Python must too (previously
-        # it was silently accepted, making the filter a no-op).
+    def test_hex_out_of_range_raises(self, tmp_path: Path) -> None:
+        # 0x100 = 256 > u8 max: rejected, not silently accepted as a no-op filter.
         with pytest.raises(ValueError, match="Invalid hex"):
-            _parse_type_names(["0x100"])
+            _filter_config(tmp_path, "exclude_types", '["0x100"]')
 
     @pytest.mark.requirement("L2-CFG-007")
-    def test_non_str_non_int_raises(self) -> None:
+    def test_non_str_non_int_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="must be strings or integers"):
-            _parse_type_names([1.5])
+            _filter_config(tmp_path, "exclude_types", "[1.5]")
 
 
 class TestParseBusNames:
-    """Tests for bus name parsing."""
+    """Bus identifiers in a ``[filter]`` array, through the loader."""
 
     @pytest.mark.requirement("L2-CFG-006")
-    def test_valid(self) -> None:
-        result = _parse_bus_names(["A", "B"])
-        assert result == {Bus.A, Bus.B}
+    def test_valid(self, tmp_path: Path) -> None:
+        result = _filter_config(tmp_path, "exclude_buses", '["A", "B"]')
+        assert result.exclude_buses == {Bus.A, Bus.B}
+        assert all(isinstance(bus, Bus) for bus in result.exclude_buses)
 
     @pytest.mark.requirement("L2-CFG-006")
-    def test_case_insensitive(self) -> None:
-        result = _parse_bus_names(["a", "b"])
-        assert result == {Bus.A, Bus.B}
+    def test_case_insensitive(self, tmp_path: Path) -> None:
+        result = _filter_config(tmp_path, "exclude_buses", '["a", "b"]')
+        assert result.exclude_buses == {Bus.A, Bus.B}
 
     @pytest.mark.requirement("L2-CFG-006")
-    def test_invalid_raises(self) -> None:
+    def test_invalid_raises(self, tmp_path: Path) -> None:
         with pytest.raises(ValueError, match="Invalid bus"):
-            _parse_bus_names(["C"])
+            _filter_config(tmp_path, "exclude_buses", '["C"]')
 
     @pytest.mark.requirement("L2-CFG-006")
-    def test_non_str_entry_raises_cleanly(self) -> None:
-        # A non-string TOML entry (e.g. an integer) must raise a clean
-        # ValueError matching Rust ("entries must be strings"), not crash with
-        # an AttributeError on .strip().
+    def test_non_str_entry_raises_cleanly(self, tmp_path: Path) -> None:
+        # A non-string TOML entry (e.g. an integer) is a clean ValueError.
         with pytest.raises(ValueError, match="must be strings"):
-            _parse_bus_names([1])
+            _filter_config(tmp_path, "exclude_buses", "[1]")
 
 
 class TestDecoderConfig:
@@ -808,13 +816,10 @@ class TestSchemaValidation:
 
     @pytest.mark.requirement("L2-CFG-010")
     def test_strict_must_be_bool(self, tmp_path: Path) -> None:
-        # TOML supports bool natively. A string here is rejected by
-        # tomllib at parse time (TypeError), so we test the dataclass
-        # path instead.
-        from aero1553.config import _require_bool
-
-        with pytest.raises(ValueError, match="expected boolean"):
-            _require_bool("decode", "strict", "yes")
+        cfg = tmp_path / "strict_str.toml"
+        cfg.write_text('[decode]\nstrict = "yes"\n')
+        with pytest.raises(ValueError, match="must be a boolean"):
+            load_config(cfg)
 
     @pytest.mark.requirement("L2-CFG-010")
     def test_exclude_rts_out_of_range_rejected(self, tmp_path: Path) -> None:
@@ -844,14 +849,14 @@ class TestSchemaValidation:
         # AttributeError. Matches the Rust "must be a string" rejection.
         cfg = tmp_path / "tf_int.toml"
         cfg.write_text("[decode]\ninput_time_format = 1\n")
-        with pytest.raises(ValueError, match=r"decode\.input_time_format"):
+        with pytest.raises(ValueError, match=r"\[decode\] input_time_format must be a string"):
             load_config(cfg)
 
     @pytest.mark.requirement("L2-CFG-010")
     def test_non_string_error_mode_rejected(self, tmp_path: Path) -> None:
         cfg = tmp_path / "em_int.toml"
         cfg.write_text("[decode]\nerror_mode = 1\n")
-        with pytest.raises(ValueError, match=r"decode\.error_mode"):
+        with pytest.raises(ValueError, match=r"\[decode\] error_mode must be a string"):
             load_config(cfg)
 
     @pytest.mark.requirement("L2-CFG-010")
@@ -925,16 +930,18 @@ class TestSchemaValidation:
         load_config(cfg)  # must not raise
 
     @pytest.mark.requirement("L2-CFG-010")
-    def test_array_splitter_respects_escaped_quotes(self) -> None:
-        from aero1553.config import _split_array_items
-
+    def test_array_splitter_respects_escaped_quotes(self, tmp_path: Path) -> None:
         # A comma that follows an escaped quote is *inside* the string, so this
-        # array has exactly one element — mirroring the Rust splitter. Before the
-        # fix Python broke it into two and rejected the config where Rust accepts.
-        assert _split_array_items(r'"a\", b"') == [r'"a\", b"']
+        # array has exactly one element: an unknown bus name, not the two
+        # fragments `"a\"` and `b"`.
+        with pytest.raises(ValueError, match="Invalid bus"):
+            _filter_config(tmp_path, "exclude_buses", r'["a\", b"]')
         # A plain top-level comma still separates.
-        assert len(_split_array_items("0, 31")) == 2
-        assert len(_split_array_items(r'"A", "B"')) == 2
+        assert _filter_config(tmp_path, "exclude_rts", "[0, 31]").exclude_rts == {0, 31}
+        assert _filter_config(tmp_path, "exclude_buses", '["A", "B"]').exclude_buses == {
+            Bus.A,
+            Bus.B,
+        }
 
     @pytest.mark.requirement("L2-CFG-009")
     def test_root_level_scalar_key_warns(
@@ -1055,7 +1062,7 @@ class TestSharedDefaultConfig:
         assert cfg.allow_partial is False
         assert cfg.no_clobber is False
         assert cfg.detect_records == 8
-        assert cfg.lookahead_records == DEFAULT_LOOKAHEAD_RECORDS
+        assert cfg.lookahead_records == 2
         assert cfg.output_format == "csv"
         assert cfg.max_sort_group == 4096
 
@@ -1075,7 +1082,6 @@ class TestSharedDefaultConfig:
         cfg = DecoderConfig()
         assert cfg.lookahead_records == 2, "L2-SYN-026 default"
         assert cfg.detect_records == 8, "L2-DEC-015 default"
-        assert DEFAULT_LOOKAHEAD_RECORDS == 2
 
 
 class TestConfigPathValidation:
@@ -1200,3 +1206,77 @@ class TestDeltaScopeKey:
         cfg.write_text(f"[merge]\ndelta_scope = {bad}\n")
         with pytest.raises(ValueError, match="delta_scope"):
             load_config(cfg)
+
+
+class TestParseUtcOffset:
+    """L2-CFG-012: the UTC offset designator, as the library exposes it."""
+
+    @pytest.mark.requirement("L2-CFG-012")
+    @pytest.mark.parametrize(
+        ("text", "minutes"),
+        [("Z", 0), ("z", 0), ("+00:00", 0), ("-05:00", -300), ("+05:30", 330), ("+23:59", 1439)],
+    )
+    def test_accepts_the_grammar(self, text: str, minutes: int) -> None:
+        assert parse_utc_offset(text) == minutes
+
+    @pytest.mark.requirement("L2-CFG-012")
+    @pytest.mark.parametrize("text", ["+5:00", "+0500", "+05:00 ", "+24:00", "+05:60", "05:00", ""])
+    def test_rejects_anything_looser(self, text: str) -> None:
+        with pytest.raises(ValueError, match="utc_offset"):
+            parse_utc_offset(text)
+
+
+class TestPublishedConstantsAreTheLoaders:
+    """The ranges and name tables the Python package publishes are statements
+    about what the loader accepts. The loader is Rust's now, so each is pinned
+    against it rather than left to agree by coincidence."""
+
+    @pytest.mark.requirement("L2-CFG-010")
+    @pytest.mark.parametrize(
+        ("section", "key", "lo", "hi"),
+        [
+            ("decode", "detect_records", DETECT_RECORDS_MIN, DETECT_RECORDS_MAX),
+            ("decode", "lookahead_records", LOOKAHEAD_RECORDS_MIN, LOOKAHEAD_RECORDS_MAX),
+            (
+                "merge",
+                "max_collapse_survivors",
+                MAX_COLLAPSE_SURVIVORS_MIN,
+                MAX_COLLAPSE_SURVIVORS_MAX,
+            ),
+        ],
+    )
+    def test_ranges(self, tmp_path: Path, section: str, key: str, lo: int, hi: int) -> None:
+        cfg = tmp_path / "range.toml"
+        for value, accepted in ((lo, True), (hi, True), (lo - 1, False), (hi + 1, False)):
+            cfg.write_text(f"[{section}]\n{key} = {value}\n")
+            if accepted:
+                assert getattr(load_config(cfg), key) == value
+            else:
+                with pytest.raises(ValueError, match=key):
+                    load_config(cfg)
+
+    @pytest.mark.requirement("L2-CFG-010")
+    @pytest.mark.parametrize("name", ["auto", "IRIG", "Standard", "freerun", ""])
+    def test_timestamp_format_names(self, tmp_path: Path, name: str) -> None:
+        cfg = tmp_path / "tf.toml"
+        cfg.write_text(f'[decode]\ninput_time_format = "{name}"\n')
+        try:
+            expected = parse_timestamp_format(name)
+        except ValueError:
+            with pytest.raises(ValueError, match="input_time_format"):
+                load_config(cfg)
+        else:
+            assert load_config(cfg).input_time_format is expected
+
+    @pytest.mark.requirement("L2-MRG-005")
+    @pytest.mark.parametrize("name", ["per-file", "GLOBAL", "Per-File", "whole", ""])
+    def test_delta_scope_names(self, tmp_path: Path, name: str) -> None:
+        cfg = tmp_path / "ds.toml"
+        cfg.write_text(f'[merge]\ndelta_scope = "{name}"\n')
+        try:
+            expected = parse_delta_scope(name)
+        except ValueError:
+            with pytest.raises(ValueError, match="delta_scope"):
+                load_config(cfg)
+        else:
+            assert load_config(cfg).delta_scope is expected

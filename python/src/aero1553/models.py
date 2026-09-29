@@ -158,10 +158,10 @@ _TIMESTAMP_FORMAT_BY_NAME: dict[str, TimestampFormat] = {
 def parse_timestamp_format(name: str) -> TimestampFormat:
     """Parse an ``input_time_format`` name (``auto`` / ``irig`` / ``standard``).
 
-    Matching is case-insensitive. This is the single source of truth shared by
-    the CLI (``--input-time-format``) and the config loader
-    (``decode.input_time_format``) so the two can never disagree on which
-    spellings are accepted.
+    Matching is case-insensitive, and the accepted spellings are those of the
+    CLI's ``--input-time-format`` and the config loader's
+    ``decode.input_time_format`` (both Rust; ``tests/test_config.py`` pins the
+    agreement).
 
     Raises:
         ValueError: if ``name`` is not one of the recognized formats. The message
@@ -371,9 +371,10 @@ _DELTA_SCOPE_BY_NAME: dict[str, DeltaScope] = {
 def parse_delta_scope(name: str) -> DeltaScope:
     """Parse a ``delta_scope`` name (``per-file`` / ``global``).
 
-    Matching is case-insensitive. Single source of truth shared by the CLI
-    (``--delta-scope``) and the config loader (``merge.delta_scope``), mirroring
-    the Rust ``DeltaScope::from_name_ci``.
+    Matching is case-insensitive, and the accepted spellings are those of the
+    CLI's ``--delta-scope`` and the config loader's ``merge.delta_scope`` (both
+    the Rust ``DeltaScope::from_name_ci``; ``tests/test_config.py`` pins the
+    agreement).
 
     Raises:
         ValueError: if ``name`` is not a recognized scope; the message lists the

@@ -10,6 +10,8 @@ use std::io::Write;
 
 use pyo3::prelude::*;
 
+mod config;
+mod dump;
 mod enums;
 mod errors;
 mod logbridge;
@@ -48,6 +50,14 @@ fn run_cli(py: Python<'_>, argv: Vec<String>) -> u8 {
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    m.add(
+        "DEFAULT_DETECT_RECORDS",
+        aero1553::decode::DEFAULT_DETECT_RECORDS,
+    )?;
+    m.add(
+        "DEFAULT_LOOKAHEAD_RECORDS",
+        aero1553::sync::DEFAULT_LOOKAHEAD_RECORDS,
+    )?;
     // A value read from the core crate, so importing the module proves the
     // extension links the decoder and not just PyO3.
     m.add(
@@ -75,6 +85,10 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge::glob_match, m)?)?;
     m.add_function(wrap_pyfunction!(merge::expand_glob, m)?)?;
     m.add_function(wrap_pyfunction!(merge::delta_key, m)?)?;
+    m.add_function(wrap_pyfunction!(dump::hex_dump_raw, m)?)?;
+    m.add_function(wrap_pyfunction!(dump::hex_dump_records, m)?)?;
+    m.add_function(wrap_pyfunction!(config::load_config, m)?)?;
+    m.add_function(wrap_pyfunction!(config::parse_utc_offset, m)?)?;
     m.add_class::<merge::PyDeltaTracker>()?;
     // From here on the library's log lines reach Python's `logging`; the CLI
     // keeps writing to stderr (see `logbridge`).

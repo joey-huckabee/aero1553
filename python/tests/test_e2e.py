@@ -2085,6 +2085,67 @@ class TestDumpDiagnostics:
         assert "Error:  0x0120" in text
         assert "No Status Response or Too Few Data Words" in text
 
+    @pytest.mark.requirement("L2-CLI-009")
+    def test_ddc_error_descriptions_are_the_dumps(self, tmp_path: Path) -> None:
+        """``aero1553.models.DDC_ERROR_DESCRIPTIONS`` is published for callers;
+        the dump that prints those descriptions is Rust's. Each entry is pinned
+        against what the dump shows for a record carrying that Error Word."""
+        from aero1553.dump import hex_dump_records
+        from aero1553.models import DDC_ERROR_DESCRIPTIONS
+
+        for code, description in DDC_ERROR_DESCRIPTIONS.items():
+            fpath = tmp_path / f"err{code:04X}.mie"
+            fpath.write_bytes(bytes.fromhex("04460F18F2DA265D3E7C") + code.to_bytes(2, "little"))
+            out = io.StringIO()
+            hex_dump_records(fpath, max_records=1, stream=out)
+            assert f"Error:  0x{code:04X}  ->  {description}\n" in out.getvalue()
+
+    @pytest.mark.requirement("L2-CLI-009")
+    def test_dump_propagates_the_streams_own_exception(self, tmp_path: Path) -> None:
+        """Whatever the output stream raises -- a broken pipe included --
+        reaches the caller as that same exception object, as it did when the
+        dump was a sequence of ``print`` calls. The dump is Rust now; this pins
+        that the stream adapter hands the exception back rather than wrapping
+        or swallowing it."""
+        from aero1553.dump import hex_dump_raw, hex_dump_records
+
+        fpath = tmp_path / "errored.mie"
+        fpath.write_bytes(bytes.fromhex("04460F18F2DA265D3E7C2001"))
+
+        for raised in (BrokenPipeError(32, "closed"), RuntimeError("stream gone")):
+
+            class Failing(io.StringIO):
+                def write(self, s: str) -> int:
+                    raise raised  # noqa: B023
+
+            for dump in (
+                lambda out: hex_dump_raw(fpath, stream=out),
+                lambda out: hex_dump_records(fpath, stream=out),
+            ):
+                with pytest.raises(type(raised)) as caught:
+                    dump(Failing())
+                assert caught.value is raised
+
+    @pytest.mark.requirement("L2-CLI-009")
+    def test_dump_refuses_a_negative_count(self, tmp_path: Path) -> None:
+        """A negative offset, length or record count is a ``ValueError`` naming
+        the argument, not an arithmetic surprise inside the scan."""
+        from aero1553.dump import hex_dump_raw, hex_dump_records
+
+        fpath = tmp_path / "errored.mie"
+        fpath.write_bytes(bytes.fromhex("04460F18F2DA265D3E7C2001"))
+        with pytest.raises(ValueError, match="start_offset"):
+            hex_dump_raw(fpath, start_offset=-1, stream=io.StringIO())
+        with pytest.raises(ValueError, match="length"):
+            hex_dump_raw(fpath, length=-1, stream=io.StringIO())
+        with pytest.raises(ValueError, match="max_records"):
+            hex_dump_records(fpath, max_records=-1, stream=io.StringIO())
+
+        # A count past anything addressable means "to the end", not an error.
+        out = io.StringIO()
+        hex_dump_raw(fpath, length=1 << 80, stream=out)
+        assert "Range: 0x00000000-0x0000000C" in out.getvalue()
+
 
 class TestSeparateModeCommitOrder:
     """L2-WRT-019: separate mode commits the main CSV before the errors CSV.

@@ -11,9 +11,9 @@ license = "Apache-2.0"
 # outside the project directory. scripts/repo-hygiene.sh keeps the two identical.
 license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.15"
-dependencies = [
-    "tomli>=2.0,<3.0; python_version < '3.11'",
-]
+# None: the decoder, the CSV writer and the TOML config loader are all the
+# compiled Rust extension.
+dependencies = []
 
 [project.scripts]
 aero1553 = "aero1553.cli:main_cli"
@@ -71,14 +71,6 @@ strict = true
 warn_return_any = true
 warn_unused_configs = true
 
-# `tomli` (the 3.10 TOML backport, conditionally imported in config.py)
-# is not installed in the dev/type-check environment and is not part of
-# our typed surface, so treat its import as untyped rather than vendoring
-# stubs.
-[[tool.mypy.overrides]]
-module = ["tomli"]
-ignore_missing_imports = true
-
 # Coverage gate parallels the Rust crate's cargo-llvm-cov gate
 # (rust/.cargo/config.toml's `cov-ci` alias, 87 line / 86 region). The
 # combined line+branch coverage held ~90% for several releases, which put the
@@ -115,10 +107,7 @@ ignore-patterns = ['.*\.pyi$']
 extension-pkg-allow-list = ["aero1553._native"]
 
 [tool.pylint.basic]
-# Keep pylint's default "good" short names and allow `tomllib` — the module
-# alias for the TOML backend (mirrors the stdlib module name; config.py binds
-# it to tomllib/tomli/None across Python versions).
-good-names = ["i", "j", "k", "ex", "Run", "_", "tomllib"]
+good-names = ["i", "j", "k", "ex", "Run", "_"]
 
 [tool.pylint.format]
 max-line-length = 100
@@ -297,4 +286,9 @@ ignore_names = [
     "MieCalendarUnavailableError",
     # A TypedDict key in writer.py -- read by the compiled writer as a keyword.
     "time_format",
+    # A DecoderConfig field, filled by keyword from the compiled loader's result.
+    "output_time_format",
+    # decode.py's record-size constants; the module retires with sync.py.
+    "MIN_RECORD_BYTES",
+    "MIN_RECORD_WORDS",
 ]
