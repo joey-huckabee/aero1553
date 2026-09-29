@@ -37,8 +37,9 @@ aero1553/
 │       ├── configs/*.toml  per-case TOML config
 │       └── run.py          the runner
 ├── python/                 Python package (supports 3.10–3.14)
-│   ├── pyproject.toml      Poetry + PEP 621 hybrid; pytest markers registered here
-│   ├── poetry.lock         pinned dependencies; committed
+│   ├── pyproject.toml      PEP 621 metadata, maturin build, PEP 735 dev group; pytest markers
+│   ├── uv.lock             pinned dependencies; committed
+│   ├── native/             PyO3 binding crate, built as aero1553._native
 │   ├── src/aero1553/       package source (mirrors Rust module names)
 │   └── tests/              pytest suite
 ├── scripts/
@@ -91,25 +92,25 @@ cargo test
 ### Python
 
 ```bash
-pipx install poetry==2.3.4   # or via your usual install
-poetry -C python sync         # creates the venv, installs locked deps + aero1553
-poetry -C python run pytest
+pipx install uv              # or via your usual install; CI pins 0.12.20
+uv --directory python sync   # creates python/.venv, installs locked deps, builds + installs aero1553
+uv --directory python run pytest
 ```
 
-The Python package is installed in editable mode via `poetry sync`'s root-package step. If `python -m aero1553` ever fails to import in your local Poetry env, re-run sync.
+`uv sync` installs the package in editable mode, and that includes compiling the PyO3 extension (`python/native/`), so a Rust toolchain is needed as well. An editable install rebuilds the extension only when one of the `[tool.uv] cache-keys` in `python/pyproject.toml` changes -- those list the Rust sources of both the binding and the core crate, so `uv run` picks up a Rust edit by itself. If `python -m aero1553` ever fails to import, re-run sync.
 
 ### Cross-impl conformance (needs all three)
 
 ```bash
 # Build the Rust binary first so the runner doesn't have to:
 (cd rust && cargo build)
-# Then run the suite (uses Poetry's interpreter for the Python side):
-poetry -C python run python ../tests/conformance/run.py
+# Then run the suite (uses the uv environment's interpreter for the Python side):
+uv --directory python run python ../tests/conformance/run.py
 ```
 
 The runner reads `tests/conformance/manifest.json`, materializes each `.hex` fixture into a temp `.mie` file, invokes every registered CLI against it, and diffs the produced CSVs against the checked-in oracle (or asserts the exit code for negative cases).
 
-The runner additionally cross-checks the **config parsers** (`tomllib` vs the hand-rolled Rust parser accept different TOML subsets): a curated corpus (`config_parity.py`) plus a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts both implementations agree on accept/reject. Both run inside `run.py` — there is no separate command. The fuzzer is deterministic (fixed seed + `MIE_CONFIG_FUZZ_ITERS` iterations, default 100); for a deeper local sweep run `MIE_CONFIG_FUZZ_ITERS=5000 poetry -C python run python ../tests/conformance/run.py` (a *distinct* knob from the reader/dump `MIE_FUZZ_ITERATIONS` in §11's fuzz workflow). A divergence prints the exact config to pin in `config_parity.py`. See `tests/conformance/README.md`.
+The runner additionally cross-checks the **config parsers** (`tomllib` vs the hand-rolled Rust parser accept different TOML subsets): a curated corpus (`config_parity.py`) plus a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts both implementations agree on accept/reject. Both run inside `run.py` — there is no separate command. The fuzzer is deterministic (fixed seed + `MIE_CONFIG_FUZZ_ITERS` iterations, default 100); for a deeper local sweep run `MIE_CONFIG_FUZZ_ITERS=5000 uv --directory python run python ../tests/conformance/run.py` (a *distinct* knob from the reader/dump `MIE_FUZZ_ITERATIONS` in §11's fuzz workflow). A divergence prints the exact config to pin in `config_parity.py`. See `tests/conformance/README.md`.
 
 A third guard, `config_path_parity.py`, covers the layer above the parsers: the `--config` **path** rather than its contents. The other two never vary the path, so what counts as a usable config file — and which exit code and message a bad one produces — was pinned only by per-implementation unit tests that could drift apart unnoticed. It compares the **exact exit code** (not just accept/reject) and requires the promised message text from both CLIs, over the surface documented in `CONFIG-REFERENCE.md` §"Trust boundary": regular files only, missing/unusable is exit `5`, and any readable location is accepted (spaces, non-ASCII names, `..` segments). Platform-dependent cases (character devices, symlinks) skip themselves and report the skip, so a corpus that quietly shrinks on one OS is visible.
 
@@ -130,16 +131,16 @@ cargo deny check                                 # supply-chain audit (CI-gated;
 cargo semver-checks check-release --baseline-rev "$(git describe --tags --abbrev=0)" --release-type minor  # public-API break check (CI-gated)
 
 # Python (from repo root)
-poetry -C python run pytest                      # all tests
-poetry -C python run pytest tests/test_e2e.py -k delta -v
-poetry -C python run mypy src                    # strict type check (CI-gated)
-poetry -C python run pylint src/aero1553         # lint (CI-gated, fails below 10/10)
-poetry -C python run ruff check                  # ruff lint (CI-gated)
-poetry -C python run ruff format                 # auto-format (CI runs `ruff format --check`)
-poetry -C python run vulture                     # dead-code scan (CI-gated)
-poetry -C python run bandit -r src/aero1553      # security scan / SAST (CI-gated)
-poetry -C python run pytest --cov               # coverage gate (fail_under=92 in pyproject.toml)
-poetry -C python run python ../tests/conformance/run.py
+uv --directory python run pytest                      # all tests
+uv --directory python run pytest tests/test_e2e.py -k delta -v
+uv --directory python run mypy src                    # strict type check (CI-gated)
+uv --directory python run pylint src/aero1553         # lint (CI-gated, fails below 10/10)
+uv --directory python run ruff check                  # ruff lint (CI-gated)
+uv --directory python run ruff format                 # auto-format (CI runs `ruff format --check`)
+uv --directory python run vulture                     # dead-code scan (CI-gated)
+uv --directory python run bandit -r src/aero1553      # security scan / SAST (CI-gated)
+uv --directory python run pytest --cov               # coverage gate (fail_under=92 in pyproject.toml)
+uv --directory python run python ../tests/conformance/run.py
 
 # Filter pytest by requirement marker
 python scripts/pytest-by-requirement.py L2-WRT-015
@@ -155,7 +156,7 @@ python scripts/diagnose-vendor-delta.py vendor.csv
 
 # CLI dry-runs against a real file
 (cd rust && cargo run --release -- decode path/to/recording.mie -o decoded.csv)
-poetry -C python run aero1553 decode path/to/recording.mie -o decoded.csv
+uv --directory python run aero1553 decode path/to/recording.mie -o decoded.csv
 ```
 
 The diagrams in `docs/diagrams/` (`class.svg`, `component.svg`,
@@ -294,7 +295,7 @@ The project uses four test tiers, narrowest scope at the bottom:
 | **Unit**              | one function / one module, in-process    | `rust/src/<module>.rs` `#[cfg(test)] mod tests` (Rust); `python/tests/test_*.py` (Python) | `cargo test --lib` / `pytest`                    | Linux + Windows |
 | **Integration**       | multiple modules via the library API, in-process | `rust/tests/integration.rs` (Rust); `python/tests/test_integration_*.py` (Python) | `cargo test --test integration` / `pytest`       | Linux + Windows |
 | **CLI acceptance**    | the **built binary** as a subprocess — exit codes, stdout, stderr, filesystem effects | `rust/tests/cli.rs` (Rust)               | `cargo test --test cli`                          | Linux + Windows |
-| **Conformance**       | byte-exact cross-impl equivalence (Rust ↔ Python CLI) | `tests/conformance/`                | `poetry -C python run python ../tests/conformance/run.py` | Linux + Windows |
+| **Conformance**       | byte-exact cross-impl equivalence (Rust ↔ Python CLI) | `tests/conformance/`                | `uv --directory python run python ../tests/conformance/run.py` | Linux + Windows |
 
 The two upper tiers both spawn the actual binary, but they serve different purposes:
 
@@ -395,7 +396,7 @@ Cross-implementation conformance fixtures verify byte-identical CSV output (or m
 
    ```bash
    cargo build
-   poetry -C python run python ../tests/conformance/run.py
+   uv --directory python run python ../tests/conformance/run.py
    ```
 
 7. Update the count in any docs that mention "N conformance cases" (this guide, etc.).
@@ -482,13 +483,13 @@ shows up as a gap rather than silently drifting:
 | `rust-msrv` | `cargo check --all-targets` on the pinned **1.88** toolchain — enforces the declared `rust-version` (the main `rust` job builds on stable) | `ubuntu-latest` | Block merge |
 | `cargo-deny` | `cargo deny check` — RustSec advisories, license allow-list, bans (duplicates/wildcards), and crates.io-only sources (config in `rust/deny.toml`) | `ubuntu-latest` | Block merge |
 | `cargo-semver-checks` | `cargo semver-checks check-release` vs the latest release tag (`baseline-rev`, `release-type: minor`) — fails a PR that makes a **breaking** public-API change without a major bump; additive changes pass | `ubuntu-latest` | Block merge |
-| `python` | `poetry sync` + `poetry run pytest`; `poetry check --strict --lock` + `poetry build` Linux/3.12-only | 5 versions × Linux (3.10–3.14), 2 versions × Windows (3.12, 3.14) | Block merge |
-| `mypy` | `poetry run mypy src` — strict type check, analyzed as Python 3.10 (config in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
-| `pylint` | `poetry run pylint src/aero1553` — lints the package; curated disables + line length in `python/pyproject.toml` `[tool.pylint.*]` (gate fails below 10/10) | `ubuntu-latest` (3.12) | Block merge |
-| `ruff` | `poetry run ruff check` + `poetry run ruff format --check` — fast lint + formatter check over the package **and tests** (config in `python/pyproject.toml` `[tool.ruff]`); run `ruff format` to fix | `ubuntu-latest` (3.12) | Block merge |
-| `vulture` | `poetry run vulture` — dead-code scan over the package **and tests**; scan paths + intentional-name ignores (interface args, documented constants) in `python/pyproject.toml` `[tool.vulture]` | `ubuntu-latest` (3.12) | Block merge |
-| `bandit` | `poetry run bandit -r src/aero1553` — Python security static analysis (SAST) over the package source; fails on any finding at the default severity/confidence | `ubuntu-latest` (3.12) | Block merge |
-| `python-coverage` | `poetry run pytest --cov` — 92% combined line+branch floor (`fail_under` in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
+| `python` | `uv sync --locked` + `uv run pytest`; `uv lock --check` + `uv build` (asserts one `cp310-abi3` wheel) Linux/3.12-only | 5 versions × Linux (3.10–3.14), 2 versions × Windows (3.12, 3.14) | Block merge |
+| `mypy` | `uv run mypy src` — strict type check, analyzed as Python 3.10 (config in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
+| `pylint` | `uv run pylint src/aero1553` — lints the package; curated disables + line length in `python/pyproject.toml` `[tool.pylint.*]` (gate fails below 10/10) | `ubuntu-latest` (3.12) | Block merge |
+| `ruff` | `uv run ruff check` + `uv run ruff format --check` — fast lint + formatter check over the package **and tests** (config in `python/pyproject.toml` `[tool.ruff]`); run `ruff format` to fix | `ubuntu-latest` (3.12) | Block merge |
+| `vulture` | `uv run vulture` — dead-code scan over the package **and tests**; scan paths + intentional-name ignores (interface args, documented constants) in `python/pyproject.toml` `[tool.vulture]` | `ubuntu-latest` (3.12) | Block merge |
+| `bandit` | `uv run bandit -r src/aero1553` — Python security static analysis (SAST) over the package source; fails on any finding at the default severity/confidence | `ubuntu-latest` (3.12) | Block merge |
+| `python-coverage` | `uv run pytest --cov` — 92% combined line+branch floor (`fail_under` in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
 | `conformance` | `pip install -e ./python` then `python tests/conformance/run.py --skip cpp` — every fixture, Rust and Python. The opt-out is explicit: the runner defaults to every registered implementation and fails if one is missing, so this job cannot pass by silently testing fewer | `ubuntu-latest`, `windows-latest` | Block merge |
 | `trace-matrix` | `python scripts/build-trace-matrix.py --check` — fails if `docs/TRACE-MATRIX.md` is stale relative to the spec docs + test markers | `ubuntu-latest` | Block merge |
 | `repo-hygiene` | `bash scripts/repo-hygiene.sh` — re-runs the pre-commit hook's file-level checks (final newline, CRLF, merge markers, 1 MB cap, `*.mie`, `Cargo.lock` parity, `dbg!()`, `unsafe`/`SAFETY:`) over the whole tracked tree, so a `--no-verify` commit is still caught, plus the doc-drift checks that have no hook counterpart (this table lists every `ci.yml` job; the config-key set agrees across its three text sources; no TRACE-MATRIX row claims Implemented with no artifact; the declared Rust MSRV agrees across `Cargo.toml`, CI and the docs; `ROADMAP.md` doesn't restate a `TRACE-MATRIX.md` status; the Python exception hierarchy matches its ASCII-tree and UML drawings; every shipped string literal in all three implementations is ASCII, via `scripts/assert-ascii-output.py` — L2-CLI-014) | `ubuntu-latest` | Block merge |
@@ -575,7 +576,7 @@ To reproduce locally:
 
 ```bash
 MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic
-MIE_FUZZ_ITERATIONS=25000 poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness
+MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness
 MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz SANITIZE=1   # what fuzz-cpp-asan runs
 MIE_RECORD_FUZZ_ITERS=500 python tests/conformance/run.py     # the differential one
@@ -616,14 +617,14 @@ cargo cov-lcov       # lcov.info for IDE coverage overlays
 
 ### Python
 
-The CI gate runs `poetry -C python run pytest --cov --cov-report=term-missing`. Configuration lives in `python/pyproject.toml` under `[tool.coverage.run]` (source set, branch tracking, exclusions) and `[tool.coverage.report]`. The floor is `fail_under = 92` (combined line+branch) in `[tool.coverage.report]` — the single source of truth, so a bare `pytest --cov` enforces it without a CLI flag. `__main__.py` is excluded because it's the `python -m aero1553` entry shim (parallel to Rust's `bin/aero1553.rs` exclusion).
+The CI gate runs `uv --directory python run pytest --cov --cov-report=term-missing`. Configuration lives in `python/pyproject.toml` under `[tool.coverage.run]` (source set, branch tracking, exclusions) and `[tool.coverage.report]`. The floor is `fail_under = 92` (combined line+branch) in `[tool.coverage.report]` — the single source of truth, so a bare `pytest --cov` enforces it without a CLI flag. `__main__.py` is excluded because it's the `python -m aero1553` entry shim (parallel to Rust's `bin/aero1553.rs` exclusion).
 
 ```bash
 # What CI runs (use this before pushing)
-poetry -C python run pytest --cov --cov-report=term-missing
+uv --directory python run pytest --cov --cov-report=term-missing
 
 # HTML report (opens in browser; written to htmlcov/)
-poetry -C python run pytest --cov --cov-report=html
+uv --directory python run pytest --cov --cov-report=html
 ```
 
 ### C++
@@ -671,11 +672,11 @@ The resulting binary at `rust/target/release/aero1553` is the deliverable artifa
 ### Python package
 
 ```bash
-poetry -C python check --strict --lock
-poetry -P python build   # -P (not -C): -C doubles the src path on Windows; -P needs Poetry >= 2.0
+uv --directory python lock --check
+uv --directory python build   # sdist + one abi3 wheel, via maturin
 ```
 
-This produces `python/dist/aero1553-<version>.tar.gz` and `aero1553-<version>-py3-none-any.whl`.
+This produces `python/dist/aero1553-<version>.tar.gz` and one `aero1553-<version>-cp310-abi3-<platform>.whl`: a single wheel per platform that serves every CPython from 3.10 up. The sdist is self-contained -- it bundles the core crate from `rust/` -- so it builds anywhere a Rust toolchain is available. A local Linux build is tagged `linux_x86_64`, which pip installs locally but PyPI refuses; publishable `manylinux` wheels come from CI.
 
 ### C++ implementation
 
@@ -702,7 +703,7 @@ Tagging scheme:
 Bump versions when:
 
 - **Rust (`rust/Cargo.toml`)** — any change to the public crate API, the CLI surface, or the on-disk output.
-- **Python (`python/pyproject.toml` only)** — same axes for the Python package. `python/src/aero1553/__init__.py::__version__` reads from package metadata via `importlib.metadata.version("aero1553")`, so `pyproject.toml` is the single source of truth — no second file to keep in lockstep. `poetry check --strict --lock` catches `pyproject.toml`/`poetry.lock` drift in CI.
+- **Python (`python/pyproject.toml` only)** — same axes for the Python package. `python/src/aero1553/__init__.py::__version__` reads from package metadata via `importlib.metadata.version("aero1553")`, so `pyproject.toml` is where it is read from. The binding crate (`python/native/Cargo.toml`, and its `Cargo.lock` entry) carries the same number because it is compiled into the wheel; `scripts/repo-hygiene.sh` fails the build if any of the version sources disagree. `uv lock --check` catches `pyproject.toml`/`uv.lock` drift in CI.
 
 ### CHANGELOG discipline
 
@@ -746,7 +747,7 @@ These are the operating rules that keep the two crates from drifting:
 
 1. **Spec first.** New behavior lands as an L2 / L3 requirement before code. Both implementations then satisfy it.
 2. **Conformance fixtures for cross-impl behavior.** Anything that affects CSV output or exit codes belongs in `tests/conformance/`.
-3. **Per-impl detail goes in L3.** Python-specific constraints (stdlib `csv`, tomllib, Poetry) live as `L3-PY-*`. Rust-specific constraints (memmap2, BufWriter) live as `L3-RS-*`. The shared L2 stays implementation-agnostic.
+3. **Per-impl detail goes in L3.** Python-specific constraints (stdlib `csv`, tomllib, uv + maturin) live as `L3-PY-*`. Rust-specific constraints (memmap2, BufWriter) live as `L3-RS-*`. The shared L2 stays implementation-agnostic.
 4. **Error variants ship together.** When you add a new variant in one language, add it in the other in the same PR.
 5. **Log message wording can drift.** Operators read CSV output and exit codes; log message text isn't part of the contract. Don't over-coordinate it.
 6. **CLI capability parity is the contract** (per L1-CLI-001) — capability parity matters, exact spelling doesn't. Today the two CLIs share one identical argument surface: the same subcommands (`decode` / `count` / `dump`), the same `--separate-errors` flag, the same global `--config`, and the same comma-separated filter syntax. They are free to diverge in spelling so long as capability parity holds.

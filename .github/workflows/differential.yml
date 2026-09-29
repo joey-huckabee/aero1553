@@ -52,7 +52,7 @@ jobs:
         with:
           python-version: "3.12"
 
-      # `-e` rather than the locked Poetry environment: this job compares CLI
+      # `-e` rather than the locked uv environment: this job compares CLI
       # BEHAVIOUR across implementations and does not need pinned dependency
       # versions, only an importable package.
       # `pytest` explicitly: `-e ./python` installs the package's runtime

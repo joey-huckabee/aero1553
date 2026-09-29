@@ -15,7 +15,7 @@ Everything after ``--`` is forwarded to pytest. When no ``--`` is given,
 ``-v`` is added by default.
 
 The wrapper invokes the Python implementation's test suite under
-``python/tests/`` via ``poetry -C python run pytest``; Rust requirement tags
+``python/tests/`` via ``uv --directory python run pytest``; Rust requirement tags
 are tracked separately via doc-comments and are not in scope for this tool.
 """
 
@@ -45,7 +45,7 @@ def main() -> int:
         extra_args = ["-v"]
 
     collect = subprocess.run(
-        ["poetry", "-C", str(PY_ROOT), "run", "pytest", "--collect-only", "-q", TESTS_REL],
+        ["uv", "--directory", str(PY_ROOT), "run", "pytest", "--collect-only", "-q", TESTS_REL],
         cwd=PY_ROOT,
         capture_output=True,
         text=True,
@@ -88,7 +88,7 @@ def main() -> int:
     print()
 
     result = subprocess.run(
-        ["poetry", "-C", str(PY_ROOT), "run", "pytest", *selected, *extra_args],
+        ["uv", "--directory", str(PY_ROOT), "run", "pytest", *selected, *extra_args],
         cwd=PY_ROOT,
         check=False,
     )

@@ -16,7 +16,7 @@
   },
 
   // ── Python ─────────────────────────────────────────────────────────────────
-  // Default to the Poetry venv. This is the Windows path; on macOS/Linux the
+  // Default to the uv venv. This is the Windows path; on macOS/Linux the
   // interpreter is python/.venv/bin/python — if this does not resolve, run
   // "Python: Select Interpreter" and pick the python/.venv environment.
   "python.defaultInterpreterPath": "${workspaceFolder}/python/.venv/Scripts/python.exe",

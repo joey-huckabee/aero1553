@@ -97,10 +97,10 @@ identically to the tracking key.
 The Python implementation SHALL support Python `>=3.10,<3.15`. Changing the supported version set is a breaking change to this requirement, not an incidental packaging edit; the CI matrix mechanics that exercise every supported version are pinned separately by L3-PY-008.
 
 **L3-PY-002** · Parent: L2-CONF-005 · Verification: I
-Python dependencies and packaging SHALL be managed by Poetry. The committed lockfile SHALL be `python/poetry.lock`. CI builds SHALL use `poetry sync` or `poetry install --no-root` with the committed lockfile to ensure reproducible dependency resolution.
+Python dependencies SHALL be managed by uv, with development tools declared as a PEP 735 `[dependency-groups]` table in `python/pyproject.toml`. The committed lockfile SHALL be `python/uv.lock`. CI builds SHALL use `uv sync --locked` against the committed lockfile, so an out-of-date lock fails the build rather than being silently re-resolved, and dependency resolution is reproducible.
 
 **L3-PY-003** · Parent: L2-CONF-005 · Verification: T, I
-The Python package SHALL use the `src/aero1553` layout and SHALL expose the `aero1553` console script via `[project.scripts]` (PEP 621) in `python/pyproject.toml`. (The package is a Poetry + PEP 621 hybrid: project metadata and the console-script entry point live in the standard `[project]` table, while `poetry-core` is the build backend and `[tool.poetry] packages` points at the `src/` layout.) The console-script registration is verified by test (`tests/test_package_api.py`, via `importlib.metadata`); the `src/` layout by inspection.
+The Python package SHALL use the `src/aero1553` layout and SHALL expose the `aero1553` console script via `[project.scripts]` (PEP 621) in `python/pyproject.toml`. (Project metadata and the console-script entry point live in the standard `[project]` table; `maturin` is the build backend, with `[tool.maturin] python-source = "src"` pointing at the `src/` layout and `module-name = "aero1553._native"` placing the compiled PyO3 extension inside the package.) The console-script registration is verified by test (`tests/test_package_api.py`, via `importlib.metadata`); the `src/` layout by inspection.
 
 **L3-PY-004** · Parent: L2-WRT-001 · Verification: T
 Python CSV generation SHALL stream rows directly to the output handle via the standard-library `csv` module with `lineterminator="\n"` (and file destinations opened with `newline=""`), satisfying L2-WRT-012 regardless of host operating system. No DataFrame or full-file buffering SHALL be used (see L3-PY-012).

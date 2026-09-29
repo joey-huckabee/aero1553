@@ -67,16 +67,16 @@ cargo run --release -- dump path/to/recording.mie --records 10
 
 # Python setup, test, and CLI (run from the repo root)
 cd ..
-poetry -C python sync
-poetry -C python run pytest
-poetry -C python run mypy src    # strict type check (CI-gated)
-poetry -C python run pylint src/aero1553       # lint (CI-gated, must stay 10/10)
-poetry -C python run ruff check                # ruff lint (CI-gated)
-poetry -C python run ruff format               # auto-format (CI runs ruff format --check)
-poetry -C python run vulture                   # dead-code scan (CI-gated)
-poetry -C python run bandit -r src/aero1553    # security scan / SAST (CI-gated)
-poetry -C python run aero1553 --help
-poetry -P python build   # -P (not -C): -C doubles the src path on Windows; -P needs Poetry >= 2.0
+uv --directory python sync
+uv --directory python run pytest
+uv --directory python run mypy src    # strict type check (CI-gated)
+uv --directory python run pylint src/aero1553       # lint (CI-gated, must stay 10/10)
+uv --directory python run ruff check                # ruff lint (CI-gated)
+uv --directory python run ruff format               # auto-format (CI runs ruff format --check)
+uv --directory python run vulture                   # dead-code scan (CI-gated)
+uv --directory python run bandit -r src/aero1553    # security scan / SAST (CI-gated)
+uv --directory python run aero1553 --help
+uv --directory python build   # sdist + one abi3 wheel, via maturin
 
 # C++ build and test (run from cpp/; the Makefile is authoritative on Linux)
 cd cpp
@@ -109,16 +109,16 @@ bash scripts/assert-sources-agree.sh       # Makefile and CMake resolve the same
 # implementation and fails if one is missing, so opting out is explicit --
 # a run that silently tested fewer could report a full pass after a build failed.
 (cd rust && cargo build) && (cd cpp && make all)
-poetry -C python run python ../tests/conformance/run.py
-poetry -C python run python ../tests/conformance/run.py --skip cpp   # no C++ build
-poetry -C python run python ../tests/conformance/run.py --only cpp   # C++ vs the oracles
+uv --directory python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/run.py --skip cpp   # no C++ build
+uv --directory python run python ../tests/conformance/run.py --only cpp   # C++ vs the oracles
 
 # Fuzz harnesses (L1-ROB-001). All three read the SAME three knobs:
 #   MIE_FUZZ_ITERATIONS (default 256) / MIE_FUZZ_STREAM_LOGS / MIE_FUZZ_SUMMARY
 # Point them all at one MIE_FUZZ_SUMMARY file and compare the FUZZ-SUMMARY
 # lines -- on identical inputs the counters must be identical.
 MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic
-MIE_FUZZ_ITERATIONS=25000 poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness -s
+MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness -s
 MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 python scripts/compare-fuzz-summaries.py <dir-of-summary-files>
 ```

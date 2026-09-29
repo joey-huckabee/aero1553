@@ -47,6 +47,20 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **The Python package is built with maturin and developed with uv; Poetry
+  is gone.** This is the groundwork for the Python package becoming a PyO3
+  binding over the Rust decoder: it now contains a compiled extension,
+  `aero1553._native` (built from `python/native/`), so **installing from
+  source needs a Rust toolchain**. The build produces one `cp310-abi3`
+  wheel per platform that serves every CPython from 3.10 up. For
+  contributors: `poetry.lock` is replaced by `uv.lock`, the dev tools are a
+  PEP 735 `[dependency-groups]` table, and every `poetry -C python …`
+  command becomes `uv --directory python …` (same working directory, same
+  relative paths). CI installs with `uv sync --locked`.
+- **The Python wheel and sdist now include the Apache-2.0 license text.**
+  They previously carried only the SPDX identifier: the license file sits at
+  the repository root, outside the Python project. `python/LICENSE` is a
+  copy, and `scripts/repo-hygiene.sh` keeps it identical to the original.
 - The Python CLI's startup log line now reads `aero1553 v<version>`, the
   same as the Rust CLI's. It previously said `MIE-Decoder v<version>` while
   Rust said `mie-decoder v<version>`.
@@ -58,6 +72,14 @@ shared behavior) holds at any compatible version pair. See
   output-safety requirement IDs were wrong, the class diagram's enums and
   fields now match the code, and the data flow gains the empty-recording and
   `0x0000` terminator paths and drops an fsync step no implementation has.
+
+### Added
+
+- `python/benchmarks/bench_decode.py`: a throughput benchmark for the Python
+  package (reader iteration, whole-file decode, `count`, and the Rust CLI as
+  the native ceiling), checked against the expected record count so a fast
+  wrong answer cannot pass as a result. Run it before and after a change on
+  the same machine.
 
 ## [3.0.0] — 2026-08-28
 

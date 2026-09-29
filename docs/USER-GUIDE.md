@@ -60,11 +60,14 @@ pip install -e ./python
 aero1553 --help
 ```
 
-If you prefer Poetry:
+The package compiles a small Rust extension during the install, so a source
+install needs a Rust toolchain ([rustup](https://rustup.rs/)) on the machine.
+
+If you prefer [uv](https://docs.astral.sh/uv/):
 
 ```bash
-poetry -C python sync
-poetry -C python run aero1553 --help
+uv --directory python sync
+uv --directory python run aero1553 --help
 ```
 
 The Python package supports Python 3.10 through 3.14.

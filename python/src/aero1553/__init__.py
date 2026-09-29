@@ -45,7 +45,7 @@ try:
 except PackageNotFoundError:
     # Source-tree fallback: the package isn't installed (e.g. imported
     # directly from a clone before `pip install -e ./python` or
-    # `poetry sync` has run). All standard usage paths install the
+    # `uv sync` has run). All standard usage paths install the
     # package first, so this branch is rarely hit; the sentinel value
     # makes it obvious that the version came from this fallback rather
     # than from real package metadata.

@@ -147,21 +147,25 @@ jobs:
       # Python setup. Writes python/coverage.xml (paths resolve under the
       # checkout, so SonarCloud maps them to python/src/...).
       # --------------------------------------------------------------------------
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Python coverage (XML)
-        run: poetry -C python run pytest --cov --cov-report=xml   # -> python/coverage.xml
+        run: uv --directory python run pytest --cov --cov-report=xml   # -> python/coverage.xml
 
       # --------------------------------------------------------------------------
       # C++ analysis input

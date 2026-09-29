@@ -18,9 +18,8 @@ dependencies = [
 [project.scripts]
 aero1553 = "aero1553.cli:main_cli"
 
-# PEP 735 dependency groups: `uv sync` installs `dev` by default. The ranges
-# are the ones the Poetry `^` specifiers expressed; uv.lock pins the exact
-# versions CI runs.
+# PEP 735 dependency groups: `uv sync` installs `dev` by default, and uv.lock
+# pins the exact versions CI runs.
 [dependency-groups]
 dev = [
     "pytest>=8.0,<9",

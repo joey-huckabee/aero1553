@@ -414,11 +414,11 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
     """Resolve the Python interpreter that will run the Python aero1553 CLI.
 
     Default to :data:`sys.executable`. When the runner is invoked under
-    ``poetry -C python run python ...`` (as it is in CI), the active
-    interpreter already has ``aero1553`` installed, so this avoids a
-    fragile ``poetry env info --executable`` subprocess that can resolve
-    to a different interpreter than the one Poetry installed packages
-    into. The interpreter is sanity-checked by importing ``aero1553``
+    ``uv --directory python run python ...``, the active interpreter is
+    the project environment's and already has ``aero1553`` installed, so
+    no second lookup of "the environment's interpreter" is needed -- one
+    that could resolve to a different interpreter than the one the package
+    was installed into. The interpreter is sanity-checked by importing ``aero1553``
     so the runner fails fast with a clear error rather than emitting a
     confusing ``No module named aero1553`` for every case.
     """
@@ -428,8 +428,8 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
     # "aero1553 is not importable from /usr/bin/python3.10" -- naming an
     # interpreter the caller never asked for, which reads as the package being
     # uninstalled rather than the path being rewritten. CI never hit it because
-    # Poetry's Windows venv python is a real file and CI's Linux job installs
-    # into the system interpreter. absolute() still normalises a relative path.
+    # a Windows venv's python is a real file and CI's Linux job installs into
+    # the system interpreter. absolute() still normalises a relative path.
     if args.python_bin:
         args.python_bin = args.python_bin.absolute()
     else:
@@ -449,7 +449,7 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
         raise RuntimeError(
             f"aero1553 is not importable from {args.python_bin}. "
             "Either install the package into this interpreter (e.g. "
-            "`poetry -C python sync`) or pass --python-bin pointing at "
+            "`uv --directory python sync`) or pass --python-bin pointing at "
             "an interpreter that has it.\n"
             f"stderr:\n{probe.stderr}"
         )

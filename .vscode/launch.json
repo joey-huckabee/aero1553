@@ -6,7 +6,7 @@
   //     builds the `aero1553` bin from rust/Cargo.toml first (no tasks.json
   //     needed) and launches it under the debugger.
   //   - Python configs: the "Python" + "Python Debugger" extensions. They use
-  //     the interpreter selected in VS Code — pick the Poetry venv at
+  //     the interpreter selected in VS Code — pick the uv venv at
   //     `python/.venv` (Python: Select Interpreter) so `aero1553` is importable.
   //
   // The `${input:*}` prompts below let you enter the recording / output paths at

@@ -130,7 +130,7 @@ fi
 # `aero1553 --version` could report a different number depending on which
 # implementation the operator happened to run.
 step "all three implementations declare the same version"
-py_ver=$(awk '/^\[(tool\.poetry|project)\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/pyproject.toml)
+py_ver=$(awk '/^\[project\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/pyproject.toml)
 cpp_ver=$(awk -F'"' '/kVersion *=/{print $2; exit}' cpp/src/cli.cpp)
 cmake_ver=$(awk '/^ *VERSION [0-9]/{print $2; exit}' cpp/CMakeLists.txt)
 # The PyO3 binding crate is compiled into the Python wheel, so its version is

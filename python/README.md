@@ -16,14 +16,22 @@ From a source checkout (editable install, run from the repository root):
 pip install -e ./python
 ```
 
-Or, for development, via Poetry from the repository root:
+The package includes a compiled extension, `aero1553._native` -- a PyO3
+binding over the Rust decoder in [`../rust`](../rust) -- so building from
+source needs a Rust toolchain ([rustup](https://rustup.rs/)) as well as Python.
+
+Or, for development, via [uv](https://docs.astral.sh/uv/) from the repository
+root:
 
 ```bash
-poetry -C python sync     # creates the venv, installs locked deps + the package
+uv --directory python sync     # creates python/.venv, installs locked deps, builds + installs the package
 ```
 
-`poetry sync` installs the exact dependency versions recorded in `poetry.lock`
-and removes packages that are not part of the locked environment.
+`uv sync` installs the exact dependency versions recorded in `uv.lock` and
+removes packages that are not part of the locked environment. The package is
+installed editable; its Rust extension is rebuilt automatically the next time
+you `uv run` after a change to any `.rs` file, in the binding or the core crate
+(see `[tool.uv] cache-keys` in `pyproject.toml`).
 
 ## Library usage
 
@@ -41,17 +49,14 @@ from the package root (`aero1553`).
 ## Development
 
 ```bash
-poetry -C python run pytest        # test suite
-poetry -C python run mypy src      # strict type check (CI-gated)
-poetry -C python run aero1553 --help
-poetry -P python build             # wheel + sdist — note the -P (see below)
+uv --directory python run pytest        # test suite
+uv --directory python run mypy src      # strict type check (CI-gated)
+uv --directory python run aero1553 --help
+uv --directory python build             # sdist + one abi3 wheel, via maturin
 ```
 
-> **Why `-P` for the build, not `-C` like everything else?** `-P` (`--project`,
-> requires Poetry ≥ 2.0) is used only for `build`: `poetry -C python build`
-> doubles the source path on Windows (looks for `…/python/src/src/…`) and the
-> wheel build fails, while `-P python build` produces both the sdist and the
-> wheel cleanly on every platform. Every other command uses `-C python …`.
+The build produces a single `cp310-abi3` wheel per platform, which installs on
+every supported CPython from 3.10 up.
 
 See [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the full development workflow.
 
@@ -59,9 +64,10 @@ See [`CONTRIBUTING.md`](../CONTRIBUTING.md) for the full development workflow.
 
 ```
 python/
-├── pyproject.toml      Poetry + PEP 621 hybrid; pytest markers registered here
-├── poetry.lock         pinned dependencies; committed
-├── src/aero1553/    package source (mirrors the Rust module names)
+├── pyproject.toml      PEP 621 metadata, maturin build, PEP 735 dev group; pytest markers
+├── uv.lock             pinned dependencies; committed
+├── native/             PyO3 binding crate, built as aero1553._native
+├── src/aero1553/       package source (mirrors the Rust module names)
 └── tests/              pytest suite
 ```
 

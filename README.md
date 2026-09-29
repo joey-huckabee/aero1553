@@ -32,7 +32,7 @@ Build, install, and library-usage instructions live with each implementation:
 - **Rust** — [`rust/README.md`](rust/README.md): native release binary, crate /
   library API, `cargo` workflow.
 - **Python** — [`python/README.md`](python/README.md): `aero1553` CLI plus the
-  importable `aero1553` package, Poetry workflow.
+  importable `aero1553` package, uv + maturin workflow.
 - **C++** — [`cpp/README.md`](cpp/README.md): `make` on Linux (authoritative),
   CMake/MSVC on Windows, and the GCC 4.8.5 fidelity tier.
 
@@ -232,7 +232,7 @@ Shared Rust/Python conformance suite (run with an interpreter that has
 
 ```bash
 (cd rust && cargo build)
-poetry -C python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/run.py
 ```
 
 ## Known Limitations
