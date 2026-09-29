@@ -149,7 +149,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 
 | L1 ID | L2 Children | Test Artifacts | Status |
 |-------|-------------|----------------|--------|
-| L1-LOG-001 | L2-CLI-004, L2-CLI-006, L2-LOG-001, L2-LOG-002, L2-SYN-012, L2-SYN-013 | `cpp/tests/test_log.cpp::levels are ordered by severity`<br>`rust/src/log.rs::level_ordering` | Implemented |
+| L1-LOG-001 | L2-CLI-004, L2-CLI-006, L2-LOG-001, L2-LOG-002, L2-SYN-012, L2-SYN-013 | `cpp/tests/test_log.cpp::levels are ordered by severity`<br>`rust/src/log.rs::an_installed_sink_receives_each_line`<br>`rust/src/log.rs::level_ordering`<br>`rust/src/log.rs::with_stderr_bypasses_the_sink_and_restores` | Implemented |
 
 **L2 -> L3 -> Verification Artifacts**
 

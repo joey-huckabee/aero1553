@@ -329,8 +329,17 @@ pub fn run(argv: Vec<String>) -> ExitCode {
 /// `std::process::ExitCode` is opaque -- nothing can read the status back out
 /// of it -- which is right for a `main` and wrong for an embedder. The Python
 /// package's `aero1553.cli.main()` returns this value as an `int`.
+///
+/// Diagnostics go to stderr exactly as the binary writes them, even when an
+/// embedder has installed a [`log::set_sink`] for the library's log lines:
+/// the command line's output is its contract, and it does not change with
+/// the host it runs in.
 #[must_use]
 pub fn run_to_code(argv: Vec<String>) -> u8 {
+    log::with_stderr(|| run_command(argv))
+}
+
+fn run_command(argv: Vec<String>) -> u8 {
     let mut iter = argv.into_iter().skip(1).peekable();
 
     // Pull global flags + --help / --version that may appear before the command.

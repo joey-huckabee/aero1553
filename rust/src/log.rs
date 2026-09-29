@@ -1,11 +1,19 @@
-//! Tiny stderr logger. ~50 lines, no facade trait, no external crate.
+//! Tiny logger. No facade trait, no external crate.
 //!
 //! A single global level controls emission across all modules. The macros
 //! `debug!`, `info!`, `warn!`, `error!` defined in this crate format with
 //! `format!` only when the level passes the filter, so they're cheap when
 //! disabled.
+//!
+//! A line that passes the filter goes to stderr, unless an embedder has
+//! installed a [`LogSink`] with [`set_sink`] -- the Python binding routes lines
+//! into Python's `logging` that way. [`with_stderr`] forces stderr on the
+//! calling thread regardless, which is how the CLI keeps its output identical
+//! to the binary's under any embedder.
 
+use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
+use std::sync::{PoisonError, RwLock};
 
 /// Log severity. Higher numeric value = more important.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -100,9 +108,71 @@ pub fn irig_day_advisory() -> bool {
 /// mean the same thing, which contradicts the convention that `_name` is
 /// *unused*: clippy's `used_underscore_items` is correct to object.
 #[doc(hidden)]
+#[inline]
 pub fn emit(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
+    // The level check stays first and alone, and `emit` is inlined so it sits
+    // at each call site: a filtered-out line -- including the per-record DEBUG
+    // lines on the decode path -- costs one relaxed load and a branch. The
+    // delivery below is `#[cold]` so its code stays out of that path.
     if !enabled(level) {
         return;
+    }
+    deliver(level, module, args);
+}
+
+/// A destination for log lines, installed with [`set_sink`].
+///
+/// Called with the line's level, its module path (`aero1553::reader`) and its
+/// message text, only for lines that passed the level filter. A plain function
+/// pointer rather than a boxed closure: it holds no state, so installing one
+/// allocates nothing, and the embedder keeps any state it needs on its own side.
+pub type LogSink = fn(Level, &str, &str);
+
+static SINK: RwLock<Option<LogSink>> = RwLock::new(None);
+
+thread_local! {
+    /// Set by [`with_stderr`] for the duration of its closure.
+    static FORCE_STDERR: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Route log lines to `sink` instead of stderr, or back to stderr with `None`.
+///
+/// Process-wide. Returns the sink it replaced, so a caller can restore it.
+/// The level filter is unaffected: set it with [`set_level`] as before.
+pub fn set_sink(sink: Option<LogSink>) -> Option<LogSink> {
+    let mut slot = SINK.write().unwrap_or_else(PoisonError::into_inner);
+    std::mem::replace(&mut *slot, sink)
+}
+
+/// Run `f` with this thread's log lines going to stderr, whatever sink is
+/// installed.
+///
+/// [`crate::cli::run_to_code`] runs inside this, so the command line writes
+/// its diagnostics exactly as the binary does even when an embedder has routed
+/// the library's log lines elsewhere. Thread-local, so a CLI run on one thread
+/// does not divert log lines another thread's library code emits meanwhile.
+/// The previous setting is restored on return and on unwind.
+pub fn with_stderr<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            FORCE_STDERR.with(|flag| flag.set(self.0));
+        }
+    }
+    let _restore = Restore(FORCE_STDERR.with(|flag| flag.replace(true)));
+    f()
+}
+
+/// Write one line that has already passed the level filter.
+#[cold]
+#[inline(never)]
+fn deliver(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
+    if !FORCE_STDERR.with(Cell::get) {
+        let sink = *SINK.read().unwrap_or_else(PoisonError::into_inner);
+        if let Some(sink) = sink {
+            sink(level, module, &args.to_string());
+            return;
+        }
     }
     let _ = std::io::Write::write_fmt(
         &mut std::io::stderr().lock(),
@@ -167,5 +237,97 @@ mod tests {
     fn level_ordering() {
         assert!(Level::Debug < Level::Info);
         assert!(Level::Warn < Level::Error);
+    }
+
+    // The sink is process-wide and the test harness runs tests in parallel, so
+    // the tests that install one take this lock. Other tests may still emit
+    // while a sink is installed; the assertions below look only for their own
+    // marker text, so a stray line cannot make them pass or fail.
+    static SINK_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    static CAPTURED: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+    fn capture(level: Level, module: &str, message: &str) {
+        CAPTURED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .push(format!("{}|{module}|{message}", level.label()));
+    }
+
+    fn captured_with(marker: &str) -> Vec<String> {
+        CAPTURED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .iter()
+            .filter(|line| line.contains(marker))
+            .cloned()
+            .collect()
+    }
+
+    // `deliver` is exercised directly rather than through `emit`: the level is
+    // global too, and other tests set it, so an `emit`-based assertion would
+    // depend on test scheduling.
+
+    /// An installed sink receives the level, the module path and the message,
+    /// and `set_sink` hands back what it replaced so it can be restored.
+    /// Requirements: L1-LOG-001
+    #[test]
+    fn an_installed_sink_receives_each_line() {
+        let _serial = SINK_TESTS.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = set_sink(Some(capture));
+        deliver(
+            Level::Warn,
+            "aero1553::reader",
+            format_args!("marker-{}", 17),
+        );
+        let restored = set_sink(previous);
+
+        assert!(restored.is_some(), "set_sink returns the sink it replaced");
+        assert_eq!(
+            captured_with("marker-17"),
+            vec!["WARN|aero1553::reader|marker-17".to_string()]
+        );
+    }
+
+    /// `with_stderr` diverts this thread past the sink for the closure only,
+    /// nests, and restores the previous setting on unwind as well as return.
+    /// Requirements: L1-LOG-001
+    #[test]
+    fn with_stderr_bypasses_the_sink_and_restores() {
+        let _serial = SINK_TESTS.lock().unwrap_or_else(PoisonError::into_inner);
+        let previous = set_sink(Some(capture));
+
+        with_stderr(|| {
+            deliver(Level::Error, "aero1553::cli", format_args!("inside-first"));
+            with_stderr(|| deliver(Level::Error, "aero1553::cli", format_args!("inside-nested")));
+            // Still bypassing after the nested call returned.
+            deliver(
+                Level::Error,
+                "aero1553::cli",
+                format_args!("inside-after-nested"),
+            );
+        });
+        deliver(
+            Level::Error,
+            "aero1553::cli",
+            format_args!("outside-return"),
+        );
+
+        let unwound = std::panic::catch_unwind(|| with_stderr(|| panic!("unwind")));
+        assert!(unwound.is_err());
+        deliver(
+            Level::Error,
+            "aero1553::cli",
+            format_args!("outside-unwind"),
+        );
+
+        set_sink(previous);
+        assert!(captured_with("inside-first").is_empty());
+        assert!(captured_with("inside-nested").is_empty());
+        assert!(captured_with("inside-after-nested").is_empty());
+        assert_eq!(
+            captured_with("outside-").len(),
+            2,
+            "restored on return and on unwind"
+        );
     }
 }
