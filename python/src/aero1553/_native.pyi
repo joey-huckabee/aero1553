@@ -5,7 +5,7 @@ Built from ``python/native/src/``. Keep this file in step with the
 and nothing else checks it against the binary.
 """
 
-from collections.abc import Iterator
+from collections.abc import Iterable, Iterator
 from os import PathLike
 from typing import Any, final
 
@@ -163,6 +163,7 @@ class MieMessage:
 class RecordIterator(Iterator[MieMessage]):
     def __iter__(self) -> RecordIterator: ...
     def __next__(self) -> MieMessage: ...
+    def close(self) -> None: ...
 
 @final
 class NativeReader:
@@ -187,3 +188,19 @@ class NativeReader:
     @property
     def empty_recording(self) -> bool: ...
     def records(self) -> RecordIterator: ...
+
+# Pipeline stages. Each takes any iterable of MieMessage -- a RecordIterator
+# is taken over directly and left consumed -- and returns a RecordIterator.
+def apply_filters(
+    messages: Iterable[MieMessage],
+    *,
+    exclude_types: list[int],
+    exclude_rts: list[int],
+    exclude_buses: list[int],
+    exclude_subaddresses: list[int],
+    include_types: list[int],
+    include_rts: list[int],
+    include_buses: list[int],
+    include_subaddresses: list[int],
+) -> RecordIterator: ...
+def order_rows(messages: Iterable[MieMessage], max_group: int) -> RecordIterator: ...

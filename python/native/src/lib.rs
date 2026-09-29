@@ -15,6 +15,8 @@ mod errors;
 mod logbridge;
 mod models;
 mod reader;
+mod stages;
+mod stream;
 
 /// Run the `aero1553` command line and return its exit status.
 ///
@@ -57,7 +59,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_class::<models::PyStandardTimestamp>()?;
     m.add_class::<models::PyMieMessage>()?;
     m.add_class::<reader::PyReader>()?;
-    m.add_class::<reader::PyRecordIterator>()?;
+    m.add_class::<stream::PyRecordIterator>()?;
+    m.add_function(wrap_pyfunction!(stages::apply_filters, m)?)?;
+    m.add_function(wrap_pyfunction!(stages::order_rows, m)?)?;
     // From here on the library's log lines reach Python's `logging`; the CLI
     // keeps writing to stderr (see `logbridge`).
     logbridge::install();

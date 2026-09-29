@@ -9,13 +9,13 @@
 use std::path::PathBuf;
 
 use aero1553::models::TimestampFormat;
-use aero1553::reader::{MieFileReader, ReaderOptions, RecordIter};
+use aero1553::reader::{MieFileReader, ReaderOptions};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 
 use crate::errors;
 use crate::logbridge;
-use crate::models::PyMieMessage;
+use crate::stream::{self, PyRecordIterator};
 
 fn timestamp_format_from(value: u8) -> PyResult<TimestampFormat> {
     match value {
@@ -92,36 +92,14 @@ impl PyReader {
     }
 
     /// A fresh pass over the recording, from its first record.
+    ///
+    /// The iterator shares the file mapping with this reader rather than
+    /// borrowing it, so it stays valid however long Python keeps it.
     fn records(&self, py: Python<'_>) -> PyResult<PyRecordIterator> {
         logbridge::sync_level(py)?;
-        Ok(PyRecordIterator {
-            inner: self.inner.iter_detached(),
-        })
-    }
-}
-
-/// One pass over a recording, yielding `MieMessage` records.
-///
-/// It shares the file mapping with its reader rather than borrowing it, so it
-/// stays valid however long Python keeps it.
-#[pyclass(name = "RecordIterator", module = "aero1553._native")]
-pub struct PyRecordIterator {
-    inner: RecordIter<'static>,
-}
-
-#[pymethods]
-impl PyRecordIterator {
-    fn __iter__(slf: PyRef<'_, Self>) -> PyRef<'_, Self> {
-        slf
-    }
-
-    fn __next__(&mut self, py: Python<'_>) -> PyResult<Option<PyMieMessage>> {
-        match self.inner.next() {
-            Some(Ok(inner)) => Ok(Some(PyMieMessage { inner })),
-            // Every error the decoder yields ends the pass -- it sets itself
-            // done -- so raising here is the same as a generator that raised.
-            Some(Err(err)) => Err(errors::to_py(py, err)),
-            None => Ok(None),
-        }
+        Ok(PyRecordIterator::new(
+            Box::new(self.inner.iter_detached()),
+            stream::new_slot(),
+        ))
     }
 }

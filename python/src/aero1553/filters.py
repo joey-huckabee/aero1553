@@ -19,24 +19,32 @@ Usage::
 
 from __future__ import annotations
 
-import logging
-from collections.abc import Iterable, Iterator
+from typing import TYPE_CHECKING
 
-from aero1553.config import FilterConfig
-from aero1553.models import MieMessage
+from aero1553 import _native
 
-logger = logging.getLogger(__name__)
+if TYPE_CHECKING:
+    from collections.abc import Iterable, Iterator
+
+    from aero1553.config import FilterConfig
+    from aero1553.models import MieMessage
 
 
 def apply_filters(
     messages: Iterable[MieMessage],
     filters: FilterConfig,
 ) -> Iterator[MieMessage]:
-    """Apply exclusion filters to a stream of decoded messages.
+    """Apply the exclude/include filters to a stream of decoded messages.
 
-    This is a generator wrapper that yields only messages not matching
-    any exclusion criterion. If no filters are active, all messages
-    pass through with zero overhead.
+    Yields only the messages that match no active ``exclude_*`` set and that
+    every active ``include_*`` set admits (see
+    :meth:`~aero1553.config.FilterConfig.should_exclude`). With no filter
+    active every message passes.
+
+    Given the iterator of a reader or of another stage, filtering runs entirely
+    in the compiled decoder; any other iterable of
+    :class:`~aero1553.models.MieMessage` works too, record by record. Either way
+    the input is consumed.
 
     Args:
         messages: Iterable of decoded MieMessage instances (typically
@@ -44,99 +52,17 @@ def apply_filters(
         filters: Filter configuration specifying which messages to
             exclude.
 
-    Yields:
-        MieMessage instances that do not match any exclusion criterion.
-    """
-    if not filters.is_active:
-        logger.debug("No filters active, passing all messages through")
-        yield from messages
-        return
-
-    _log_active_filters(filters)
-    excluded_count = 0
-    passed_count = 0
-
-    for msg in messages:
-        rt, subaddress = _rt_and_subaddress(msg)
-        if filters.should_exclude(
-            message_type=msg.type_word.message_type,
-            rt=rt,
-            bus=msg.type_word.bus,
-            subaddress=subaddress,
-        ):
-            excluded_count += 1
-            _log_filtered_out(msg, rt, subaddress)
-            continue
-
-        passed_count += 1
-        yield msg
-
-    logger.info(
-        "Filter results: %d passed, %d excluded",
-        passed_count,
-        excluded_count,
-    )
-
-
-def _rt_and_subaddress(msg: MieMessage) -> tuple[int | None, int | None]:
-    """Extract ``(rt, subaddress)`` from a message's Command Word, or
-    ``(None, None)`` for SPURIOUS_DATA (no Command Word) so only type/bus
-    filters can match it (mirrors the Rust filter) and no AttributeError.
-
     Returns:
-        ``(rt, subaddress)`` read from the record's Command Word, or
-        ``(None, None)`` when the record has no Command Word.
+        An iterator of the messages that pass the filters.
     """
-    cw = msg.command_word
-    if cw is None:
-        return None, None
-    return cw.rt, cw.subaddress
-
-
-def _show_filter_set(values: object) -> str:
-    """Render a filter set as a sorted ``[a, b]`` list, or ``none`` when empty.
-
-    Sorted because these are Python ``set``s, whose iteration order is not
-    guaranteed — an unsorted render makes the log line unstable between runs.
-    Buses print as their names (``A`` / ``B``) rather than ``<Bus.A: 0>``, so
-    the line matches the Rust `log_active_filters` output exactly.
-
-    Returns:
-        The members as ``[a, b]`` in sorted order, or the literal ``none`` when
-        the set is empty.
-    """
-    items = list(values) if values else []  # type: ignore[call-overload]
-    if not items:
-        return "none"
-    rendered = sorted(getattr(v, "name", None) or str(v) for v in items)
-    return "[" + ", ".join(rendered) + "]"
-
-
-def _log_active_filters(filters: FilterConfig) -> None:
-    """Emit the one-time INFO summary of the active exclude/include sets."""
-    logger.info(
-        "Filtering active: exclude_types=%s exclude_rts=%s "
-        "exclude_buses=%s exclude_subaddresses=%s "
-        "include_types=%s include_rts=%s "
-        "include_buses=%s include_subaddresses=%s",
-        _show_filter_set(filters.exclude_types),
-        _show_filter_set(filters.exclude_rts),
-        _show_filter_set(filters.exclude_buses),
-        _show_filter_set(filters.exclude_subaddresses),
-        _show_filter_set(filters.include_types),
-        _show_filter_set(filters.include_rts),
-        _show_filter_set(filters.include_buses),
-        _show_filter_set(filters.include_subaddresses),
-    )
-
-
-def _log_filtered_out(msg: MieMessage, rt: int | None, subaddress: int | None) -> None:
-    """DEBUG line for a message dropped by the filters."""
-    logger.debug(
-        "Filtered out: offset=0x%X type=0x%02X RT%s SA%s Bus %s",
-        msg.file_offset,
-        msg.type_word.message_type,
-        rt if rt is not None else "-",
-        subaddress if subaddress is not None else "-",
-        msg.type_word.bus.name,
+    return _native.apply_filters(
+        messages,
+        exclude_types=sorted(filters.exclude_types),
+        exclude_rts=sorted(filters.exclude_rts),
+        exclude_buses=sorted(int(bus) for bus in filters.exclude_buses),
+        exclude_subaddresses=sorted(filters.exclude_subaddresses),
+        include_types=sorted(filters.include_types),
+        include_rts=sorted(filters.include_rts),
+        include_buses=sorted(int(bus) for bus in filters.include_buses),
+        include_subaddresses=sorted(filters.include_subaddresses),
     )
