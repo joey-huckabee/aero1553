@@ -7,6 +7,9 @@ authors = [
 ]
 readme = "README.md"
 license = "Apache-2.0"
+# A copy of the repository-root LICENSE: PEP 639 forbids a license-files path
+# outside the project directory. scripts/repo-hygiene.sh keeps the two identical.
+license-files = ["LICENSE"]
 requires-python = ">=3.10,<3.15"
 dependencies = [
     "tomli>=2.0,<3.0; python_version < '3.11'",
