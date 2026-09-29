@@ -10,8 +10,9 @@ covered and individually verifiable.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import errno
-import sys
+import io
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -731,6 +732,21 @@ class TestFlagValueSyntax:
         assert str(parsed.output) == "-"
 
 
+def _argparse_strips_marker_before_subcommand() -> bool:
+    """Whether this interpreter's argparse accepts ``-- <subcommand>``.
+
+    Asked of a bare parser with one subcommand, so the answer is the
+    interpreter's and not the decoder's.
+    """
+    probe = argparse.ArgumentParser(prog="probe")
+    probe.add_subparsers(dest="command").add_parser("sub")
+    try:
+        with contextlib.redirect_stderr(io.StringIO()):
+            return probe.parse_args(["--", "sub"]).command == "sub"
+    except SystemExit:
+        return False
+
+
 class TestEndOfOptions:
     """``--`` ends option parsing (L2-CLI-016).
 
@@ -773,19 +789,24 @@ class TestEndOfOptions:
         in the other two would have made ``-- decode rec.mie --no-mux`` ignore
         ``--no-mux``.
 
-        **This position is Python 3.12+.** Before that, ``argparse`` did not
-        strip a leading ``--`` ahead of a subparser choice and passed ``--``
-        itself as the subcommand name, so the invocation is a usage error on
-        3.10 and 3.11. Rust and C++ support it on every version; the contract
-        (L2-CLI-016) therefore binds only the *post*-subcommand position, which
-        every supported interpreter handles the same way, and the conformance
-        suite uses that one. Asserting the interpreter's own answer here keeps
-        the test honest on all five versions.
+        **This position depends on the interpreter's argparse.** Older ones do
+        not strip a leading ``--`` ahead of a subparser choice and pass ``--``
+        itself as the subcommand name, so the invocation is a usage error there.
+        Rust and C++ support it everywhere; the contract (L2-CLI-016) therefore
+        binds only the *post*-subcommand position, which every supported
+        interpreter handles the same way, and the conformance suite uses that
+        one. Asserting the interpreter's own answer here keeps the test honest
+        on every version.
+
+        The answer is *probed*, not read off ``sys.version_info``: the change
+        was not a minor-version boundary. It reached 3.12 in a patch release,
+        so Ubuntu 24.04's system 3.12.3 still rejects the invocation while
+        3.12.10 accepts it, and a ``< (3, 12)`` gate failed on the former.
         """
         parser = cli.build_parser()
         argv = ["--", "decode", "rec.mie", "--no-mux"]
 
-        if sys.version_info < (3, 12):
+        if not _argparse_strips_marker_before_subcommand():
             with pytest.raises(SystemExit):
                 parser.parse_args(argv)
             return

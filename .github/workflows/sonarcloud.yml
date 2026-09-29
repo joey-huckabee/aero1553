@@ -380,6 +380,32 @@ jobs:
             # one file: any other finding in reader.py, and either rule anywhere
             # else, still fails the build.
             # ----------------------------------------------------------------
+            # dump.py: pythonsecurity:S8707, the `dump` input path
+            # ----------------------------------------------------------------
+            #
+            # Fires on `fpath.read_bytes()` in hex_dump_raw and
+            # hex_dump_records. The path is the positional argument of
+            # `aero1553 dump`, and reading that file is the whole of what the
+            # subcommand does -- the config.py judgement above, on the one other
+            # file that reads an operator-named path.
+            #
+            # WHY IT IS HERE NOW. This was the "dump.py:70 and dump.py:119"
+            # Won't Fix cited as precedent in the reader.py entry. It lived only
+            # in SonarCloud, and the v4.0.0 rename replaced the SonarCloud
+            # project, so it came back with every other UI-only resolution.
+            # Same lesson as merge.py, taken a second time: record it here.
+            # ----------------------------------------------------------------
+            # config.hpp: cpp:S1820 "no more than 20 fields"
+            # ----------------------------------------------------------------
+            #
+            # DecoderConfig and ConfigOverrides carry one field per config key
+            # (23 each). Reason (a) of BATCH 4 below: they mirror Rust's
+            # `config::DecoderConfig` / `ConfigOverrides` field for field, and
+            # the flat shape IS the schema -- `with_overrides` is a key-by-key
+            # merge that reads as a list precisely because the struct is one.
+            # Regrouping into sub-structs in C++ alone would make the three
+            # config layers disagree on shape for no behavioural gain.
+            # ----------------------------------------------------------------
             # dump.cpp: cpp:S2083 "tainted value 'text' is leaking"
             # ----------------------------------------------------------------
             #
@@ -592,7 +618,7 @@ jobs:
             #   cppcheck 2.13 cannot parse `throw() = default` and reports
             #   internalAstError, degrading its analysis of the whole file.
             #   Attempted twice, reverted twice; the sites carry NOLINT now.
-            "-Dsonar.issue.ignore.multicriteria=agenticPathInjection,readerPathInjection,readerAgenticPathInjection,mergeAgenticPathInjection,dumpEmitTaint,tempFilePermissions,cppMemberInitNsdmi,readerMsvcCast,decodeSectionBanner,cppRawForLoop,cppHiddenFriend,cppEnumClass,cppCArray,cppLogModuleMacro,cppParamCount,cppCognitiveComplexity,cppNestedBreak,cppMutableGlobal,cppRelaxedAtomic,cppEqualsDefaultThrow,cppOptionalImplicit,cppPlatformVoidPtr,cppTopLevelCatch,cppEmptyCatch,cppCatchAll,cppLookaheadLoop,cppNonOwningIter,cppSinkFnPointer,cppReinterpretFd,cppMunmapConstCast,cppRealpathFree"
+            "-Dsonar.issue.ignore.multicriteria=agenticPathInjection,readerPathInjection,readerAgenticPathInjection,mergeAgenticPathInjection,dumpAgenticPathInjection,cppConfigFieldCount,dumpEmitTaint,tempFilePermissions,cppMemberInitNsdmi,readerMsvcCast,decodeSectionBanner,cppRawForLoop,cppHiddenFriend,cppEnumClass,cppCArray,cppLogModuleMacro,cppParamCount,cppCognitiveComplexity,cppNestedBreak,cppMutableGlobal,cppRelaxedAtomic,cppEqualsDefaultThrow,cppOptionalImplicit,cppPlatformVoidPtr,cppTopLevelCatch,cppEmptyCatch,cppCatchAll,cppLookaheadLoop,cppNonOwningIter,cppSinkFnPointer,cppReinterpretFd,cppMunmapConstCast,cppRealpathFree"
             "-Dsonar.issue.ignore.multicriteria.cppHiddenFriend.ruleKey=cpp:S2807"
             "-Dsonar.issue.ignore.multicriteria.cppHiddenFriend.resourceKey=cpp/**"
             "-Dsonar.issue.ignore.multicriteria.cppEnumClass.ruleKey=cpp:S3642"
@@ -655,6 +681,10 @@ jobs:
             "-Dsonar.issue.ignore.multicriteria.readerAgenticPathInjection.resourceKey=python/src/aero1553/reader.py"
             "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.ruleKey=pythonsecurity:S8707"
             "-Dsonar.issue.ignore.multicriteria.mergeAgenticPathInjection.resourceKey=python/src/aero1553/merge.py"
+            "-Dsonar.issue.ignore.multicriteria.dumpAgenticPathInjection.ruleKey=pythonsecurity:S8707"
+            "-Dsonar.issue.ignore.multicriteria.dumpAgenticPathInjection.resourceKey=python/src/aero1553/dump.py"
+            "-Dsonar.issue.ignore.multicriteria.cppConfigFieldCount.ruleKey=cpp:S1820"
+            "-Dsonar.issue.ignore.multicriteria.cppConfigFieldCount.resourceKey=cpp/include/mie/config.hpp"
           )
 
           # A manual or scheduled run on a NON-default ref must be labelled as
