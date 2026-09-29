@@ -790,6 +790,52 @@
       "expected": "expected/negative-mux-field.csv"
     },
     {
+      "name": "number-leading-value-5e3-is-a-value",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-delimiter",
+        "-5e3"
+      ],
+      "expected": "expected/basic-multi-record.csv"
+    },
+    {
+      "name": "number-leading-value-0x5-is-a-value",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-delimiter",
+        "-0x5"
+      ],
+      "expected": "expected/basic-multi-record.csv"
+    },
+    {
+      "name": "number-leading-value-1a-is-a-value",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-delimiter",
+        "-1a"
+      ],
+      "expected": "expected/basic-multi-record.csv"
+    },
+    {
+      "name": "number-leading-value-5-dot-is-a-value",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-delimiter",
+        "-5."
+      ],
+      "expected": "expected/basic-multi-record.csv"
+    },
+    {
+      "name": "number-leading-value-reaches-its-own-validator",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-field",
+        "-1a"
+      ],
+      "expected_exit": 4,
+      "expected_stderr_contains": "\"-1a\""
+    },
+    {
       "name": "end-of-options-before-input-decode",
       "input": "inputs/basic-multi-record.hex",
       "subcommand_args": [
@@ -819,10 +865,36 @@
       "expected": "expected/dump-records-basic.txt"
     },
     {
+      "name": "end-of-options-before-the-subcommand",
+      "input": "inputs/basic-multi-record.hex",
+      "global_args": [
+        "--"
+      ],
+      "expected": "expected/basic-multi-record.csv"
+    },
+    {
+      "name": "end-of-options-trailing-after-an-option",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--"
+      ],
+      "expected": "expected/basic-multi-record.csv"
+    },
+    {
       "name": "help-outranks-a-deferred-diagnostic",
       "input": "inputs/basic-multi-record.hex",
       "args": [
         "--nonsense",
+        "--help"
+      ],
+      "expected_stdout_contains": "decode"
+    },
+    {
+      "name": "help-outranks-a-value-validator",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--max-sort-group",
+        "abc",
         "--help"
       ],
       "expected_stdout_contains": "decode"

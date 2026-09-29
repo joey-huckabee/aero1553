@@ -129,23 +129,24 @@ class TestExitCodes:
     reaching every class from Python is what keeps the two from drifting.
     """
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_success(self, run_cli: RunCli, rec: Path, tmp_path: Path) -> None:
         assert run_cli(["decode", str(rec), "-o", str(tmp_path / "o.csv")]).rc == EXIT_OK
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_runtime_missing_input(self, run_cli: RunCli, tmp_path: Path) -> None:
         result = run_cli(["count", str(tmp_path / "missing.mie")])
         assert result.rc == EXIT_RUNTIME
         assert "Error:" in result.err
+        assert "Traceback" not in result.err
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_no_records(self, run_cli: RunCli, tmp_path: Path) -> None:
         path = tmp_path / "not-mie.mie"
         path.write_bytes(conformance_input("no-valid-records"))
         assert run_cli(["decode", str(path), "-o", str(tmp_path / "o.csv")]).rc == EXIT_NO_RECORDS
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_sync_loss(self, run_cli: RunCli, tmp_path: Path) -> None:
         path = tmp_path / "broken.mie"
         path.write_bytes(conformance_input("partial-unrecoverable"))
@@ -153,18 +154,18 @@ class TestExitCodes:
         assert run_cli(["decode", str(path), "-o", str(out)]).rc == EXIT_SYNC_LOSS
         assert not out.exists()
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_usage(self, run_cli: RunCli) -> None:
         result = run_cli(["no-such-command"])
         assert result.rc == EXIT_USAGE
         assert "Unknown command" in result.err
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_config(self, run_cli: RunCli, rec: Path, tmp_path: Path) -> None:
         missing = tmp_path / "missing.toml"
         assert run_cli(["--config", str(missing), "count", str(rec)]).rc == EXIT_CONFIG
 
-    @pytest.mark.requirement("L2-CLI-011")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_merge_incompatible(self, run_cli: RunCli, tmp_path: Path) -> None:
         a = tmp_path / "a.mie"
         a.write_bytes(conformance_input("merge-a"))

@@ -6,13 +6,14 @@ Complete reference for every command-line flag the decoder accepts. Use this whe
 - You're scripting `aero1553` and want the exact semantics of a flag.
 - You're mapping a CLI flag to its `aero1553.toml` equivalent (or vice-versa).
 
-The **Rust and Python builds expose an identical flag surface** — every flag below
-works the same in both. That parity is enforced, not merely intended: the
+The **Rust, Python and C++ builds expose an identical flag surface** — every flag
+below works the same in all three. The Python package's command line *is* the Rust
+CLI, run in-process through the package's compiled extension, so those two share
+one parser and one help text by construction. C++ has its own, and the
 `cli-surface-parity` check in `tests/conformance/run.py` diffs the long-option set
-across both CLIs' top-level and per-subcommand `--help` output and fails CI on any
-divergence. The two helps are *not* generated from a shared definition, though —
-Python's comes from `argparse`, Rust's is a hand-maintained help string — so treat
-this document as the reference and `--help` as the quick reminder.
+across all three CLIs' top-level and per-subcommand `--help` output and fails CI
+on any divergence. Treat this document as the reference and `--help` as the quick
+reminder.
 
 For the TOML config keys these flags override, see
 [`docs/CONFIG-REFERENCE.md`](CONFIG-REFERENCE.md). For exit codes and error
@@ -88,13 +89,9 @@ Three details are worth stating, because each has a defensible opposite:
   (`--mux-field -1a` → *invalid `--mux-field`: "-1a"*), rather than by the
   guard, which could only have told you it looked like an option.
 
-  > **One corner is version-dependent in Python.** `argparse` changed how it
-  > recognises number-like tokens in **3.14**: before that, only plain decimals
-  > were exempt, so `-5e3`, `-0x5` and `-1a` were errors. Rust and C++ follow
-  > 3.14's rule, so on Python 3.10–3.13 those particular shapes are rejected
-  > where the other two accept them. Everything above the note is identical on
-  > every supported version. If you need a value of that shape, use the joined
-  > form, which is unambiguous everywhere.
+  This holds in every implementation and on every supported Python version —
+  `-5e3`, `-0x5` and `-1a` included. (Before v4.0.0 the Python CLI used
+  `argparse`, which rejected those three shapes on Python 3.10–3.13.)
 
 Flags that take no value — `--no-mux`, `--separate-errors`, `--allow-partial`
 and the rest — have nothing to attach, and `--no-mux=true` is a usage error
@@ -133,14 +130,12 @@ Three details:
 - **It is not a flag value.** `-o -- x.mie` is a usage error; `--` looks like an
   option, so it is refused as one under the rule above.
 
-> This is `L2-CLI-016`. Put the separator **immediately before the paths it
-> applies to** — `decode -o out.csv -- -weird.mie` — and it behaves identically
-> everywhere. Two other positions are less portable, both because of `argparse`:
->
-> - **Before the subcommand** (`-- decode rec.mie`) works in Rust, C++, and
->   Python **3.12+**, but is a usage error on Python 3.10 and 3.11.
-> - **Trailing after a flag** (`decode rec.mie -o out.csv --`) is a no-op in
->   Rust and C++ and a usage error in Python on every version.
+> This is `L2-CLI-016`. The separator behaves identically in every
+> implementation in every position: immediately before the paths it applies to
+> (`decode -o out.csv -- -weird.mie`), before the subcommand (`-- decode
+> rec.mie`), and trailing after a flag's value (`decode rec.mie -o out.csv --`,
+> a no-op). Before v4.0.0 the last two were not portable to the Python CLI,
+> whose `argparse` rejected them.
 
 ### Global options
 

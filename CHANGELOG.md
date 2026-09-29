@@ -54,6 +54,18 @@ shared behavior) holds at any compatible version pair. See
   | A usage error raised `SystemExit` | `main()` **returns** the status (`EXIT_USAGE`, 4); `--help` / `--version` return `EXIT_OK` |
   | Output could be captured by swapping `sys.stdout` (or pytest's `capsys`) | The CLI writes to the stdout / stderr **file descriptors**, as the binary does. Capture there (pytest's `capfd`, or a subprocess). Log lines arrive on stderr, not through Python's `logging`. |
 
+  One parser also retires the three places the Python CLI used to differ
+  from Rust and C++, all inherited from `argparse`. Each is now the same in
+  every implementation on every supported Python, and L2-CLI-015/016/017
+  bind them (eight new conformance cases):
+
+  - number-leading values such as `--mux-delimiter -5e3`, `-0x5` or `-1a`
+    are values (they were usage errors on Python 3.10–3.13);
+  - `--` before the subcommand (`-- decode rec.mie`) works (it needed
+    Python 3.12+), and a trailing `--` after a flag's value is a no-op (it
+    was a usage error);
+  - `--max-sort-group abc --help` prints help and exits 0 (it exited 4).
+
   `main()` and `main_cli()` and the `EXIT_*` constants are unchanged.
   `main_cli()` (the console-script entry point) now restores the default
   SIGINT handler, so Ctrl-C ends a long decode immediately, as it ends the

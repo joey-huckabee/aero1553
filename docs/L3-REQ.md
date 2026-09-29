@@ -109,7 +109,7 @@ Python CSV generation SHALL stream rows directly to the output handle via the st
 Python TOML parsing SHALL use the standard-library `tomllib` module on Python 3.11 and newer, and SHALL fall back to the `tomli` package on Python 3.10. No other TOML parser SHALL be used.
 
 **L3-PY-006** · Parent: L2-CLI-011 · Verification: T
-Python errors SHALL inherit from a base `Aero1553Error` class, with `MieFileError` and `MieRecordError` subclasses retaining typed detail attributes. The CLI entry point SHALL map these subclasses to the non-zero exit codes pinned by L2-CLI-011 without exposing tracebacks to stderr.
+Python errors SHALL inherit from a base `Aero1553Error` class, with `MieFileError` and `MieRecordError` subclasses retaining typed detail attributes. The CLI entry point (`aero1553.cli.main`) SHALL return the exit status pinned by L2-CLI-011 for each failure class, and SHALL NOT expose a Python traceback on stderr. (It runs the Rust CLI in-process, which classifies each failure itself; the Python side neither raises nor catches for the command line.)
 
 **L3-PY-007** · Parent: L2-CONF-006 · Verification: T, I
 Public Python APIs SHALL carry type annotations and SHALL be documented in module docstrings. The `aero1553` package SHALL expose its decoder entry point (`MieFileReader`) as a typed callable importable from the package root, advertised in `__all__`. The root-export and typed-callable obligations are verified by test (`tests/test_package_api.py`); the package-wide type-annotation obligation is verified by the CI-gated strict `mypy src` run, and module-docstring documentation by inspection.
