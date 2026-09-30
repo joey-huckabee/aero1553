@@ -1,0 +1,64 @@
+{
+  "recordings": {
+    "a-small": {
+      "file": "golden.draw.data.1553.aa.unused.mie_irig",
+      "sha256": "0e44c88b98ed47c127d6c67eb0d1e8e4daf155e0b470a79535d5866e6dc857f4",
+      "bytes": 32306,
+      "rows": 723,
+      "rt_sum": 10670,
+      "csv_sha256": "aed561de42cc1b76881f875b28584088949e74c6d28f3b2f002b6ac43313acca"
+    },
+    "b-small": {
+      "file": "golden.draw.data.1553.bb.unused.mie_irig",
+      "sha256": "db82cc1879c28b10785ba076733c57393597bffb820412d469f8178bc7e0645f",
+      "bytes": 17072,
+      "rows": 380,
+      "rt_sum": 5718,
+      "csv_sha256": "9fccd44010d5566c62a33392449f7735a3e4ec566eecc934fe5136b5ac7245e2"
+    },
+    "standard-small": {
+      "file": "golden.draw.data.1553.std.unused.mie_std",
+      "sha256": "2ede92d4582c429a0dadb245bbf9647496cc48e189b4d41d158b5f65e5361329",
+      "bytes": 14002,
+      "rows": 200,
+      "rt_sum": 3000,
+      "csv_sha256": "f6e6e36f37d690c950c7c17e12d4a0fc142695d829eee2a1a9bef39a54e5e919"
+    },
+    "freerun-small": {
+      "file": "golden.draw.data.1553.fr.unused.mie_irig",
+      "sha256": "fa7177829053166f28f49809b14f1781b88d969a01a433d2472b8626cbf0b332",
+      "bytes": 1824,
+      "rows": 42,
+      "rt_sum": 614,
+      "csv_sha256": "49eaf6df026ba667b4398f45bdbc8c85e867b2e6f0f54cbf81b44bbcf2d7ab3a"
+    },
+    "a-large": {
+      "file": "golden-large.draw.data.1553.aa.unused.mie_irig",
+      "sha256": "c5963d0eefa02e259fac6726809f6daf825bc1abff7570587ef0e1645b06e068",
+      "bytes": 20796698,
+      "rows": 460575,
+      "rt_sum": 6839973,
+      "csv_sha256": "03d9e1ac8aa07713e83c68f66cfd77c4122e08f82422d525b13c2d25f3401cb9"
+    },
+    "b-large": {
+      "file": "golden-large.draw.data.1553.bb.unused.mie_irig",
+      "sha256": "536a34db8e93ef35255c45c998483173edcb6be1340bd141851ed64871e90b02",
+      "bytes": 14448268,
+      "rows": 319736,
+      "rt_sum": 4743036,
+      "csv_sha256": "4de2a824b8f4ac441eeee7d717325e2fd7ca35d191935f9f1235672908f33c06"
+    }
+  },
+  "merges": {
+    "a-small+b-small": {
+      "rows": 1025,
+      "rt_sum": 15172,
+      "csv_sha256": "9b2379272d70a2f78d98df5f53509254cc21ac8e30e02589696190d1cbac99cd"
+    },
+    "a-large+b-large": {
+      "rows": 716149,
+      "rt_sum": 10632979,
+      "csv_sha256": "abf7e8ae4c6ed415aaa5f27bdf6102327396f327c5df90507658d0b2d399d5ca"
+    }
+  }
+}
