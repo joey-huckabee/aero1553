@@ -21,8 +21,9 @@ Typical usage::
     for message in reader:
         print(message.timestamp, message.rt, message.subaddress)
 
-The decoder entry point ``MieFileReader`` and the ``MieMessage`` records it
-yields are importable directly from the package root (``aero1553``).
+The decoder entry point ``MieFileReader``, the ``MieMessage`` records it
+yields, and ``columns`` (a whole stream as NumPy/pandas-ready buffers; see
+:mod:`aero1553.table`) are importable directly from the package root.
 
 The release history lives in ``CHANGELOG.md``; the installed version is
 available as ``aero1553.__version__``.
@@ -39,6 +40,7 @@ from importlib.metadata import version as _pkg_version
 # (The submodule paths remain importable and unchanged.)
 from aero1553.models import MieMessage
 from aero1553.reader import MieFileReader
+from aero1553.table import columns
 
 try:
     __version__ = _pkg_version("aero1553")
@@ -53,4 +55,4 @@ except PackageNotFoundError:
 
 del PackageNotFoundError, _pkg_version
 
-__all__ = ["MieFileReader", "MieMessage", "__version__"]
+__all__ = ["MieFileReader", "MieMessage", "__version__", "columns"]

@@ -798,6 +798,26 @@ impl PyMieMessage {
     fn is_error(&self) -> bool {
         self.inner.is_error()
     }
+    /// This record as a dict of plain values, keyed by the `aero1553.columns`
+    /// schema; an absent value is `None`.
+    #[pyo3(signature = (*, fields=None, standard_tick_rate_hz=None, year=None, utc_offset_minutes=0))]
+    fn to_dict<'py>(
+        &self,
+        py: Python<'py>,
+        fields: Option<Bound<'py, PyAny>>,
+        standard_tick_rate_hz: Option<f64>,
+        year: Option<u16>,
+        utc_offset_minutes: i16,
+    ) -> PyResult<Bound<'py, PyDict>> {
+        let spec = crate::table::Spec::new(
+            py,
+            fields.as_ref(),
+            standard_tick_rate_hz,
+            year,
+            utc_offset_minutes,
+        )?;
+        crate::table::to_dict(py, &self.inner, &spec)
+    }
     /// True if this is a SPURIOUS_DATA record (type 0x20).
     #[getter]
     fn is_spurious(&self) -> bool {

@@ -148,6 +148,9 @@ The Python canonical row ordering SHALL be the Rust `Ordered` adapter (`L3-RS-01
 
 **L3-PY-019** · *Withdrawn.* Previously mandated where `_AtomicCsvFile` closed its stream, so that a failing final flush was reported as `MieWriterError`. Since v4.0.0 the Python package writes through the Rust writer, whose commit covers the flush (L2-WRT-024); that requirement remains verified from Python through the public `write_csv`. The ID is reserved (not reused) so historical references and the trace matrix stay coherent.
 
+**L3-PY-020** · Parent: L2-CONF-006 · Verification: T
+The Python package SHALL expose decoded records in tabular form through one schema, `aero1553.table.FIELDS`, served two ways: `aero1553.columns(stream, *, fields, standard_tick_rate_hz, year, utc_offset_minutes)` returns one typed buffer per field for a whole record stream (a reader, a filtered or ordered stream, or a merge), built without a Python object per record and consumable by NumPy and pandas without a copy; and `MieMessage.to_dict()`, with the same options, returns one record's fields as plain Python values. An absent value SHALL be `None` in a dict and, in a column, NumPy's convention: `-1` for an integer, `NaN` for a float, `NaT` for a datetime. The time fields SHALL reuse the decoder's existing rules rather than define new ones: `time_us` is the DELTA rule (L2-DEC-017), and `datetime` is the calendar rule of the ISO rendering (L2-WRT-025/026), present only when a year is given, with a record that has no date (freerun, Standard, or a day of the year the year does not have) marked `NaT` rather than refusing the table. Requesting `datetime` without a year SHALL be a `ValueError`; omitting a year SHALL NOT be. The package SHALL NOT depend on NumPy or pandas.
+
 ## L3-RS: Rust implementation technology
 
 **L3-RS-001** · Parent: L2-CONF-005 · Verification: I

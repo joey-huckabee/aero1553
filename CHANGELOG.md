@@ -154,6 +154,24 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- **Python: decoded records as tables, for NumPy, pandas and dataclasses.**
+  `aero1553.columns(stream)` turns a whole record stream -- a reader, a
+  filtered or ordered stream, or a merge -- into one typed buffer per field,
+  built in Rust with no Python object per record; `np.asarray(...)` and
+  `pd.DataFrame(...)` wrap the buffers without copying. `MieMessage.to_dict()`
+  returns one record's fields as plain values, so
+  `MyRow(**msg.to_dict(fields=...))` fills a user-defined dataclass. One
+  schema (`aero1553.table.FIELDS`) serves both; `fields=` selects a subset.
+  Time uses the decoder's own rules: `time_us` follows the DELTA rule
+  (Standard records need `standard_tick_rate_hz`), and a `datetime` field
+  appears when `year=` is given, as a NumPy `datetime64` column or an aware
+  `datetime`. Without a year there is no `datetime` field and no error --
+  `day_of_year` and `time_of_day_us` are always there. Records with no date
+  (freerun, Standard, day 366 of a common year) are `NaT` / `None`. Measured
+  on 500,000 records, `columns()` into pandas is about 7x faster than
+  building a DataFrame from per-record dicts and uses about a third of the
+  memory; `python/benchmarks/bench_tables.py` compares every route. NumPy and
+  pandas are not dependencies of the package.
 - Rust: `log::set_sink` / `LogSink` route log lines to an embedder (the
   Python binding forwards them to `logging`); `log::with_stderr` pins a scope
   to stderr, which is how the CLI keeps its log output where it was.

@@ -20,6 +20,7 @@ mod models;
 mod reader;
 mod stages;
 mod stream;
+mod table;
 mod writer;
 
 /// Run the `aero1553` command line and return its exit status.
@@ -91,6 +92,8 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(merge::glob_match, m)?)?;
     m.add_function(wrap_pyfunction!(merge::expand_glob, m)?)?;
     m.add_function(wrap_pyfunction!(merge::delta_key, m)?)?;
+    m.add_function(wrap_pyfunction!(table::columns, m)?)?;
+    m.add_function(wrap_pyfunction!(table::table_fields, m)?)?;
     m.add_function(wrap_pyfunction!(dump::hex_dump_raw, m)?)?;
     m.add_function(wrap_pyfunction!(dump::hex_dump_records, m)?)?;
     m.add_function(wrap_pyfunction!(config::load_config, m)?)?;

@@ -29,6 +29,11 @@ dev = [
     "ruff>=0.15.20,<0.16",
     "vulture>=2.16,<3",
     "bandit>=1.9.4,<2",
+    # Development only: the tests prove `aero1553.columns()` is consumed by
+    # NumPy and pandas without copying, and the user guide's examples run
+    # against them. The package itself never imports either.
+    "numpy>=1.26",
+    "pandas>=2.2",
 ]
 
 # The package is pure Python plus one compiled module, `aero1553._native`,

@@ -5,7 +5,7 @@ Built from ``python/native/src/``. Keep this file in step with the
 and nothing else checks it against the binary.
 """
 
-from collections.abc import Iterable, Iterator
+from collections.abc import Iterable, Iterator, Sequence
 from os import PathLike
 from pathlib import Path
 from typing import Any, TextIO, final
@@ -157,6 +157,14 @@ class MieMessage:
     @property
     def error_label(self) -> str: ...
     def with_delta(self, delta: float | None) -> MieMessage: ...
+    def to_dict(
+        self,
+        *,
+        fields: Sequence[str] | None = None,
+        standard_tick_rate_hz: float | None = None,
+        year: int | None = None,
+        utc_offset_minutes: int = 0,
+    ) -> dict[str, Any]: ...
     def __replace__(self, **changes: Any) -> MieMessage: ...
     def __hash__(self) -> int: ...
 
@@ -284,3 +292,12 @@ def hex_dump_records(
 ) -> None: ...
 def load_config(path: Path, /) -> dict[str, Any]: ...
 def parse_utc_offset(text: str, /) -> int: ...
+def table_fields() -> list[str]: ...
+def columns(
+    messages: Iterator[MieMessage],
+    *,
+    fields: Sequence[str] | None,
+    standard_tick_rate_hz: float | None,
+    year: int | None,
+    utc_offset_minutes: int,
+) -> dict[str, Any]: ...
