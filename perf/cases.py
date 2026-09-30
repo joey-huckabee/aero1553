@@ -37,6 +37,7 @@ NEEDS: dict[str, tuple[str, ...]] = {
     "py.columns_pandas": ("numpy", "pandas"),
     "py.columns_pandas_numeric": ("numpy", "pandas"),
     "py.to_dict_dataclass": (),
+    "py.attrs_dataclass": (),
     "py.to_dict_pandas": ("pandas",),
     "py.attrs_pandas": ("pandas",),
     "py.csv_pandas": ("pandas",),
@@ -178,6 +179,27 @@ def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> d
         rows_ = p(
             "to_dict+dataclass",
             lambda: [Transaction(**m.to_dict(fields=DATACLASS_FIELDS)) for m in MieFileReader(a)],
+        )
+        rows, rt_sum = _rt_fingerprint([r.rt for r in rows_])
+        return {"rows": rows, "rt_sum": rt_sum}
+    if case == "py.attrs_dataclass":
+        # The same dataclass filled by reading attributes -- what a user
+        # writes without to_dict(); the baseline to_dict_dataclass is measured
+        # against.
+        rows_ = p(
+            "attributes+dataclass",
+            lambda: [
+                Transaction(
+                    timestamp=m.timestamp.format(),
+                    rt=m.rt,
+                    subaddress=m.subaddress,
+                    msg_label=m.msg_label,
+                    status_word=m.status_word,
+                    data_words=m.data_words,
+                    delta=m.delta,
+                )
+                for m in MieFileReader(a)
+            ],
         )
         rows, rt_sum = _rt_fingerprint([r.rt for r in rows_])
         return {"rows": rows, "rt_sum": rt_sum}

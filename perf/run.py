@@ -135,7 +135,11 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
     parser.add_argument("--data", type=Path, help="Where to keep the golden recordings (cached).")
     parser.add_argument("--out", type=Path, default=Path.cwd(), help="Where to write the report.")
     parser.add_argument(
-        "--small", action="store_true", help="Use the small recordings (a smoke run)."
+        "--small",
+        action="store_true",
+        help="Use the small recordings (a smoke run). Gates are reported, not enforced: "
+        "they are calibrated on the large recording, and on a few hundred records "
+        "fixed per-call costs dominate the ratios.",
     )
     parser.add_argument(
         "--no-gates", action="store_true", help="Report only; never fail on a gate."
@@ -232,6 +236,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
         "py.columns_pandas",
         "py.columns_pandas_numeric",
         "py.to_dict_dataclass",
+        "py.attrs_dataclass",
         "py.to_dict_pandas",
         "py.attrs_pandas",
         "py.csv_pandas",
@@ -299,7 +304,8 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
 
     if problems:
         return 1
-    if not args.no_gates and not all(g["ok"] for g in gate_results):
+    enforce = not args.no_gates and not args.small
+    if enforce and not all(g["ok"] for g in gate_results):
         return 1
     return 0
 

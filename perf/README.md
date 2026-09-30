@@ -7,7 +7,7 @@ and one report. C++ is not part of it.
 ```bash
 # from the repository root, in the Python package's environment
 uv --directory python run python ../perf/run.py --repeat 5
-uv --directory python run python ../perf/run.py --small --repeat 2    # a smoke run
+uv --directory python run python ../perf/run.py --small --repeat 2    # a smoke run (gates reported, not enforced)
 uv --directory python run python ../perf/run.py --data ~/.cache/aero1553-perf   # keep the recordings
 ```
 
@@ -37,6 +37,7 @@ pinned hash by `tests/golden/golden.py`.
 | `py.columns_pandas` | `columns()`, then a `DataFrame` |
 | `py.columns_pandas_numeric` | the same with `fields=` leaving out the text fields |
 | `py.to_dict_dataclass` | `MyRow(**msg.to_dict(fields=...))` per record |
+| `py.attrs_dataclass` | the same dataclass filled by reading attributes by hand -- what a user writes without `to_dict()` |
 | `py.to_dict_pandas` | `msg.to_dict()` per record, then `DataFrame.from_records` |
 | `py.attrs_pandas` | reading attributes by hand, then `DataFrame.from_records` -- what a user writes without `to_dict()` |
 | `py.csv_pandas` | decode to CSV, then `pandas.read_csv` |
