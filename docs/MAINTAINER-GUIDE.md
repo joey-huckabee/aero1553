@@ -71,7 +71,7 @@ aero1553/
 │   └── diagrams/           hand-written SVG diagrams (the source of truth)
 ├── config/default.toml     fully-commented reference TOML schema
 └── .github/workflows/      ci.yml, cpp-ci.yml, differential.yml, fuzz.yml,
-                            codeql.yml, sonarcloud.yml
+                            perf.yml, codeql.yml, sonarcloud.yml
 ```
 
 ---
@@ -535,6 +535,18 @@ unpick the integration. clang-tidy 22, cppcheck, ASan, UBSan, LSan and Valgrind
 already cover the rest.
 
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
+
+**Performance** (`.github/workflows/perf.yml`, every pull request and push to
+`main`, Linux) runs the performance suite in `perf/`: the Rust library, the
+Python library and both CLIs timed on the golden recording (`tests/golden/`),
+every case's output checked against the golden pins. It fails on a wrong
+answer or on a **gate** -- a ratio between two cases of the same run, such as
+the Python library decode against the Rust library's, which runner noise
+cannot trip the way an absolute time limit would. The full table (raw runs,
+phases, import times, totals, records/s, peak memory) goes to the job summary
+and the JSON report to an artifact. Run it locally with
+`uv --directory python run python ../perf/run.py`; `perf/README.md` explains
+the cases, the report and how to calibrate a gate.
 
 A separate scheduled workflow, `.github/workflows/fuzz.yml`, runs a deeper L1-ROB-001 fuzz burn-in daily (and on manual `workflow_dispatch`), across **all three** implementations and on **both** Linux and Windows. The normal `rust` / `python` / C++ suites run the fixed 256-iteration default; the burn-in sets `MIE_FUZZ_ITERATIONS` (default 25 000) so the deterministic harness sweeps a much larger input space. `docs/FUZZING.md` is the full map of what is fuzzed and what is not; this section covers the CI wiring.
 

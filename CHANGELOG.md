@@ -170,7 +170,7 @@ shared behavior) holds at any compatible version pair. See
   (freerun, Standard, day 366 of a common year) are `NaT` / `None`. Measured
   on 500,000 records, `columns()` into pandas is about 7x faster than
   building a DataFrame from per-record dicts and uses about a third of the
-  memory; `python/benchmarks/bench_tables.py` compares every route. NumPy and
+  memory; the performance suite (`perf/`) compares every route. NumPy and
   pandas are not dependencies of the package.
 - Rust: `log::set_sink` / `LogSink` route log lines to an embedder (the
   Python binding forwards them to `logging`); `log::with_stderr` pins a scope
@@ -187,11 +187,18 @@ shared behavior) holds at any compatible version pair. See
   a Python object). No cost per record: decode throughput is unchanged.
 - Rust: `cli::run_to_code(argv) -> u8`, the exit status as a number.
   `cli::run` returns `std::process::ExitCode`, which cannot be read back.
-- `python/benchmarks/bench_decode.py`: a throughput benchmark for the Python
-  package (reader iteration, whole-file decode, `count`, and the Rust CLI as
-  the native ceiling), checked against the expected record count so a fast
-  wrong answer cannot pass as a result. Run it before and after a change on
-  the same machine.
+- **A performance suite for the Rust and Python implementations** (`perf/`,
+  run on every pull request by `.github/workflows/perf.yml`). Every case --
+  the Rust library, the Python library, both CLIs as processes, and each
+  route into NumPy, pandas and dataclasses -- is timed on a generated golden
+  recording (`tests/golden/`, pinned by hash) and its output checked against
+  the pinned CSV hash, row count and RT checksum. The report gives every
+  run's time, per-phase times, each library's import time (measured in a
+  fresh interpreter) and a total that adds it back, records/s and peak
+  memory. The build fails on a wrong answer or on a gate: a ratio between two
+  cases of the same run (for example the Python library decode against the
+  Rust library's), which runner noise cannot trip the way an absolute time
+  limit would. It replaces the ad-hoc `python/benchmarks/` scripts.
 
 ## [3.0.0] — 2026-08-28
 

@@ -113,6 +113,11 @@ uv --directory python run python ../tests/conformance/run.py
 uv --directory python run python ../tests/conformance/run.py --skip cpp   # no C++ build
 uv --directory python run python ../tests/conformance/run.py --only cpp   # C++ vs the oracles
 
+# Performance suite (perf/README.md): Rust + Python on the golden recording
+# (tests/golden), outputs checked against the pins, gated on same-run ratios.
+uv --directory python run python ../perf/run.py --repeat 5
+uv --directory python run python ../perf/run.py --small --repeat 2   # smoke run
+
 # Fuzz harnesses (L1-ROB-001). All three read the SAME three knobs:
 #   MIE_FUZZ_ITERATIONS (default 256) / MIE_FUZZ_STREAM_LOGS / MIE_FUZZ_SUMMARY
 # Point them all at one MIE_FUZZ_SUMMARY file and compare the FUZZ-SUMMARY

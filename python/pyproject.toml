@@ -252,7 +252,6 @@ allowed-confusables = ["–", "—", "×", "µ"]
 # A benchmark's report IS its output, printed to the terminal it was run from
 # (T201), and like the test helpers above its functions have no callers
 # outside the file (DOC*).
-"benchmarks/**" = ["T201", "DOC201", "DOC402", "DOC501"]
 
 # Vulture finds dead code. Scan src + tests together so test usage counts (a
 # function used only by tests is not "dead"). The ignored names are intentional:

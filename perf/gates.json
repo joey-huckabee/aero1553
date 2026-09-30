@@ -1,0 +1,46 @@
+{
+  "gates": [
+    {
+      "name": "Python library decode keeps pace with the Rust library",
+      "numerator": "py.decode_csv",
+      "denominator": "rust.decode_csv",
+      "max": 1.15,
+      "why": "write_csv(order_rows(reader)) should be the Rust chain with a thin Python entry; a stage reading the stream through Python instead once cost 17%."
+    },
+    {
+      "name": "Python CLI keeps pace with the Rust library",
+      "numerator": "py.cli_decode",
+      "denominator": "rust.decode_csv",
+      "max": 1.15,
+      "why": "aero1553.cli.main runs the Rust CLI in-process; only the call into it is Python."
+    },
+    {
+      "name": "Python merge keeps pace with the Rust merge",
+      "numerator": "py.merge_csv",
+      "denominator": "rust.merge_csv",
+      "max": 1.15,
+      "why": "merge_readers hands the Rust merge its readers; the merged stream never leaves Rust."
+    },
+    {
+      "name": "Python record iteration stays cheap",
+      "numerator": "py.iterate",
+      "denominator": "rust.iterate",
+      "max": 3.0,
+      "why": "Iterating in Python builds one record object per record, lazily: it should cost a small multiple of the Rust read, not an order of magnitude."
+    },
+    {
+      "name": "columns() stays far ahead of per-record dicts",
+      "numerator": "py.to_dict_pandas",
+      "denominator": "py.columns_pandas",
+      "min": 4.0,
+      "why": "The point of columns(): a table with no Python object per record. If building one from to_dict() dicts gets close, columns() has regressed."
+    },
+    {
+      "name": "numeric columns cost a small multiple of a bare Rust read",
+      "numerator": "py.columns_pandas_numeric",
+      "denominator": "rust.iterate",
+      "max": 3.0,
+      "why": "Without the text fields, columns() builds no per-record Python object, so a DataFrame of them should cost little over reading the file."
+    }
+  ]
+}
