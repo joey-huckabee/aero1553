@@ -154,6 +154,15 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- **A Python library guide**, [`docs/PYTHON-GUIDE.md`](docs/PYTHON-GUIDE.md):
+  reading and the record, reading options, filtering and canonical order,
+  writing CSV (to a file or stream, with separate errors, no-clobber, calendar
+  dates), merging recorders, choosing a table route, NumPy, pandas,
+  dataclasses, time with and without a year, configuration files, the hex
+  dump, logging, errors, running the CLI from Python, performance and
+  supported platforms. It is executable documentation: every example runs in
+  the test suite against the golden recordings, and every output it shows is
+  checked exactly, so the guide cannot drift from the library.
 - **Python: decoded records as tables, for NumPy, pandas and dataclasses.**
   `aero1553.columns(stream)` turns a whole record stream -- a reader, a
   filtered or ordered stream, or a merge -- into one typed buffer per field,

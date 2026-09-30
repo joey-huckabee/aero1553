@@ -72,6 +72,8 @@ Config-file keys are documented in
 [`docs/CONFIG-REFERENCE.md`](docs/CONFIG-REFERENCE.md); task-oriented
 walkthroughs (multi-file merge, MUX from the filename, filtering, vendor diffs)
 are in the [User Guide](docs/USER-GUIDE.md) and [Examples](docs/EXAMPLES.md).
+Using the Python package as a library -- CSV output, NumPy, pandas and
+dataclasses -- is covered by the [Python library guide](docs/PYTHON-GUIDE.md).
 
 ### Common examples
 
@@ -203,6 +205,7 @@ docs/
 ├── L3-REQ.md           Level 3 implementation obligations (incl. PY/RS)
 ├── MAINTAINER-GUIDE.md Repo layout, dev setup, workflows for adding things
 ├── MIE-FORMAT.md       Comprehensive binary format + CSV column reference
+├── PYTHON-GUIDE.md     The Python library: CSV output, NumPy, pandas, dataclasses
 ├── USER-GUIDE.md       End-to-end CLI walkthrough for analysts and operators
 ├── VENDOR-CSV-DIFFS.md Alignment statement vs DDC vendor CSV (column-by-column)
 ├── TRACE-MATRIX.md     Auto-generated trace matrix (L1 -> L2 -> L3 -> tests)

@@ -46,6 +46,12 @@ for message in reader:
 `MieFileReader` and the `MieMessage` records it yields are importable directly
 from the package root (`aero1553`).
 
+The [Python library guide](../docs/PYTHON-GUIDE.md) covers the whole package:
+filtering and merging, writing CSV, NumPy and pandas tables with
+`aero1553.columns()`, dataclasses with `MieMessage.to_dict()`, dates with and
+without a year, configuration, logging and errors. Every example in it is run
+by the test suite.
+
 ## Development
 
 ```bash
