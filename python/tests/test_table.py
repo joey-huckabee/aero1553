@@ -138,7 +138,8 @@ def test_every_column_equals_to_dict_record_by_record(tmp_path: Path, name: str)
             want = expected[field]
             if field == "data_words":
                 count = expected["data_word_count"]
-                assert row[field][:count] == want and not any(row[field][count:]), (name, i)
+                assert row[field][:count] == want, (name, i)
+                assert not any(row[field][count:]), (name, i, "zero padding")
                 continue
             assert _same(row[field], _sentinel(field, want)), (name, i, field, row[field], want)
     assert all(len(col) == len(dicts) for col in cols.values())
@@ -261,10 +262,11 @@ def test_an_empty_stream_has_empty_columns_of_the_right_shape(tmp_path: Path) ->
 def test_a_decoder_error_mid_stream_is_raised(tmp_path: Path) -> None:
     """The same exception plain iteration raises, not a partial table."""
     path = _file(tmp_path, "partial-unrecoverable")
+    first, second = MieFileReader(path, strict=True), MieFileReader(path, strict=True)
     with pytest.raises(Aero1553Error) as iterating:
-        list(MieFileReader(path, strict=True))
+        list(first)
     with pytest.raises(type(iterating.value)) as tabulating:
-        columns(MieFileReader(path, strict=True))
+        columns(second)
     assert str(tabulating.value) == str(iterating.value)
 
 
@@ -279,7 +281,8 @@ def test_numpy_and_pandas_wrap_the_columns_without_copying(tmp_path: Path) -> No
     assert rt.dtype == np.int8
     assert np.shares_memory(rt, np.asarray(cols["rt"])), "a view, not a copy"
     words = np.asarray(cols["data_words"])
-    assert words.dtype == np.uint16 and words.shape == (len(rt), 32)
+    assert words.dtype == np.uint16
+    assert words.shape == (len(rt), 32)
     empty = columns([], fields=["data_words"])["data_words"]
     assert np.asarray(empty).reshape(-1, 32).shape == (0, 32)
     when = np.asarray(cols["datetime"]).view("datetime64[us]")

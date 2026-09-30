@@ -46,7 +46,8 @@ from aero1553.writer import WriteOptions, write_csv, write_csv_split
 
 _GOLDEN_PY = Path(__file__).resolve().parents[2] / "tests" / "golden" / "golden.py"
 _spec = importlib.util.spec_from_file_location("golden", _GOLDEN_PY)
-assert _spec is not None and _spec.loader is not None
+assert _spec is not None
+assert _spec.loader is not None
 golden = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(golden)
 
@@ -114,8 +115,9 @@ def test_sync_loss_is_recovered_leniently_and_refused_strictly(
     assert reader.sync_losses == 1, "the one corrupt region, recovered"
     assert any("sync lost" in r.getMessage() for r in caplog.records), "reaches Python logging"
 
+    strict = MieFileReader(rec["a-small"], strict=True)
     with pytest.raises(Aero1553Error):
-        list(MieFileReader(rec["a-small"], strict=True))
+        list(strict)
 
 
 @pytest.mark.requirement("L2-WRT-021")
@@ -242,7 +244,8 @@ def test_separate_errors_splits_the_pinned_rows(tmp_path: Path, rec: dict[str, P
     outcome = write_csv_split(order_rows(MieFileReader(rec["a-small"])), out)
     main_rows = _rows(out)
     error_rows = _rows(tmp_path / "split_errors.csv")
-    assert outcome.normal_count == len(main_rows) and outcome.error_count == len(error_rows)
+    assert outcome.normal_count == len(main_rows)
+    assert outcome.error_count == len(error_rows)
     assert error_rows == [r for r in inline if r["ERROR"]]
     assert main_rows == [r for r in inline if not r["ERROR"]]
     assert {r["ERROR"] for r in error_rows} == {"ERROR", "SPURIOUS"}
@@ -258,8 +261,10 @@ def test_a_stream_destination_gets_the_file_bytes(tmp_path: Path, rec: dict[str,
 def test_no_clobber_refuses_an_existing_destination(tmp_path: Path, rec: dict[str, Path]) -> None:
     out = tmp_path / "exists.csv"
     out.write_text("keep me", encoding="utf-8")
+    reader = MieFileReader(rec["a-small"])
+    opts = WriteOptions(no_clobber=True)
     with pytest.raises(MieClobberRefusedError):
-        write_csv(MieFileReader(rec["a-small"]), out, WriteOptions(no_clobber=True))
+        write_csv(reader, out, opts)
     assert out.read_text(encoding="utf-8") == "keep me"
 
 
@@ -276,9 +281,11 @@ def test_calendar_renderings_need_a_year_that_has_the_day(rec: dict[str, Path]) 
         return [r["TIME_STAMP"] for r in csv.DictReader(io.StringIO(buf.getvalue()))]
 
     iso = render(OutputTimeFormat.ISO, 2024)
-    assert iso[0].startswith("2024-12-30T23:59:59") and iso[-1].startswith("2024-12-31T")
+    assert iso[0].startswith("2024-12-30T23:59:59")
+    assert iso[-1].startswith("2024-12-31T")
     dom = render(OutputTimeFormat.DOM, 2024)
-    assert dom[0].startswith("30:23:59:59") and dom[-1].startswith("31:")
+    assert dom[0].startswith("30:23:59:59")
+    assert dom[-1].startswith("31:")
     with pytest.raises(MieCalendarUnavailableError):
         render(OutputTimeFormat.ISO, 2026)
 
@@ -338,8 +345,9 @@ def test_without_a_year_there_is_no_datetime_and_no_error(rec: dict[str, Path]) 
     days = set(cols["day_of_year"].tolist())
     assert days == {365, 366}, "the clock reading is still there"
     assert "datetime" not in next(iter(MieFileReader(rec["a-small"]))).to_dict()
+    reader = MieFileReader(rec["a-small"])
     with pytest.raises(ValueError, match="needs year="):
-        columns(MieFileReader(rec["a-small"]), fields=["datetime"])
+        columns(reader, fields=["datetime"])
 
 
 @pytest.mark.requirement("L3-PY-020")
@@ -421,7 +429,8 @@ def test_numpy_and_pandas_analysis(tmp_path: Path, rec: dict[str, Path]) -> None
     per_rt = df[df["rt"] >= 0].groupby("rt").size().to_dict()
     assert per_rt == dict(Counter(int(r["RT"]) for r in rows if r["RT"]))
     assert df["datetime"].dt.year.unique().tolist() == [2024]
-    assert words.shape == (len(df), 32) and words.dtype == np.uint16
+    assert words.shape == (len(df), 32)
+    assert words.dtype == np.uint16
     first = rows[0]
     n = int(df["data_word_count"].iloc[0])
     assert [f"{x:04X}" for x in words[0, :n]] == [first[f"WD{i:02d}"] for i in range(1, n + 1)]
@@ -438,7 +447,8 @@ def test_the_hex_dump_annotates_records_and_stops_at_corruption(
     with caplog.at_level(logging.WARNING, logger="aero1553.dump"):
         hex_dump_records(rec["a-small"], stream=out)
     text = out.getvalue()
-    assert "Record #0" in text and "Error:" in text, "annotated, including an Error Word"
+    assert "Record #0" in text, "each record is annotated"
+    assert "Error:" in text, "including an errored record's Error Word"
     assert "!!" in text, "the record scan notes where it stopped"
     assert caplog.records, "and says so through logging"
 
