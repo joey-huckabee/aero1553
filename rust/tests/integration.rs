@@ -1128,6 +1128,48 @@ fn merge_orders_records_across_files_by_absolute_time() {
     }
 }
 
+/// `new_detached` merges exactly what `new` merges, and its iterator outlives
+/// the readers: it shares each file's mapping instead of borrowing the reader,
+/// which is what the Python binding needs to keep a merge inside an object.
+/// Requirements: L2-MRG-002
+#[test]
+fn detached_merge_matches_new_and_outlives_the_readers() {
+    use aero1553::merge::MergedRecordIter;
+
+    let a = [
+        rt15_record_at(192, 15, 54, 50, 100, false),
+        rt15_record_at(192, 15, 54, 50, 300, false),
+    ]
+    .concat();
+    let b = [
+        rt15_record_at(192, 15, 54, 50, 200, false),
+        rt15_record_at(192, 15, 54, 50, 400, false),
+    ]
+    .concat();
+    let fa = TempFile::new(&a);
+    let fb = TempFile::new(&b);
+    let open = || {
+        vec![
+            MieFileReader::new(fa.path()).unwrap(),
+            MieFileReader::new(fb.path()).unwrap(),
+        ]
+    };
+
+    let readers = open();
+    let borrowed: Vec<_> = MergedRecordIter::new(&readers, None, false, false)
+        .unwrap()
+        .collect::<Result<_, _>>()
+        .unwrap();
+
+    let readers = open();
+    let detached = MergedRecordIter::new_detached(&readers, None, false, false).unwrap();
+    drop(readers);
+    let owned: Vec<_> = detached.collect::<Result<_, _>>().unwrap();
+
+    assert_eq!(borrowed.len(), 4);
+    assert_eq!(owned, borrowed);
+}
+
 /// Requirements: L2-MRG-001
 #[test]
 fn merge_single_input_is_unchanged() {

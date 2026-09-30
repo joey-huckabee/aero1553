@@ -13,16 +13,16 @@ Each case provides:
 The runner materializes temporary `.mie` files, invokes both CLIs, and requires
 both outputs to match the checked-in CSV oracle byte-for-byte.
 
-Run from the repository root, **through Poetry**:
+Run from the repository root, **through uv**:
 
 ```bash
-poetry -C python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/run.py
 ```
 
 The runner drives the Python CLI with `sys.executable` — the interpreter it is
 itself running under. A bare `python tests/conformance/run.py` therefore uses
-your system Python, which does not have `aero1553` after `poetry -C python
-sync` installs it into Poetry's virtualenv. The runner probes for the import and
+your system Python, which does not have `aero1553` after `uv --directory python
+sync` installs it into uv's virtualenv (`python/.venv`). The runner probes for the import and
 fails fast with the fix, but the form above is the one that works. (CI uses the
 bare form because it `pip install -e ./python` into its system interpreter
 first.) `--python-bin <path>` overrides the interpreter explicitly.
@@ -30,12 +30,12 @@ first.) `--python-bin <path>` overrides the interpreter explicitly.
 To use an already-built Rust binary:
 
 ```bash
-poetry -C python run python ../tests/conformance/run.py --rust-bin ../rust/target/debug/aero1553
+uv --directory python run python ../tests/conformance/run.py --rust-bin ../rust/target/debug/aero1553
 ```
 
 Two path traps here, both easy to hit:
 
-- `poetry -C python run` executes with the working directory set to `python/`,
+- `uv --directory python run` executes with the working directory set to `python/`,
   so **every relative path is relative to `python/`** — hence the `../` on both
   the script and `--rust-bin`.
 - `--rust-bin` is used exactly as given; the runner only appends `.exe` when it
@@ -53,7 +53,7 @@ implementation's setup and the cross-impl CLI-surface check; each side is still
 held to the same byte-exact oracle.
 
 ```bash
-poetry -C python run python ../tests/conformance/run.py --python-only   # no cargo needed
+uv --directory python run python ../tests/conformance/run.py --python-only   # no cargo needed
 python tests/conformance/run.py --rust-only --rust-bin <path>           # no aero1553 package needed
 ```
 
@@ -64,7 +64,7 @@ When intentionally changing shared CSV behavior, update the checked-in
 oracles only after both implementations produce identical output:
 
 ```bash
-poetry -C python run python ../tests/conformance/run.py --update-expected
+uv --directory python run python ../tests/conformance/run.py --update-expected
 ```
 
 Keep implementation-specific CLI behavior in each implementation's own test

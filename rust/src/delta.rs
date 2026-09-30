@@ -45,7 +45,8 @@ use crate::models::{CommandWord, Direction, Timestamp};
 /// `packed_key_and_display_key_agree` in this module's tests — the check that
 /// was missing when the two representations lived in different modules.
 #[inline]
-pub(crate) fn delta_key(rt: u8, subaddress: u8, transmit: bool) -> u32 {
+#[must_use]
+pub fn delta_key(rt: u8, subaddress: u8, transmit: bool) -> u32 {
     (u32::from(rt) << 16) | (u32::from(subaddress) << 8) | u32::from(transmit)
 }
 
@@ -55,7 +56,7 @@ pub(crate) fn delta_key(rt: u8, subaddress: u8, transmit: bool) -> u32 {
 /// the CSV cannot distinguish "no gap yet" from "no honest gap" from "no key at
 /// all" — and the caller has to, in order to narrate correctly.
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub(crate) enum DeltaOutcome {
+pub enum DeltaOutcome {
     /// First sighting of this key. `DELTA` is `0.000000` (L2-RDR-010).
     First,
     /// A non-negative gap, in seconds.
@@ -82,7 +83,8 @@ pub(crate) enum DeltaOutcome {
 impl DeltaOutcome {
     /// The value the `DELTA` column takes, which is where four of the five
     /// outcomes collapse into "empty".
-    pub(crate) fn value(self) -> Option<f64> {
+    #[must_use]
+    pub fn value(self) -> Option<f64> {
         match self {
             Self::First => Some(0.0),
             Self::Elapsed(seconds) => Some(seconds),
@@ -97,7 +99,7 @@ impl DeltaOutcome {
 /// makes one for the whole merged timeline when `--delta-scope global` is set
 /// (L2-MRG-005).
 #[derive(Debug)]
-pub(crate) struct DeltaTracker {
+pub struct DeltaTracker {
     last_us: HashMap<u32, u64>,
     /// Keys that have already produced a backward-step report. Kept here rather
     /// than in the caller so the once-per-key promise has a single owner.
@@ -108,7 +110,8 @@ pub(crate) struct DeltaTracker {
 }
 
 impl DeltaTracker {
-    pub(crate) fn new(tick_rate_hz: Option<f64>) -> Self {
+    #[must_use]
+    pub fn new(tick_rate_hz: Option<f64>) -> Self {
         Self {
             last_us: HashMap::new(),
             warned_keys: HashSet::new(),
@@ -123,7 +126,7 @@ impl DeltaTracker {
     /// the Command Word rather than a whole `MieMessage` is what lets the
     /// reader call this *before* the message exists — on the errored-record
     /// path the `DELTA` is computed and then handed to the constructor.
-    pub(crate) fn observe(
+    pub fn observe(
         &mut self,
         command_word: Option<&CommandWord>,
         timestamp: &Timestamp,

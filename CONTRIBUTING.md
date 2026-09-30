@@ -13,7 +13,9 @@ workflow, and commit conventions.
 - Rust toolchain ≥ 1.88 (`rustup toolchain install stable`). The crate
   uses edition 2024, which floors at 1.85; the 1.88 requirement comes from
   the crate's own use of let-chains (see `L3-RS-001`), not from `memmap2`.
-- Python 3.10 or newer and Poetry for work under `python/`. Commands in
+- Python 3.10 or newer and [uv](https://docs.astral.sh/uv/) for work under
+  `python/` (the package compiles a PyO3 extension, so this needs the Rust
+  toolchain above as well). Commands in
   this repo's docs are written `python …`; read that as *your Python 3
   interpreter*. Many Linux distributions and WSL images provide only
   `python3`, and nothing here depends on the `python` alias existing —
@@ -245,21 +247,21 @@ cargo clippy --all-targets -- -D warnings  # Lint manually
 Python:
 
 ```bash
-poetry -C python sync
-poetry -C python run pytest
-poetry -C python run pylint src/aero1553      # lint (CI-gated, must stay 10/10)
-poetry -C python run ruff check               # ruff lint (CI-gated)
-poetry -C python run ruff format              # auto-format (CI runs ruff format --check)
-poetry -C python run vulture                  # dead-code scan (CI-gated)
-poetry -C python run bandit -r src/aero1553     # security scan / SAST (CI-gated)
-poetry -C python run aero1553 --help
-poetry -P python build   # -P (not -C): -C doubles the src path on Windows; -P needs Poetry >= 2.0
+uv --directory python sync
+uv --directory python run pytest
+uv --directory python run pylint src/aero1553      # lint (CI-gated, must stay 10/10)
+uv --directory python run ruff check               # ruff lint (CI-gated)
+uv --directory python run ruff format              # auto-format (CI runs ruff format --check)
+uv --directory python run vulture                  # dead-code scan (CI-gated)
+uv --directory python run bandit -r src/aero1553     # security scan / SAST (CI-gated)
+uv --directory python run aero1553 --help
+uv --directory python build   # sdist + one abi3 wheel, via maturin
 ```
 
 Shared cross-implementation conformance:
 
 ```bash
-poetry -C python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/run.py
 ```
 
 The runner defaults to **every** registered implementation and fails if one is
@@ -268,12 +270,12 @@ build, `--only cpp` to check just that one. The alternative, running whichever
 binaries happen to be present, would let the suite report a full pass after a
 build step had quietly failed.
 
-Run it **through Poetry**. The runner drives the Python CLI with
+Run it **through uv**. The runner drives the Python CLI with
 `sys.executable` — the interpreter it is itself running under — so a bare
 `python tests/conformance/run.py` uses your system Python, which does not
-have `aero1553` after a `poetry -C python sync` (Poetry installs into its
-own virtualenv). It fails fast and tells you so, but the Poetry form is the
-one that works. CI runs the bare form only because it does
+have `aero1553` after a `uv --directory python sync` (uv installs into its
+own virtualenv, `python/.venv`). It fails fast and tells you so, but the uv
+form is the one that works. CI runs the bare form only because it does
 `pip install -e ./python` into the runner's system interpreter first.
 
 `--only rust` is the exception: it never touches the Python side, so plain
@@ -298,7 +300,7 @@ runs inside `run.py`. For a deeper local sweep, raise the iteration count (this
 is a *different* knob from the reader/dump `MIE_FUZZ_ITERATIONS` below):
 
 ```bash
-MIE_CONFIG_FUZZ_ITERS=5000 poetry -C python run python ../tests/conformance/run.py
+MIE_CONFIG_FUZZ_ITERS=5000 uv --directory python run python ../tests/conformance/run.py
 # optionally pin a starting point: MIE_CONFIG_FUZZ_SEED=<n>
 ```
 
@@ -362,7 +364,7 @@ run from `python/` for pytest, and rely on the interpreter selected in VS Code.
 Two things to know:
 
 - **Python interpreter** — run **"Python: Select Interpreter"** and pick the
-  Poetry venv at `python/.venv` so `aero1553` is importable. The config uses
+  uv venv at `python/.venv` so `aero1553` is importable. The config uses
   the *selected* interpreter rather than a hardcoded path, so it stays portable
   across Windows / macOS / Linux.
 - **Input prompts** — the `decode` / `count` / `dump` configs prompt for the
@@ -409,7 +411,7 @@ cargo test --test integration fuzz_arbitrary_bytes_never_panic
 cargo test --test integration dump_arbitrary_bytes_never_panics
 
 # Python (whole class = both reader + dump)
-poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness
+uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness
 
 # C++ (the [fuzz] cases only; they also ride along in `make check`)
 make -C cpp check-fuzz
@@ -437,7 +439,7 @@ default run (same first 256 inputs); a failure prints the reproducer seed.
 
 ```bash
 (cd rust && MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic)
-MIE_FUZZ_ITERATIONS=25000 poetry -C python run pytest -s tests/test_e2e.py::TestFuzzHarness
+MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest -s tests/test_e2e.py::TestFuzzHarness
 MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 ```
 
@@ -453,7 +455,7 @@ three implementations. Point them all at one file and compare:
 ```bash
 export MIE_FUZZ_SUMMARY=/tmp/fuzz-summary.txt && rm -f "$MIE_FUZZ_SUMMARY"
 (cd rust && cargo test --test integration -- fuzz_arbitrary_bytes_never_panic dump_arbitrary_bytes_never_panics)
-poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness
+uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness
 make -C cpp check-fuzz
 mkdir -p /tmp/fz/local && cp "$MIE_FUZZ_SUMMARY" /tmp/fz/local/
 python scripts/compare-fuzz-summaries.py /tmp/fz

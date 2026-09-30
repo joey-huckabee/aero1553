@@ -32,6 +32,10 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 /python/dist/
+# The PyO3 extension an editable install (`uv sync`) builds in place beside
+# the Python sources: _native.pyd on Windows, _native.*.so / .abi3.so elsewhere.
+/python/src/aero1553/_native*.pyd
+/python/src/aero1553/_native*.so
 
 # Sample binary recordings
 *.mie

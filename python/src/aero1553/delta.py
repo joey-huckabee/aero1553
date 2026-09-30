@@ -22,7 +22,7 @@ This module does not log
 
 :meth:`DeltaTracker.observe` returns a :class:`DeltaOutcome` describing what
 happened and the caller decides whether to say anything — the same rule
-:mod:`aero1553.sync` follows, for the same reason. A tracker cannot know
+the core crate's sync helpers follow, for the same reason. A tracker cannot know
 whether a backward step is worth a WARN (single-file decode: yes, once per key)
 or is already reported at file granularity (a merge naming its unsorted inputs,
 L2-MRG-006).
@@ -38,7 +38,8 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import IntEnum
 
-from .models import CommandWord, Direction, Timestamp
+from aero1553 import _native
+from aero1553.models import CommandWord, Timestamp
 
 __all__ = ["DeltaKind", "DeltaOutcome", "DeltaTracker", "delta_key"]
 
@@ -59,7 +60,7 @@ def delta_key(rt: int, subaddress: int, transmit: bool) -> int:
         The three fields packed into one ``int``: ``rt`` at bit 16,
         ``subaddress`` at bit 8, and the transmit flag in bit 0.
     """
-    return (rt << 16) | (subaddress << 8) | int(transmit)
+    return _native.delta_key(rt, subaddress, transmit)
 
 
 class DeltaKind(IntEnum):
@@ -125,7 +126,7 @@ class DeltaTracker:
     (L2-MRG-005).
     """
 
-    __slots__ = ("_last_us", "_tick_rate_hz", "_warned_keys")
+    __slots__ = ("_native",)
 
     def __init__(self, tick_rate_hz: float | None = None) -> None:
         """Create an empty tracker.
@@ -134,9 +135,7 @@ class DeltaTracker:
             tick_rate_hz: L2-DEC-017 Standard-counter calibration. ``None``
                 keeps Standard records out of tracking entirely.
         """
-        self._last_us: dict[int, int] = {}
-        self._warned_keys: set[int] = set()
-        self._tick_rate_hz = tick_rate_hz
+        self._native = _native.DeltaTracker(tick_rate_hz)
 
     def observe(self, command_word: CommandWord | None, timestamp: Timestamp) -> DeltaOutcome:
         """Record one message and report the gap since the previous one with its key.
@@ -154,38 +153,12 @@ class DeltaTracker:
         Returns:
             What the observation meant; see :class:`DeltaOutcome`.
         """
-        if command_word is None:
-            return DeltaOutcome(kind=DeltaKind.NO_KEY)
-
-        curr_us = timestamp.to_microseconds(self._tick_rate_hz)
-        if curr_us is None:
-            return DeltaOutcome(kind=DeltaKind.UNCALIBRATED)
-
-        key = delta_key(
-            command_word.rt,
-            command_word.subaddress,
-            command_word.direction == Direction.TRANSMIT,
+        kind, seconds, prev_us, curr_us, key, first_for_key = self._native.observe(
+            command_word, timestamp
         )
-        prev_us = self._last_us.get(key)
-
-        # Unconditional, and deliberately so on the backward path too: the next
-        # record for this key is measured from THIS one. Keeping the older,
-        # larger value would report a gap that no pair of records in the file
-        # actually has.
-        self._last_us[key] = curr_us
-
-        if prev_us is None:
-            return DeltaOutcome(kind=DeltaKind.FIRST)
-        if curr_us >= prev_us:
-            return DeltaOutcome(
-                kind=DeltaKind.ELAPSED,
-                seconds=(curr_us - prev_us) / 1_000_000.0,
-            )
-
-        first_for_key = key not in self._warned_keys
-        self._warned_keys.add(key)
         return DeltaOutcome(
-            kind=DeltaKind.BACKWARD,
+            kind=DeltaKind(kind),
+            seconds=seconds,
             prev_us=prev_us,
             curr_us=curr_us,
             key=key,

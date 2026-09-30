@@ -1,44 +1,57 @@
 """Tests for MUX-from-filename population (L2-WRT-020).
 
-Mirrors the Rust `mux_from_filename` unit tests and writer test so both
-implementations agree on the extraction rule and the MUX cell output.
+The extraction rule is the Rust reader's; these pin it as the Python API
+exposes it, and the MUX cell the writer emits.
 """
 
 from __future__ import annotations
 
-import dataclasses
 import io
 from pathlib import Path
 
 import pytest
 
-from aero1553.decode import mux_from_filename
 from aero1553.reader import MieFileReader
 from aero1553.writer import message_to_row, write_csv
-from tests.conftest import RECORD_RT15_SA11_RCV
+from tests.conftest import RECORD_RT15_SA11_RCV, replace
 
 _OP_NAME = "full_loadout.draw.data.1553.aa.unused.mie_irig"
 
 
+_ALT_NAME = "full_loadout.draw.data.1553.bb.unused.mie_irig"
+
+
 @pytest.mark.requirement("L2-WRT-020")
-def test_mux_from_filename() -> None:
-    name = _OP_NAME
-    # Default field 4 → recorder identity; other operator files match.
-    assert mux_from_filename(name, ".", 4) == "aa"
-    assert mux_from_filename("full_loadout.draw.data.1553.bb.unused.mie_irig", ".", 4) == "bb"
-    # Negative index counts from the end (-3 == index 4 here).
-    assert mux_from_filename(name, ".", -3) == "aa"
-    assert mux_from_filename(name, ".", 0) == "full_loadout"
-    assert mux_from_filename(name, ".", -1) == "mie_irig"
-    # Out-of-range → None (empty MUX).
-    assert mux_from_filename(name, ".", 99) is None
-    assert mux_from_filename(name, ".", -99) is None
-    # Other delimiters; empty delimiter / empty field / missing delimiter.
-    assert mux_from_filename("a_b_c", "_", 1) == "b"
-    assert mux_from_filename(name, "", 4) is None
-    assert mux_from_filename("a..b", ".", 1) is None
-    assert mux_from_filename("plain", ".", 4) is None
-    assert mux_from_filename("plain", ".", 0) == "plain"
+@pytest.mark.parametrize(
+    ("name", "delimiter", "field", "expected"),
+    [
+        # Default field 4 -> recorder identity; other operator files match.
+        (_OP_NAME, ".", 4, "aa"),
+        (_ALT_NAME, ".", 4, "bb"),
+        # Negative index counts from the end (-3 == index 4 here).
+        (_OP_NAME, ".", -3, "aa"),
+        (_OP_NAME, ".", 0, "full_loadout"),
+        (_OP_NAME, ".", -1, "mie_irig"),
+        # Out of range -> no MUX.
+        (_OP_NAME, ".", 99, None),
+        (_OP_NAME, ".", -99, None),
+        # Other delimiters; empty delimiter / empty field / missing delimiter.
+        ("a_b_c", "_", 1, "b"),
+        (_OP_NAME, "", 4, None),
+        ("a..b", ".", 1, None),
+        ("plain", ".", 4, None),
+        ("plain", ".", 0, "plain"),
+    ],
+)
+def test_mux_from_filename(
+    tmp_path: Path, name: str, delimiter: str, field: int, expected: str | None
+) -> None:
+    """The extraction rule, applied by the reader to the file it opens."""
+    fpath = tmp_path / name
+    fpath.write_bytes(RECORD_RT15_SA11_RCV)
+    msgs = list(MieFileReader(fpath, mux_delimiter=delimiter, mux_field=field))
+    assert msgs, "fixture decoded no messages"
+    assert all(m.mux == expected for m in msgs)
 
 
 @pytest.mark.requirement("L2-WRT-020")
@@ -66,5 +79,5 @@ def test_writer_emits_mux_and_quotes(tmp_path: Path) -> None:
 
     # A MUX value containing the delimiter is RFC4180-quoted by the csv module.
     buf = io.StringIO()
-    write_csv([dataclasses.replace(msg, mux="a,b")], output=buf)
+    write_csv([replace(msg, mux="a,b")], output=buf)
     assert '"a,b"' in buf.getvalue()

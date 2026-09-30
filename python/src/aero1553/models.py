@@ -1,9 +1,16 @@
 """Core data structures for decoded MIL-STD-1553 MIE binary records.
 
 This module defines the immutable data structures that represent decoded
-1553 messages extracted from DDC MIE binary recording files. All structures
-use ``dataclass(frozen=True, slots=True)`` for memory efficiency and
-immutability guarantees.
+1553 messages extracted from DDC MIE binary recording files.
+
+The record types -- :class:`MieMessage` and the :class:`TypeWord`,
+:class:`CommandWord`, :class:`IrigTimestamp` and :class:`StandardTimestamp`
+values it holds -- are compiled classes from the package's extension: frozen,
+each holding the decoder's record inline, with nested values built only when a
+field is read. They keep the dataclass surface they replaced (field names,
+constructors, equality, hashing, repr, pickling, ``copy.replace``) but are not
+dataclasses, so :mod:`dataclasses` helpers do not apply to them. The enums,
+:class:`TimeRender` and the error-code tables are plain Python.
 
 Type Word Message Type Codes (bits 0–6):
 
@@ -40,17 +47,11 @@ Error Handling:
 
 from __future__ import annotations
 
-import math
-import mmap
 from dataclasses import dataclass
 from enum import IntEnum, unique
-from typing import Final
+from typing import Final, TypeAlias
 
-#: A read-only byte source accepted by the low-level decode/sync helpers:
-#: an in-memory buffer (bytes/memoryview) or a memory-mapped file. The
-#: reader passes an ``mmap.mmap``; tests and conformance fixtures pass
-#: ``bytes``. All three support the indexing and slicing these helpers do.
-ByteSource = bytes | memoryview | mmap.mmap
+from aero1553 import _native
 
 
 @unique
@@ -150,10 +151,10 @@ _TIMESTAMP_FORMAT_BY_NAME: dict[str, TimestampFormat] = {
 def parse_timestamp_format(name: str) -> TimestampFormat:
     """Parse an ``input_time_format`` name (``auto`` / ``irig`` / ``standard``).
 
-    Matching is case-insensitive. This is the single source of truth shared by
-    the CLI (``--input-time-format``) and the config loader
-    (``decode.input_time_format``) so the two can never disagree on which
-    spellings are accepted.
+    Matching is case-insensitive, and the accepted spellings are those of the
+    CLI's ``--input-time-format`` and the config loader's
+    ``decode.input_time_format`` (both Rust; ``tests/test_config.py`` pins the
+    agreement).
 
     Raises:
         ValueError: if ``name`` is not one of the recognized formats. The message
@@ -363,9 +364,10 @@ _DELTA_SCOPE_BY_NAME: dict[str, DeltaScope] = {
 def parse_delta_scope(name: str) -> DeltaScope:
     """Parse a ``delta_scope`` name (``per-file`` / ``global``).
 
-    Matching is case-insensitive. Single source of truth shared by the CLI
-    (``--delta-scope``) and the config loader (``merge.delta_scope``), mirroring
-    the Rust ``DeltaScope::from_name_ci``.
+    Matching is case-insensitive, and the accepted spellings are those of the
+    CLI's ``--delta-scope`` and the config loader's ``merge.delta_scope`` (both
+    the Rust ``DeltaScope::from_name_ci``; ``tests/test_config.py`` pins the
+    agreement).
 
     Raises:
         ValueError: if ``name`` is not a recognized scope; the message lists the
@@ -459,234 +461,22 @@ KNOWN_CUSTOM_ERROR_CODES: frozenset[int] = frozenset(
 ALL_KNOWN_ERROR_CODES: frozenset[int] = KNOWN_DDC_ERROR_CODES | KNOWN_CUSTOM_ERROR_CODES
 
 
-@dataclass(frozen=True, slots=True)
-class IrigTimestamp:
-    """IRIG-format timestamp decoded from a 3-word binary field.
+# ── Record types ────────────────────────────────────────────────────────────
+#
+# Compiled classes (``aero1553._native``), re-exported here so this module stays
+# where they live -- ``aero1553.models.MieMessage`` is their qualified name, which
+# is also what pickling looks up. Their field and property docstrings live with
+# them. (Their enum-valued getters return this module's IntEnum members, looked
+# up on first use, so importing the extension first cannot cycle.)
 
-    Attributes:
-        day: Day of year (1-366).
-        hour: Hour of day (0-23).
-        minute: Minute of hour (0-59).
-        second: Second of minute (0-59).
-        microsecond: Microsecond within the second (0-999999).
-        freerun: True if external IRIG source was unavailable.
-    """
-
-    day: int
-    hour: int
-    minute: int
-    second: int
-    microsecond: int
-    freerun: bool
-
-    def to_total_microseconds(self) -> int:
-        """Convert to absolute microseconds from start of year.
-
-        Returns:
-            Microseconds elapsed since the start of the year, treating ``day``
-            as a one-based day-of-year.
-        """
-        return (
-            self.day * 86_400 + self.hour * 3_600 + self.minute * 60 + self.second
-        ) * 1_000_000 + self.microsecond
-
-    def to_microseconds(self, _standard_tick_rate_hz: float | None = None) -> int | None:
-        """Absolute microseconds from a known epoch.
-
-        Always returns the IRIG conversion. Defined with the same
-        (positional) signature as :meth:`StandardTimestamp.to_microseconds`
-        so the reader can call ``timestamp.to_microseconds(rate)`` without a
-        type check; the tick-rate argument is accepted and ignored here
-        (hence the leading underscore) because IRIG already has an absolute
-        microsecond basis.
-
-        Returns:
-            Absolute microseconds since the start of the year. Never ``None``
-            for IRIG -- the optional return type exists only so this shares a
-            signature with :meth:`StandardTimestamp.to_microseconds`.
-        """
-        return self.to_total_microseconds()
-
-    def format(self) -> str:
-        """Format as ``DAY:HH:MM:SS.uuuuuu`` string.
-
-        Per L2-DEC-014 the microsecond field SHALL be exactly six
-        digits. Validation in :mod:`aero1553.sync` should reject
-        any record with ``microsecond >= 1_000_000`` (L2-SYN-004), so
-        the modulo here is a defensive belt-and-suspenders: a caller
-        constructing an :class:`IrigTimestamp` directly with an out-of-
-        range microsecond still gets a well-formed string.
-
-        Returns:
-            ``DAY:HH:MM:SS.uuuuuu``, with the microsecond field always exactly
-            six digits.
-        """
-        micro = self.microsecond % 1_000_000
-        return f"{self.day}:{self.hour:02d}:{self.minute:02d}:{self.second:02d}.{micro:06d}"
-
-    def format_with(self, render: TimeRender) -> str:
-        """Format under the selected rendering (L2-WRT-025).
-
-        ``DOY`` is infallible and byte-identical to :meth:`format`. The calendar
-        renderings resolve ``day`` against ``render.year`` and refuse rather
-        than approximate when that resolution has no answer -- day 366 of a
-        common year does not become January 1st (L2-WRT-026 clause 3).
-
-        Every rendering emits exactly six microsecond digits; L2-DEC-014 is not
-        relaxed by the wider cell.
-
-        Raises:
-            CalendarUnavailableError: when a calendar rendering cannot be resolved --
-                no year was configured, the timestamp is freerun, or the
-                day-of-year does not exist in that year.
-
-        Returns:
-            The rendered ``TIME_STAMP`` cell.
-        """
-        if render.format is OutputTimeFormat.DOY:
-            return self.format()
-
-        # L2-WRT-026 clause 2: a freerun record's fields are relative, so
-        # resolving them against a year would produce a date that looks
-        # entirely ordinary and means nothing.
-        if self.freerun:
-            raise CalendarUnavailableError(
-                "the record carries a freerun IRIG timestamp -- the card had no valid "
-                "IRIG-B lock, so its day and time fields are relative rather than "
-                "calendar-anchored"
-            )
-        if render.year is None:
-            raise CalendarUnavailableError(
-                "no year was configured; set [output] year or pass --year YYYY"
-            )
-
-        resolved = day_of_year_to_month_day(render.year, self.day)
-        if resolved is None:
-            raise CalendarUnavailableError(
-                f"the record carries day-of-year {self.day}, which does not exist in "
-                f"{render.year} ({render.year} is not a leap year). The configured year "
-                f"is wrong for this recording"
-            )
-        month, day_of_month = resolved
-
-        micro = self.microsecond % 1_000_000
-        time_part = f"{self.hour:02d}:{self.minute:02d}:{self.second:02d}.{micro:06d}"
-        if render.format is OutputTimeFormat.ISO:
-            zone = format_utc_offset(render.utc_offset_minutes)
-            return f"{render.year:04d}-{month:02d}-{day_of_month:02d}T{time_part}{zone}"
-        return f"{day_of_month:02d}:{time_part}"
-
-
-#: 2**64 — the largest microsecond count the Rust and C++ implementations
-#: can represent. Beyond it all three decline rather than disagree.
-_TWO_POW_64 = 1 << 64
-
-
-@dataclass(frozen=True, slots=True)
-class StandardTimestamp:
-    """Standard-format timestamp decoded from a 2-word binary field.
-
-    Attributes:
-        raw_value: The full 32-bit counter value.
-        upper_word: Raw upper 16-bit word (bits [31:16]).
-        lower_word: Raw lower 16-bit word (bits [15:0]).
-    """
-
-    raw_value: int
-    upper_word: int
-    lower_word: int
-
-    def raw_ticks(self) -> int:
-        """Raw 32-bit free-running counter value, in unknown tick units.
-
-        The tick rate is card-dependent and not encoded in the file, so
-        callers cannot convert this to seconds without external calibration.
-
-        Returns:
-            The raw counter value, in card-dependent ticks -- not a duration.
-        """
-        return self.raw_value
-
-    def to_microseconds(self, standard_tick_rate_hz: float | None = None) -> int | None:
-        """Convert raw counter ticks to microseconds, if calibrated.
-
-        ``standard_tick_rate_hz`` is the card-dependent counter frequency
-        in Hz, supplied out-of-band (the file does not encode it). Returns
-        ``None`` unless the rate is finite and strictly positive, so an
-        uncalibrated or invalid rate can never be mistaken for real timing
-        — callers (DELTA computation) treat the absence explicitly rather
-        than using raw ticks as if they were microseconds.
-
-        Rounding is half-away-from-zero, matching the Rust implementation's
-        ``f64::round`` bit-for-bit (L2-DEC-017). It is computed as
-        ``floor(x) + (1 if frac >= 0.5 else 0)`` with ``frac = x - floor(x)``
-        (exact by Sterbenz for a non-negative ``x``) rather than the tempting
-        ``int(x + 0.5)``: the latter rounds a value an ULP below a half-integer
-        up to the wrong integer — e.g. ``x = 0.49999999999999994`` yields ``0``
-        here and in Rust but ``1`` via ``int(x + 0.5)`` (Python evaluates
-        ``x + 0.5 == 1.0``), which would silently diverge from Rust by 1 us.
-
-        Returns:
-            The tick count converted to whole microseconds, or ``None`` when the
-            rate is not finite and strictly positive, or when the result falls
-            outside the representable range. ``None`` means "uncalibrated", and
-            is never a timestamp of zero.
-        """
-        if (
-            standard_tick_rate_hz is None
-            or not math.isfinite(standard_tick_rate_hz)
-            or standard_tick_rate_hz <= 0.0
-        ):
-            return None
-        micros = self.raw_value * 1_000_000 / standard_tick_rate_hz
-        # Decline before converting, not after. A rate like 1e-300 is finite and
-        # positive, so it passes the guard above, and the division then
-        # overflows to ``inf`` — on which ``math.floor`` raises OverflowError.
-        # This used to escape a decode as an uncaught exception.
-        #
-        # The bound is shared with Rust and C++, which cannot represent a result
-        # at or above 2**64 at all: Rust's ``as`` saturated it to u64::MAX (a
-        # fabricated timestamp that reads as real downstream) and the C++
-        # ``static_cast`` from an out-of-range double was undefined behaviour.
-        # All three decline instead, which is what keeps them byte-identical
-        # (L2-DEC-017).
-        if not math.isfinite(micros) or not 0.0 <= micros < _TWO_POW_64:
-            return None
-        floor_us = math.floor(micros)
-        return floor_us + 1 if micros - floor_us >= 0.5 else floor_us
-
-    def format(self) -> str:
-        """Format as ``0xNNNNNNNN`` hexadecimal string.
-
-        Returns:
-            The raw counter as ``0x`` followed by eight uppercase hex digits.
-        """
-        return f"0x{self.raw_value:08X}"
-
-    def format_with(self, render: TimeRender) -> str:
-        """Format under the selected rendering (L2-WRT-025).
-
-        Under ``DOY`` this is :meth:`format`. Under a calendar rendering it
-        refuses (L2-WRT-026 clause 2): a free-running counter has no epoch, so
-        no year can place it on a calendar, and quietly emitting raw hex into a
-        column the operator asked to be ISO-8601 would be its own kind of lie.
-
-        Raises:
-            CalendarUnavailableError: under ``ISO`` or ``DOM``.
-
-        Returns:
-            The raw counter rendering, under ``DOY``.
-        """
-        if render.format.needs_calendar():
-            raise CalendarUnavailableError(
-                "this recording uses the Standard timestamp encoding, a free-running "
-                "counter with no epoch. No year places it on a calendar"
-            )
-        return self.format()
-
+CommandWord = _native.CommandWord
+IrigTimestamp = _native.IrigTimestamp
+MieMessage = _native.MieMessage
+StandardTimestamp = _native.StandardTimestamp
+TypeWord = _native.TypeWord
 
 #: Union type for timestamps.
-Timestamp = IrigTimestamp | StandardTimestamp
+Timestamp: TypeAlias = IrigTimestamp | StandardTimestamp
 
 #: Number of 16-bit words consumed by each timestamp format.
 TIMESTAMP_WORD_COUNTS: dict[TimestampFormat, int] = {
@@ -694,223 +484,7 @@ TIMESTAMP_WORD_COUNTS: dict[TimestampFormat, int] = {
     TimestampFormat.STANDARD: 2,
 }
 
-
-@dataclass(frozen=True, slots=True)
-class TypeWord:
-    """Decoded DDC MIE record Type Word.
-
-    Attributes:
-        message_type: DDC message type code (0x01–0x20).
-        bus: Which redundant 1553 bus this message was captured on.
-        word_count: Total record size in 16-bit words.
-        error: True if the recording card flagged an error (bit 14).
-        raw: The original 16-bit value for round-trip fidelity.
-    """
-
-    message_type: int
-    bus: Bus
-    word_count: int
-    error: bool
-    raw: int
-
-
-@dataclass(frozen=True, slots=True)
-class CommandWord:
-    """Decoded MIL-STD-1553 Command Word.
-
-    Attributes:
-        rt: Remote Terminal address (0-30; 31 = broadcast).
-        direction: TRANSMIT or RECEIVE.
-        subaddress: Subaddress (0-31; 0 and 31 are mode codes).
-        data_word_count: Number of data words (1-32; raw 0 = 32).
-        raw: The original 16-bit value for round-trip fidelity.
-    """
-
-    rt: int
-    direction: Direction
-    subaddress: int
-    data_word_count: int
-    raw: int
-
-    @property
-    def is_broadcast(self) -> bool:
-        """True if this command targets all RTs (RT address 31)."""
-        return self.rt == 31
-
-    @property
-    def is_mode_code(self) -> bool:
-        """True if this command is a mode code (SA 0 or SA 31)."""
-        return self.subaddress in (0, 31)
-
-
 #: MIL-STD-1553B caps a single transaction at 32 data words. Mirrors the Rust
 #: ``DataWords`` inline buffer (``[u16; 32]``), which enforces the same cap by
-#: construction, so both implementations carry an identically-bounded payload.
+#: construction; a :class:`MieMessage` built with more keeps the first 32.
 MAX_DATA_WORDS: Final[int] = 32
-
-
-@dataclass(frozen=True, slots=True)
-class MieMessage:
-    """A single decoded MIL-STD-1553 message from an MIE binary file.
-
-    This is the primary output structure of the decoder. Each instance
-    represents one complete bus transaction as captured by the DDC
-    recording card.
-
-    The structure accommodates all 10 standard message formats plus
-    SPURIOUS_DATA and errored records:
-
-    - For simple BC→RT and RT→BC transfers, ``command_word`` and
-      ``status_word`` are populated.
-    - For RT-to-RT, ``command_word_2`` and ``status_word_2`` are also
-      populated.
-    - For broadcast messages, ``status_word`` is None.
-    - For mode codes, ``data_words`` contains 0 or 1 words.
-    - For **errored records** (Type Word bit 14 set), ``error_word``
-      contains the DDC error code (0x01xx), data_words contains only
-      the words received before the error, and status_word is typically
-      None (transaction interrupted).
-    - For **SPURIOUS_DATA** (type 0x20), ``command_word`` is None,
-      ``error_word`` contains a custom 0x20xx code, and data_words
-      contains the raw bus words.
-
-    Attributes:
-        timestamp: IRIG or Standard timestamp.
-        type_word: Decoded Type Word containing message metadata.
-        message_format: Classified message format.
-        command_word: Primary Command Word. None for SPURIOUS_DATA
-            records which have no command structure.
-        command_word_2: Second Command Word for RT-to-RT. None otherwise.
-        status_word: Primary Status Word. None for broadcast formats
-            and errored records where the RT never responded.
-        status_word_2: Second Status Word for RT-to-RT. None otherwise.
-        data_words: Tuple of raw 16-bit data words in bus wire order.
-            For errored records, contains only words received before
-            the error. For SPURIOUS_DATA, contains raw bus words.
-        error_word: DDC error code (0x01xx) for errored records, or
-            custom decoder code (0x20xx) for SPURIOUS_DATA records.
-            None for normal messages.
-        delta: Seconds since prior message with same RT+MSG.
-            ``0.0`` on first occurrence of an RT/MSG key with a calibrated
-            timestamp. A positive float for a non-negative gap. ``None``
-            when no DELTA is meaningful: SPURIOUS_DATA (no RT/MSG key),
-            uncalibrated Standard timestamps (no known tick rate), and
-            non-monotonic timestamps.
-        file_offset: Byte offset of this record in the source file.
-        mux: MUX column value derived from the source file name (L2-WRT-020),
-            or None when MUX population is disabled or the configured filename
-            field is absent. Shared (one str per input file) so per-record
-            carry stays O(1) in resident memory.
-    """
-
-    timestamp: Timestamp
-    type_word: TypeWord
-    message_format: MessageFormat
-    command_word: CommandWord | None
-    command_word_2: CommandWord | None
-    status_word: int | None
-    status_word_2: int | None
-    data_words: tuple[int, ...]
-    error_word: int | None
-    delta: float | None
-    file_offset: int
-    mux: str | None = None
-
-    def __post_init__(self) -> None:
-        """Cap ``data_words`` at :data:`MAX_DATA_WORDS`, mirroring the Rust
-        ``DataWords`` inline buffer (``[u16; 32]``).
-
-        A crafted record whose Type Word claims more than 32 data words is
-        truncated to the first 32 so both implementations carry the same
-        payload. Any standard-conforming record (≤ 32 words) is unaffected, and
-        there is no CSV impact — the writer emits at most 32 ``WDnn`` columns
-        regardless. Set via ``object.__setattr__`` because the dataclass is
-        frozen.
-        """
-        if len(self.data_words) > MAX_DATA_WORDS:
-            object.__setattr__(self, "data_words", self.data_words[:MAX_DATA_WORDS])
-
-    def with_delta(self, delta: float | None) -> MieMessage:
-        """Return a copy of this message carrying a new DELTA.
-
-        ``MieMessage`` is frozen, so callers that recompute DELTA on a merged
-        multi-file timeline (L2-MRG-005) build a fresh instance instead of
-        mutating in place. Rebuilt field-by-field rather than via
-        ``dataclasses.replace`` so every type checker infers the concrete
-        ``MieMessage`` return type; only ``delta`` changes.
-
-        Returns:
-            A new :class:`MieMessage` identical to this one except for
-            ``delta``. This instance is unchanged.
-        """
-        return MieMessage(
-            timestamp=self.timestamp,
-            type_word=self.type_word,
-            message_format=self.message_format,
-            command_word=self.command_word,
-            command_word_2=self.command_word_2,
-            status_word=self.status_word,
-            status_word_2=self.status_word_2,
-            data_words=self.data_words,
-            error_word=self.error_word,
-            delta=delta,
-            file_offset=self.file_offset,
-            mux=self.mux,
-        )
-
-    @property
-    def rt(self) -> int | None:
-        """Remote Terminal address, or None for SPURIOUS_DATA."""
-        return self.command_word.rt if self.command_word is not None else None
-
-    @property
-    def subaddress(self) -> int | None:
-        """Subaddress, or None for SPURIOUS_DATA."""
-        return self.command_word.subaddress if self.command_word is not None else None
-
-    @property
-    def bus(self) -> Bus:
-        """Bus identifier shortcut."""
-        return self.type_word.bus
-
-    @property
-    def msg_label(self) -> str:
-        """Message label in ``<SA><T|R>`` format, or empty for SPURIOUS_DATA."""
-        if self.command_word is None:
-            return ""
-        suffix = "T" if self.command_word.direction == Direction.TRANSMIT else "R"
-        return f"{self.command_word.subaddress}{suffix}"
-
-    @property
-    def delta_key(self) -> str:
-        """Unique key for per-RT/MSG delta tracking.
-
-        Returns empty string for SPURIOUS_DATA (no RT/MSG to track).
-        """
-        if self.command_word is None:
-            return ""
-        return f"{self.rt}:{self.msg_label}"
-
-    @property
-    def is_error(self) -> bool:
-        """True if this record has the error flag set (bit 14)."""
-        return self.type_word.error
-
-    @property
-    def is_spurious(self) -> bool:
-        """True if this is a SPURIOUS_DATA record (type 0x20)."""
-        return self.message_format == MessageFormat.SPURIOUS_DATA
-
-    @property
-    def error_label(self) -> str:
-        """Error classification label for CSV output.
-
-        Returns:
-            ``""`` for normal messages, ``"ERROR"`` for errored records
-            (bit 14 set), ``"SPURIOUS"`` for spurious data records.
-        """
-        if self.type_word.error:
-            return "ERROR"
-        if self.is_spurious:
-            return "SPURIOUS"
-        return ""

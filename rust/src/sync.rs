@@ -561,6 +561,30 @@ mod tests {
         assert_eq!(hit.skipped, 16);
     }
 
+    /// Requirements: L2-SYN-007
+    #[test]
+    fn find_first_record_scan_is_capped_at_max_scan_bytes() {
+        let find = |buf: &[u8]| {
+            find_first_record(
+                buf,
+                buf.len(),
+                None,
+                MAX_SCAN_BYTES,
+                DEFAULT_LOOKAHEAD_RECORDS,
+            )
+        };
+        // Valid records (two, so the look-ahead would confirm them) placed
+        // past the cap are not reached.
+        let mut past = vec![0xFF; MAX_SCAN_BYTES + 1024];
+        past.extend(make_valid_record_36w(2));
+        assert!(find(&past).is_none());
+        // Control: the same records inside the cap are found, so the miss
+        // above is the cap and not the garbage.
+        let mut inside = vec![0xFF; 1024];
+        inside.extend(make_valid_record_36w(2));
+        assert_eq!(find(&inside).map(|hit| hit.offset), Some(1024));
+    }
+
     /// Requirements: L2-SYN-008
     #[test]
     fn find_first_record_returns_none_when_no_valid() {

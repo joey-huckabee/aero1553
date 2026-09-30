@@ -29,7 +29,6 @@ from aero1553.order import (
     DEFAULT_MAX_SORT_GROUP,
     MAX_SORT_GROUP_MAX,
     MAX_SORT_GROUP_MIN,
-    _group_value,
     order_rows,
 )
 
@@ -302,7 +301,6 @@ class TestGrouping:
     def test_differing_timestamp_variants_never_group(self) -> None:
         irig = rec(0, 9, 1)
         standard = rec(0, 2, 1, ts=StandardTimestamp(0, 0, 0))
-        assert _group_value(irig) != _group_value(standard)
         # Separate runs, so RT 9 stays ahead of RT 2.
         assert [m.rt for m in ordered([irig, standard])] == [9, 2]
 
@@ -311,7 +309,8 @@ class TestGrouping:
         """The same instant expressed through different fields is one group."""
         a = rec(0, 1, 1, ts=IrigTimestamp(192, 15, 55, 0, 0, False))
         b = rec(0, 2, 1, ts=IrigTimestamp(192, 15, 54, 60, 0, False))
-        assert _group_value(a) == _group_value(b)
+        # Fed in reverse RT order: they come out sorted only if they are one run.
+        assert [m.rt for m in ordered([b, a])] == [1, 2]
 
     @pytest.mark.requirement("L2-WRT-021")
     def test_freerun_flag_does_not_split_a_group(self) -> None:
@@ -319,7 +318,6 @@ class TestGrouping:
         of grouping."""
         a = rec(10, 9, 1, ts=IrigTimestamp(192, 15, 54, 50, 10, True))
         b = rec(10, 2, 1)
-        assert _group_value(a) == _group_value(b)
         assert [m.rt for m in ordered([a, b])] == [2, 9]
 
 

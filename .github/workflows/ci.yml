@@ -256,7 +256,7 @@ jobs:
           - { os: ubuntu-latest,  python-version: "3.13" }
           - { os: ubuntu-latest,  python-version: "3.14" }
           # Cross-platform smoke on Windows: the current support pin
-          # (3.12, used for build / poetry check --lock / conformance)
+          # (3.12, used for build / uv lock --check / conformance)
           # plus the latest supported version (3.14). Catches path,
           # encoding, and line-ending issues that don't surface on
           # Linux without ballooning the matrix.
@@ -274,39 +274,51 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: ${{ matrix.python-version }}
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
       - name: Display tool versions
         shell: bash
         run: |
-          python --version
-          poetry --version
+          uv --version
+          uv --directory python run python --version
+          rustc --version
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Run Python tests
-        run: poetry -C python run pytest
+        run: uv --directory python run pytest
 
       - name: Validate Python package metadata and lockfile
         # Lockfile + metadata validation and the dist build only need
         # to run once. Keep them on the Linux 3.12 cell — that pin
         # mirrors the pre-existing single-cell behavior.
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
-        run: poetry -C python check --strict --lock
+        run: uv --directory python lock --check
 
       - name: Build Python package
+        # One abi3 wheel serves every supported CPython, so the tag is part
+        # of the contract: a build that lost `abi3-py310` would still
+        # succeed, and only produce a wheel for one interpreter.
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.12'
         working-directory: python
-        run: poetry build
+        shell: bash
+        run: |
+          uv build
+          ls dist
+          ls dist/*-cp310-abi3-*.whl
 
   python-coverage:
     name: Python coverage gate
@@ -316,18 +328,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Enforce Python coverage gate
         # Coverage gate runs once on Linux/3.12 — coverage isn't
@@ -337,7 +353,7 @@ jobs:
         # job. The floor (92% combined line+branch) is `fail_under` in
         # python/pyproject.toml's [tool.coverage.report] — see the comment
         # block there for the ratchet rationale.
-        run: poetry -C python run pytest --cov --cov-report=term-missing
+        run: uv --directory python run pytest --cov --cov-report=term-missing
 
   mypy:
     name: Python type check (mypy)
@@ -347,18 +363,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Run mypy (strict)
         # mypy analyzes the package as python_version 3.10 (set in
@@ -367,7 +387,7 @@ jobs:
         # the coverage gate. working-directory: python so mypy picks up the
         # [tool.mypy] config and `src` resolves to the package source.
         working-directory: python
-        run: poetry run mypy src
+        run: uv run mypy src
 
   pylint:
     name: Python lint (pylint)
@@ -377,18 +397,22 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Run pylint
         # Lints the package source (src/aero1553). The config — curated
@@ -398,7 +422,7 @@ jobs:
         # pylint picks up that config and resolves the package's imports. The
         # gate fails on any message (pylint exits non-zero below 10/10).
         working-directory: python
-        run: poetry run pylint src/aero1553
+        run: uv run pylint src/aero1553
 
   ruff:
     name: Python lint + format (ruff)
@@ -408,30 +432,34 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Run ruff check
         # Lints the package source + tests (config in python/pyproject.toml
         # [tool.ruff]). working-directory: python so ruff picks up the config.
         working-directory: python
-        run: poetry run ruff check
+        run: uv run ruff check
 
       - name: Run ruff format --check
         # Verifies the package + tests are ruff-formatted (Black-style, line
         # length 100 to match the pylint gate). Run `ruff format` to fix.
         working-directory: python
-        run: poetry run ruff format --check
+        run: uv run ruff format --check
 
   vulture:
     name: Python dead code (vulture)
@@ -441,25 +469,29 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Run vulture
         # Finds unused (dead) code across the package + tests. Scan paths and
         # intentional-name ignores (interface args, documented constants) are in
         # python/pyproject.toml [tool.vulture]. Exits non-zero on any finding.
         working-directory: python
-        run: poetry run vulture
+        run: uv run vulture
 
   bandit:
     name: Python security (bandit)
@@ -469,25 +501,29 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v6
 
-      - name: Install Poetry
-        run: pipx install poetry==2.3.4
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
         with:
+          version: "0.12.20"
           python-version: "3.12"
-          cache: poetry
-          cache-dependency-path: python/poetry.lock
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
 
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
       - name: Synchronize locked dependencies
-        run: poetry -C python sync --no-interaction --no-ansi
+        run: uv --directory python sync --locked
 
       - name: Run bandit
         # Security static analysis (SAST) over the package source. Scans
         # src/aero1553 only — not tests, whose asserts bandit's B101 would
         # flag. Exits non-zero on any finding at the default severity/confidence.
         working-directory: python
-        run: poetry run bandit -r src/aero1553
+        run: uv run bandit -r src/aero1553
 
   conformance:
     name: Rust/Python conformance (${{ matrix.os }})
@@ -523,7 +559,7 @@ jobs:
 
       - name: Install aero1553 and runtime dependencies
         # The conformance job runs both CLIs and diffs CSV output. It
-        # does not need Poetry-locked dependency versions — only the
+        # does not need uv-locked dependency versions — only the
         # aero1553 package and its declared runtime deps available
         # to `python -m aero1553`. Installing directly into the
         # actions/setup-python interpreter with pip is the simplest

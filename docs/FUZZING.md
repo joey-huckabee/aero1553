@@ -113,9 +113,10 @@ Adjacent but **not fuzzing** — exhaustive rather than generated, and the
 strongest cross-implementation check in the tree:
 `rust/examples/decode_digest.rs` sweeps every possible Type Word, every possible
 Command Word and every timestamp field bit through the Rust decoders and prints
-an FNV-1a digest. `cpp/tests/test_decode_exhaustive.cpp` and
-`python/tests/test_decode_exhaustive.py` recompute those four constants from
-their own decoders, so one differing field in ~390 000 decodes fails the build.
+an FNV-1a digest. `cpp/tests/test_decode_exhaustive.cpp` recomputes those four
+constants from its own decoders, so one differing field in ~390 000 decodes
+fails the build. (The Python package has no decoders of its own since v4.0.0 --
+it runs the Rust ones -- so it has nothing to recompute; see L3-PY-017.)
 
 ---
 
@@ -345,7 +346,7 @@ a replacement for them.
 ```bash
 # Deep run of the in-process byte harnesses (all three honour the same knobs)
 MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic
-MIE_FUZZ_ITERATIONS=25000 poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness -s
+MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness -s
 MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 
 # The same, instrumented -- what the fuzz-cpp-asan job runs
@@ -357,14 +358,14 @@ MIE_FUZZ_ITERATIONS=256 MIE_FUZZ_STREAM_LOGS=1 make -C cpp check-fuzz
 # Deep run of the two DIFFERENTIAL fuzzers, across every implementation
 (cd rust && cargo build) && (cd cpp && make all)
 MIE_RECORD_FUZZ_ITERS=500 MIE_CONFIG_FUZZ_ITERS=2000 \
-    poetry -C python run python ../tests/conformance/run.py
+    uv --directory python run python ../tests/conformance/run.py
 
 # Reproduce the cross-implementation summary comparison locally: point every
 # harness at ONE file, then compare. The file is appended to, so order is free.
 export MIE_FUZZ_SUMMARY=/tmp/fuzz-summary.txt && rm -f "$MIE_FUZZ_SUMMARY"
 (cd rust && cargo test --test integration -- fuzz_arbitrary_bytes_never_panic \
     dump_arbitrary_bytes_never_panics merge_input_resolution_tolerates_arbitrary_bytes)
-poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness \
+uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness \
     tests/test_merge.py::test_merge_input_resolution_tolerates_arbitrary_bytes
 make -C cpp check-fuzz
 mkdir -p /tmp/fz/local && cp "$MIE_FUZZ_SUMMARY" /tmp/fz/local/

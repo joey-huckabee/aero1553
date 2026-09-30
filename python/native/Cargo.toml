@@ -1,0 +1,35 @@
+[package]
+name = "aero1553-py"
+version = "3.0.0"
+edition = "2024"
+# The core crate's floor (let-chains); PyO3 0.29 needs only 1.83.
+rust-version = "1.88"
+description = "PyO3 binding that exposes the aero1553 Rust decoder as the aero1553 Python package"
+license = "Apache-2.0"
+publish = false
+
+[lib]
+# Built as `aero1553._native` (see [tool.maturin] in ../pyproject.toml).
+name = "_native"
+crate-type = ["cdylib"]
+path = "src/lib.rs"
+
+[dependencies]
+# The decoder itself. PyO3 lives HERE, never in the core crate, so the core
+# keeps memmap2 as its only dependency.
+aero1553 = { path = "../../rust" }
+# One abi3 wheel per platform covers every CPython from 3.10 up.
+# `extension-module` is switched on by maturin at build time
+# ([tool.maturin] features), not here, so `cargo test` of this crate still
+# links libpython.
+pyo3 = { version = "0.29.2", features = ["abi3-py310"] }
+
+# The same release profile as rust/Cargo.toml. Cargo takes the profile from
+# the crate being BUILT, not from its dependencies, so without this the
+# extension compiled the decoder with plain release defaults -- no LTO, 16
+# codegen units -- and a Python decode ran measurably behind the binary built
+# from the identical source.
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = "symbols"

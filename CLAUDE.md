@@ -67,16 +67,16 @@ cargo run --release -- dump path/to/recording.mie --records 10
 
 # Python setup, test, and CLI (run from the repo root)
 cd ..
-poetry -C python sync
-poetry -C python run pytest
-poetry -C python run mypy src    # strict type check (CI-gated)
-poetry -C python run pylint src/aero1553       # lint (CI-gated, must stay 10/10)
-poetry -C python run ruff check                # ruff lint (CI-gated)
-poetry -C python run ruff format               # auto-format (CI runs ruff format --check)
-poetry -C python run vulture                   # dead-code scan (CI-gated)
-poetry -C python run bandit -r src/aero1553    # security scan / SAST (CI-gated)
-poetry -C python run aero1553 --help
-poetry -P python build   # -P (not -C): -C doubles the src path on Windows; -P needs Poetry >= 2.0
+uv --directory python sync
+uv --directory python run pytest
+uv --directory python run mypy src    # strict type check (CI-gated)
+uv --directory python run pylint src/aero1553       # lint (CI-gated, must stay 10/10)
+uv --directory python run ruff check                # ruff lint (CI-gated)
+uv --directory python run ruff format               # auto-format (CI runs ruff format --check)
+uv --directory python run vulture                   # dead-code scan (CI-gated)
+uv --directory python run bandit -r src/aero1553    # security scan / SAST (CI-gated)
+uv --directory python run aero1553 --help
+uv --directory python build   # sdist + one abi3 wheel, via maturin
 
 # C++ build and test (run from cpp/; the Makefile is authoritative on Linux)
 cd cpp
@@ -109,16 +109,21 @@ bash scripts/assert-sources-agree.sh       # Makefile and CMake resolve the same
 # implementation and fails if one is missing, so opting out is explicit --
 # a run that silently tested fewer could report a full pass after a build failed.
 (cd rust && cargo build) && (cd cpp && make all)
-poetry -C python run python ../tests/conformance/run.py
-poetry -C python run python ../tests/conformance/run.py --skip cpp   # no C++ build
-poetry -C python run python ../tests/conformance/run.py --only cpp   # C++ vs the oracles
+uv --directory python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/run.py --skip cpp   # no C++ build
+uv --directory python run python ../tests/conformance/run.py --only cpp   # C++ vs the oracles
+
+# Performance suite (perf/README.md): Rust + Python on the golden recording
+# (tests/golden), outputs checked against the pins, gated on same-run ratios.
+uv --directory python run python ../perf/run.py --repeat 5
+uv --directory python run python ../perf/run.py --small --repeat 2   # smoke run
 
 # Fuzz harnesses (L1-ROB-001). All three read the SAME three knobs:
 #   MIE_FUZZ_ITERATIONS (default 256) / MIE_FUZZ_STREAM_LOGS / MIE_FUZZ_SUMMARY
 # Point them all at one MIE_FUZZ_SUMMARY file and compare the FUZZ-SUMMARY
 # lines -- on identical inputs the counters must be identical.
 MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic
-MIE_FUZZ_ITERATIONS=25000 poetry -C python run pytest tests/test_e2e.py::TestFuzzHarness -s
+MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness -s
 MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 python scripts/compare-fuzz-summaries.py <dir-of-summary-files>
 ```
@@ -165,6 +170,7 @@ All fallible APIs return `Result<T, MieError>`. `MieError` is a single enum (not
 - `docs/USER-GUIDE.md` — end-to-end walkthrough for analysts and operators: install, decode-your-first-file, the three subcommands, common workflows (stdout / inline errors / allow-partial / filtering / site config), reading the CSV, diagnosing failures. The "front door" for non-maintainer readers.
 - `docs/VENDOR-CSV-DIFFS.md` — alignment statement between Aero1553's CSV output and DDC vendor-generated CSV: which columns match byte-for-byte, the five vendor-empty columns we preserve as placeholders, the known IRIG day-of-year firmware discrepancy, the validation workflow, and the protocol for reporting a divergence as a bug.
 - `docs/EXAMPLES.md` — runnable cookbook of common operator tasks: first-time decode, record counting, inline error output for vendor diff, RT-focused filtering, recovering from corrupt recordings with `--allow-partial`, stdout piping into pandas/awk, site-wide config plus per-invocation overrides, CI batch scripts with proper exit-code handling, investigating rejected files with `dump`, full vendor-CSV diff workflow, and a handful of shell ad-hoc filter patterns. Pairs with USER-GUIDE.md (which explains how the pieces work) by showing the pieces composed for real workflows.
+- `docs/PYTHON-GUIDE.md` — the Python library guide: reading, filtering, merging, CSV output, `columns()` / `to_dict()` into NumPy, pandas and dataclasses, time with and without a year, config, dump, logging, errors, performance. Executable documentation: `python/tests/test_python_guide.py` runs every ```python block against the golden recordings and checks each ```text output block exactly, so an example that stops matching the library fails CI.
 - `docs/CLI-REFERENCE.md` — complete per-flag reference for the `decode` / `count` / `dump` subcommands and global options: value, default, range, and config-key equivalent for every flag. The canonical home for CLI parameter docs (the root README links here rather than duplicating the flag surface); mirror of `CONFIG-REFERENCE.md` on the CLI side.
 - `docs/CONFIG-REFERENCE.md` — normative reference for every TOML key the decoder accepts, with type / default / CLI override / validation behavior per key, plus precedence and unknown-key handling.
 - `docs/ERROR-CATALOG.md` — operator-facing reference for every CLI exit code, error class, DDC error code (`0x01xx`), and decoder-assigned code (`0x20xx`). Updated when error variants are added or removed.
@@ -233,7 +239,7 @@ All fallible APIs return `Result<T, MieError>`. `MieError` is a single enum (not
   rename failed. State rules like this over "every commit", not over "the commit".
 - **CSV column names and order are dictated by DDC vendor output — for the first 44 columns.** Don't "clean up" `MUX`, `TERM_NAME`, `IM_GAP`, `RCV_GAP`, `XMT_GAP` — they're columns by spec (`L2-WRT-013`). `TERM_NAME`/`IM_GAP`/`RCV_GAP`/`XMT_GAP` stay empty; `MUX` is populated from the input file name by default (`L2-WRT-020`) and is restored to empty (vendor-exact) by `--no-mux` / `[mux] enabled = false`.
 - **Decoder-added columns go at the TAIL, never inside the vendor block** (`L1-OUT-001`, `L2-WRT-001`). The vendor layout is columns 1–44, `TIME_STAMP` through `XMT_GAP`; `ERROR` and `ERROR_CODE` (45–46) are decoder features with no vendor counterpart — the DDC tool doesn't emit them at all. Through v2.9.0 they sat between `DELTA` and `IM_GAP`, which silently shifted the three gap columns two positions off their vendor indices and made every positional comparison past `DELTA` wrong while all the column *names* still matched. If you add a column, append it; and prefer resolving columns by header name over index in tests (`writer.rs`'s `vendor_block_precedes_decoder_added_columns` and its Python mirror pin the boundary).
-- **The sync modules are pure** (no logging, no I/O) in **both** implementations — `rust/src/sync.rs` and `python/src/aero1553/sync.py`. The reader handles all user-facing messaging based on the values they return. Don't move logging into validation helpers: they lack the caller's context, so they narrate outcomes wrongly (`find_first_record` returning `None` is the *expected* result for a valid empty recording, and logging "no valid record found" there contradicted the reader's own correct message).
+- **The sync modules are pure** (no logging, no I/O) — `rust/src/sync.rs` (which the Python package also runs, through its extension) and `cpp/src/sync.cpp`. The reader handles all user-facing messaging based on the values they return. Don't move logging into validation helpers: they lack the caller's context, so they narrate outcomes wrongly (`find_first_record` returning `None` is the *expected* result for a valid empty recording, and logging "no valid record found" there contradicted the reader's own correct message).
 - **Shared conformance fixtures are byte-exact.** Treat
   `tests/conformance/` as the cross-implementation oracle; update expected CSV
   only after both implementations agree.

@@ -40,13 +40,106 @@ shared behavior) holds at any compatible version pair. See
   or catches `MieDecoderError`, and anything that parses log tags or looks
   for leftover `.mie-decoder.tmp.*` files.
 
+- **The Python package's command line is the Rust CLI.** `aero1553` (the
+  console script), `python -m aero1553` and `aero1553.cli.main()` now run
+  the Rust implementation in-process through the package's compiled
+  extension, so flags, help text, log lines, exit codes and CSV bytes are
+  identical to the Rust binary's by construction. A whole-file decode is
+  about 22x faster (`count` over 100x). Two consequences for code that
+  drives the CLI from Python:
+
+  | Was | Now |
+  |---|---|
+  | `aero1553.cli.build_parser()` returned an `argparse` parser | **Removed.** The command line has one parser, in Rust. Run a command line with `aero1553.cli.main(argv)` and read its exit status. |
+  | A usage error raised `SystemExit` | `main()` **returns** the status (`EXIT_USAGE`, 4); `--help` / `--version` return `EXIT_OK` |
+  | Output could be captured by swapping `sys.stdout` (or pytest's `capsys`) | The CLI writes to the stdout / stderr **file descriptors**, as the binary does. Capture there (pytest's `capfd`, or a subprocess). Log lines arrive on stderr, not through Python's `logging`. |
+
+  One parser also retires the three places the Python CLI used to differ
+  from Rust and C++, all inherited from `argparse`. Each is now the same in
+  every implementation on every supported Python, and L2-CLI-015/016/017
+  bind them (eight new conformance cases):
+
+  - number-leading values such as `--mux-delimiter -5e3`, `-0x5` or `-1a`
+    are values (they were usage errors on Python 3.10–3.13);
+  - `--` before the subcommand (`-- decode rec.mie`) works (it needed
+    Python 3.12+), and a trailing `--` after a flag's value is a no-op (it
+    was a usage error);
+  - `--max-sort-group abc --help` prints help and exits 0 (it exited 4).
+
+  `main()` and `main_cli()` and the `EXIT_*` constants are unchanged.
+
+- **The Python reader is the Rust reader.** `aero1553.MieFileReader` keeps its
+  constructor, properties and behaviour, and iterating it is about 29x
+  faster (500,000 records: 28,601 -> 835,511 records/s on the reference
+  machine). The records it yields -- `MieMessage` and the `TypeWord`,
+  `CommandWord`, `IrigTimestamp` and `StandardTimestamp` values in them --
+  are compiled classes with the same fields, properties, constructors,
+  equality, hashing, repr, pickling and `with_delta()`; nested values are
+  built only when a field is read. The enums are unchanged, still `IntEnum`
+  (`msg.bus is Bus.A`). Decoder log lines still reach Python `logging` under
+  the same logger names (`aero1553.reader`), and errors are the same
+  `aero1553.exceptions` classes with the same messages and attributes.
+
+  | Was | Now |
+  |---|---|
+  | The record types were frozen dataclasses | **They are not dataclasses**: `dataclasses.replace` / `asdict` / `fields` do not apply. Use `copy.replace(msg, delta=...)` (Python 3.13+) or `msg.__replace__(...)`, and read fields by name. |
+  | `aero1553.sync.is_homogeneous_payload`, `diagnose_header_scan_failure` and `HOMOGENEITY_SAMPLE_RECORDS` | **Removed.** They were the pure-Python reader's header-scan helpers and had no other caller; the reader's own checks (L2-SYN-018, L2-RDR-004) run in Rust and behave as before. |
+  `main_cli()` (the console-script entry point) now restores the default
+  SIGINT handler, so Ctrl-C ends a long decode immediately, as it ends the
+  binary.
+
   **Unchanged**: names that describe the MIE *file format* rather than the
   product — `MieFileReader`, `MieMessage`, `MieError`, the `Mie*Error`
   subclasses, the C++ `mie::` namespace and `include/mie/` headers, and the
   `MIE_FUZZ_*` environment variables. CSV output is byte-identical.
 
+- **The rest of the Python package is the Rust crate too.** Every
+  user-level module keeps its public API and now runs the core crate's code
+  through the compiled extension, so the library and the CLI cannot disagree:
+
+  | Module | Now runs |
+  |---|---|
+  | `aero1553.filters.apply_filters`, `aero1553.order.order_rows` | `filter.rs`, `order.rs` |
+  | `aero1553.writer` (`write_csv`, `write_csv_split`, `message_to_row`, ...) | `writer.rs` -- the CLI's CSV bytes, the same atomic commit, `.partial` and `--no-clobber` rules |
+  | `aero1553.merge` (`merge_readers`, `read_manifest`, `glob_match`, `expand_glob`) | `merge.rs` |
+  | `aero1553.delta.DeltaTracker` | `delta.rs` |
+  | `aero1553.dump` (`hex_dump_raw`, `hex_dump_records`) | `dump.rs` |
+  | `aero1553.config.load_config`, `parse_utc_offset` | `config.rs`; `DecoderConfig` / `FilterConfig` are still Python dataclasses |
+
+  A chain `reader -> apply_filters -> order_rows -> write_csv` (or a merge
+  feeding it) never leaves Rust: each stage returns a native `RecordIterator`
+  the next stage takes over. Any Python iterable of `MieMessage` is still
+  accepted, and an exception it raises reaches the caller unchanged. What a
+  caller can observe differently:
+
+  | Was | Now |
+  |---|---|
+  | `aero1553.decode` and `aero1553.sync` (the pure-Python word decoders and sync helpers) | **Removed.** Nothing called them once the reader became Rust's. Their defaults are on the extension (`DEFAULT_DETECT_RECORDS`, `DEFAULT_LOOKAHEAD_RECORDS`, `DEFAULT_MUX_*`) and remain `MieFileReader`'s parameter defaults. |
+  | `aero1553.models.ByteSource` | **Removed** with the helpers it typed. |
+  | Config rejection messages, e.g. `Invalid [decode] strict: expected boolean, got str ('yes')` | The CLI's wording, e.g. `[decode] strict must be a boolean`. Exception classes are unchanged, except that a duplicate key or re-declared section raises `ValueError` rather than its `tomllib` subclass `TOMLDecodeError`. |
+  | `message_to_row(msg)` listed `WD01`..`WD32` last | Keys follow CSV column order. Dict equality is unaffected. |
+  | A calendar-rendering refusal named the record, `(record at offset 0x..)`, for freerun / Standard records | The writer's message, without the offset. |
+  | A negative `start_offset` / `length` / `max_records` to the dump produced a meaningless report | `ValueError` naming the argument. |
+
+  **The Python package now declares no runtime dependency.** `tomli` served
+  only the Python 3.10 TOML path, and the TOML loader is Rust's.
+
 ### Changed
 
+- **The Python package is built with maturin and developed with uv; Poetry
+  is gone.** This is the groundwork for the Python package becoming a PyO3
+  binding over the Rust decoder: it now contains a compiled extension,
+  `aero1553._native` (built from `python/native/`), so **installing from
+  source needs a Rust toolchain**. The build produces one `cp310-abi3`
+  wheel per platform that serves every CPython from 3.10 up. For
+  contributors: `poetry.lock` is replaced by `uv.lock`, the dev tools are a
+  PEP 735 `[dependency-groups]` table, and every `poetry -C python …`
+  command becomes `uv --directory python …` (same working directory, same
+  relative paths). CI installs with `uv sync --locked`.
+- **The Python wheel and sdist now include the Apache-2.0 license text.**
+  They previously carried only the SPDX identifier: the license file sits at
+  the repository root, outside the Python project. `python/LICENSE` is a
+  copy, and `scripts/repo-hygiene.sh` keeps it identical to the original.
 - The Python CLI's startup log line now reads `aero1553 v<version>`, the
   same as the Rust CLI's. It previously said `MIE-Decoder v<version>` while
   Rust said `mie-decoder v<version>`.
@@ -58,6 +151,63 @@ shared behavior) holds at any compatible version pair. See
   output-safety requirement IDs were wrong, the class diagram's enums and
   fields now match the code, and the data flow gains the empty-recording and
   `0x0000` terminator paths and drops an fsync step no implementation has.
+
+### Added
+
+- **A Python library guide**, [`docs/PYTHON-GUIDE.md`](docs/PYTHON-GUIDE.md):
+  reading and the record, reading options, filtering and canonical order,
+  writing CSV (to a file or stream, with separate errors, no-clobber, calendar
+  dates), merging recorders, choosing a table route, NumPy, pandas,
+  dataclasses, time with and without a year, configuration files, the hex
+  dump, logging, errors, running the CLI from Python, performance and
+  supported platforms. It is executable documentation: every example runs in
+  the test suite against the golden recordings, and every output it shows is
+  checked exactly, so the guide cannot drift from the library.
+- **Python: decoded records as tables, for NumPy, pandas and dataclasses.**
+  `aero1553.columns(stream)` turns a whole record stream -- a reader, a
+  filtered or ordered stream, or a merge -- into one typed buffer per field,
+  built in Rust with no Python object per record; `np.asarray(...)` and
+  `pd.DataFrame(...)` wrap the buffers without copying. `MieMessage.to_dict()`
+  returns one record's fields as plain values, so
+  `MyRow(**msg.to_dict(fields=...))` fills a user-defined dataclass. One
+  schema (`aero1553.table.FIELDS`) serves both; `fields=` selects a subset.
+  Time uses the decoder's own rules: `time_us` follows the DELTA rule
+  (Standard records need `standard_tick_rate_hz`), and a `datetime` field
+  appears when `year=` is given, as a NumPy `datetime64` column or an aware
+  `datetime`. Without a year there is no `datetime` field and no error --
+  `day_of_year` and `time_of_day_us` are always there. Records with no date
+  (freerun, Standard, day 366 of a common year) are `NaT` / `None`. Measured
+  on 500,000 records, `columns()` into pandas is about 7x faster than
+  building a DataFrame from per-record dicts and uses about a third of the
+  memory; the performance suite (`perf/`) compares every route. NumPy and
+  pandas are not dependencies of the package.
+- Rust: `log::set_sink` / `LogSink` route log lines to an embedder (the
+  Python binding forwards them to `logging`); `log::with_stderr` pins a scope
+  to stderr, which is how the CLI keeps its log output where it was.
+- Rust: `merge::MergedRecordIter::new_detached` builds a merge that outlives
+  its readers, sharing each reader's mapping as `iter_detached` does.
+- Rust: `delta` is a public module (`DeltaTracker`, `DeltaOutcome`,
+  `delta_key`) and `config::parse_utc_offset` is public, so an embedder uses
+  the one definition of the DELTA key and of the UTC-offset grammar.
+- Rust: `MieFileReader::iter_detached()` returns a `RecordIter<'static>` --
+  the same records as `iter()`, from an iterator that shares the file mapping
+  instead of borrowing the reader, so it can outlive it. For embedders whose
+  iterator lifetime is not a Rust scope (the Python binding keeps one inside
+  a Python object). No cost per record: decode throughput is unchanged.
+- Rust: `cli::run_to_code(argv) -> u8`, the exit status as a number.
+  `cli::run` returns `std::process::ExitCode`, which cannot be read back.
+- **A performance suite for the Rust and Python implementations** (`perf/`,
+  run on every pull request by `.github/workflows/perf.yml`). Every case --
+  the Rust library, the Python library, both CLIs as processes, and each
+  route into NumPy, pandas and dataclasses -- is timed on a generated golden
+  recording (`tests/golden/`, pinned by hash) and its output checked against
+  the pinned CSV hash, row count and RT checksum. The report gives every
+  run's time, per-phase times, each library's import time (measured in a
+  fresh interpreter) and a total that adds it back, records/s and peak
+  memory. The build fails on a wrong answer or on a gate: a ratio between two
+  cases of the same run (for example the Python library decode against the
+  Rust library's), which runner noise cannot trip the way an absolute time
+  limit would. It replaces the ad-hoc `python/benchmarks/` scripts.
 
 ## [3.0.0] — 2026-08-28
 

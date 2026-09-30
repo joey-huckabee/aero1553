@@ -24,13 +24,9 @@ from aero1553.merge import (
     read_manifest,
 )
 from aero1553.models import (
-    Bus,
     DeltaScope,
-    IrigTimestamp,
-    MessageFormat,
     MieMessage,
     TimestampFormat,
-    TypeWord,
 )
 from aero1553.reader import MieFileReader
 from tests.conftest import RECORD_RT15_SA11_RCV
@@ -348,7 +344,7 @@ def test_cli_merge_allow_partial_open_failure_writes_dot_partial(tmp_path: Path)
 @pytest.mark.requirement("L2-WRT-014")
 def test_cli_merge_allow_partial_single_survivor_still_guards_output(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
     """Regression: a merge (two inputs *requested*) where ``--allow-partial``
     drops one input to a single surviving reader must STILL reject an output path
@@ -369,7 +365,7 @@ def test_cli_merge_allow_partial_single_survivor_still_guards_output(
     rc = main(["decode", str(fg), str(fe), "-o", str(fg), "--allow-partial"])
     assert rc == EXIT_RUNTIME
     # The collision guard fired specifically (not an incidental write error).
-    assert "resolves to merge input" in capsys.readouterr().err
+    assert "resolves to merge input" in capfd.readouterr().err
     assert fg.read_bytes() == before  # input left intact, never overwritten
 
 
@@ -377,7 +373,7 @@ def test_cli_merge_allow_partial_single_survivor_still_guards_output(
 @pytest.mark.requirement("L2-MRG-001")
 def test_cli_merge_rejects_input_a_derived_output_would_overwrite(
     tmp_path: Path,
-    capsys: pytest.CaptureFixture[str],
+    capfd: pytest.CaptureFixture[str],
 ) -> None:
     """A merge must check every path it could commit, not just the destination.
 
@@ -402,7 +398,7 @@ def test_cli_merge_rejects_input_a_derived_output_would_overwrite(
 
     rc = main(["decode", str(first), str(victim), "-o", str(dest), "--separate-errors"])
     assert rc == EXIT_RUNTIME
-    assert "resolves to merge input" in capsys.readouterr().err
+    assert "resolves to merge input" in capfd.readouterr().err
     assert victim.read_bytes() == before, "input modified despite the rejection"
     assert not dest.exists(), "no output may be created once the run is refused"
 
@@ -759,85 +755,45 @@ def test_merge_collapse_within_window(tmp_path: Path) -> None:
     assert len(msgs) == 1, "within-window clock skew collapses"
 
 
-def _probe_message(seq: int) -> MieMessage:
-    """A message whose wire content is driven by ``seq``, so a stream of them
-    collapses nothing.
-
-    Content uniqueness is load-bearing in the probes below: if everything
-    collapsed, the survivor set would stay small for the wrong reason and the
-    assertions would pass vacuously.
-
-    Returns:
-        A message differing from its neighbours only in the Error Word.
-    """
-    return MieMessage(
-        timestamp=IrigTimestamp(
-            day=192, hour=15, minute=54, second=50, microsecond=0, freerun=False
-        ),
-        type_word=TypeWord(message_type=0x02, bus=Bus.A, word_count=4, error=False, raw=0x0224),
-        message_format=MessageFormat.RT_TO_RT,
-        command_word=None,
-        command_word_2=None,
-        status_word=None,
-        status_word_2=None,
-        data_words=(),
-        error_word=seq & 0xFFFF,
-        delta=None,
-        file_offset=0,
-        mux=None,
-    )
-
-
-@pytest.mark.requirement("L2-MRG-007")
-@pytest.mark.requirement("L2-MRG-008")
-def test_dedup_window_retention_is_independent_of_arrival_order() -> None:
-    """The reported probe, as a test: alternating 1000us / 0us, zero-width window.
-
-    Front-only eviction never fired here -- the front held a timestamp in the
-    FUTURE of the current record, so the one-sided ``us - front_us`` was never
-    greater than the window -- and the front then blocked eviction of everything
-    behind it. All 10 000 records were retained and the per-record scan went
-    quadratic (2x records, 4x time).
-
-    Retention is now on absolute distance, so the 1000us survivors go the moment
-    a 0us record arrives, and vice versa.
-    """
-    from aero1553.merge import DEFAULT_MAX_COLLAPSE_SURVIVORS, _DedupWindow
-
-    w = _DedupWindow(0, DEFAULT_MAX_COLLAPSE_SURVIVORS)
-    for i in range(10_000):
-        w.is_duplicate(1000 if i % 2 == 0 else 0, i % 2, _probe_message(i))
-    assert len(w._survivors) <= 2, (
-        f"survivor set grew to {len(w._survivors)} on an alternating stream; "
-        "retention must not depend on the order survivors were appended in"
-    )
-
-
 @pytest.mark.requirement("L2-MRG-008")
 def test_dedup_survivor_set_is_capped_when_the_window_cannot_bound_it(
-    caplog: pytest.LogCaptureFixture,
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
 ) -> None:
     """The window bounds retention in TIME; the cap bounds it in COUNT.
 
-    This is the input the window alone cannot bound -- every record shares one
-    timestamp, so every one of them is legitimately inside the window. It is the
-    same "timestamps all decode alike" case L2-WRT-022 cites for the reorder
-    stage, and it is why absolute-distance eviction is not on its own sufficient.
+    Every record shares one timestamp, so every one of them is legitimately
+    inside the collapse window -- the input the window alone cannot bound, and
+    the same "timestamps all decode alike" case L2-WRT-022 cites for the reorder
+    stage. The records differ in RT, so none is a duplicate of another: the cap
+    is reached by distinct survivors, not by a collapse.
+
+    The merge must degrade rather than fail -- one WARN when the cap is reached,
+    and every record still in the output (L2-MRG-008). (That retention does not
+    depend on arrival order is pinned where the window lives, in
+    ``rust/src/merge.rs``.)
     """
     import logging
 
-    from aero1553.merge import _DedupWindow
+    from tests.conftest import receive_record_rt_sa_us
 
-    cap = 64
-    w = _DedupWindow(2**63, cap)
+    def recording(name: str, rts: range) -> MieFileReader:
+        path = tmp_path / name
+        path.write_bytes(b"".join(receive_record_rt_sa_us(rt, 11, 100) for rt in rts))
+        return MieFileReader(path)
+
+    readers = [recording("a.mie", range(1, 16)), recording("b.mie", range(16, 31))]
     with caplog.at_level(logging.WARNING, logger="aero1553.merge"):
-        for i in range(10_000):
-            w.is_duplicate(0, i % 2, _probe_message(i))
+        merged = list(
+            merge_readers(
+                readers,
+                collapse_duplicates=True,
+                collapse_window_us=2**62,
+                max_collapse_survivors=4,
+            )
+        )
 
-    assert len(w._survivors) == cap, (
-        "the survivor set must stop at the cap, not grow with the record count"
-    )
-    warns = [r for r in caplog.records if "max_collapse_survivors cap" in r.getMessage()]
+    assert len(merged) == 30, "no record may be dropped when the cap is reached"
+    warns = [r for r in caplog.records if "max_collapse_survivors" in r.getMessage()]
     assert len(warns) == 1, "exactly one cap WARN per merge, not one per capped record"
 
 

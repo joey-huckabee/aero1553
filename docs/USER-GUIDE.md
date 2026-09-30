@@ -9,7 +9,7 @@ End-to-end walkthrough for analysts and operators who need to turn a DDC MIE bin
 - Reading the CSV output.
 - Diagnosing failures.
 
-If you're modifying the code, see [`MAINTAINER-GUIDE.md`](MAINTAINER-GUIDE.md). For the full TOML schema, see [`CONFIG-REFERENCE.md`](CONFIG-REFERENCE.md). For every CLI exit code and error class, see [`ERROR-CATALOG.md`](ERROR-CATALOG.md).
+If you're using the Python package from your own code rather than the command line, see [`PYTHON-GUIDE.md`](PYTHON-GUIDE.md). If you're modifying the code, see [`MAINTAINER-GUIDE.md`](MAINTAINER-GUIDE.md). For the full TOML schema, see [`CONFIG-REFERENCE.md`](CONFIG-REFERENCE.md). For every CLI exit code and error class, see [`ERROR-CATALOG.md`](ERROR-CATALOG.md).
 
 ---
 
@@ -60,11 +60,14 @@ pip install -e ./python
 aero1553 --help
 ```
 
-If you prefer Poetry:
+The package compiles a small Rust extension during the install, so a source
+install needs a Rust toolchain ([rustup](https://rustup.rs/)) on the machine.
+
+If you prefer [uv](https://docs.astral.sh/uv/):
 
 ```bash
-poetry -C python sync
-poetry -C python run aero1553 --help
+uv --directory python sync
+uv --directory python run aero1553 --help
 ```
 
 The Python package supports Python 3.10 through 3.14.

@@ -10,7 +10,7 @@
 // a valid empty recording, and logging "no valid record found" there contradicts
 // the reader's own correct message. The reader decides what to say.
 //
-// Mirrors `rust/src/sync.rs` and `python/src/aero1553/sync.py`.
+// Mirrors `rust/src/sync.rs` (which the Python package also runs).
 
 #ifndef MIE_SYNC_HPP
 #define MIE_SYNC_HPP

@@ -143,3 +143,9 @@ too_many_lines = "allow"
 lto = "thin"
 codegen-units = 1
 strip = "symbols"
+
+# The Rust half of the performance suite (perf/README.md). Hand-rolled:
+# no benchmark framework, so memmap2 stays the only dependency.
+[[bench]]
+name = "perf"
+harness = false

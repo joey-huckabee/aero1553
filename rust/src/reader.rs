@@ -9,7 +9,8 @@
 //! mode opt-ins) surface as `Err` items from the iterator.
 
 use std::fs::File;
-use std::path::{Path, PathBuf};
+use std::marker::PhantomData;
+use std::path::Path;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 
@@ -37,8 +38,8 @@ use crate::{log_debug, log_error, log_info, log_warn};
 /// Reader handle. Construct with [`Self::new`]; iterate by calling `.iter()`
 /// or using `IntoIterator`.
 pub struct MieFileReader {
-    path: PathBuf,
-    mmap: Mmap,
+    path: Arc<Path>,
+    mmap: Arc<Mmap>,
     file_size: u64,
     strict: bool,
     input_time_format: TimestampFormat,
@@ -68,7 +69,7 @@ pub struct MieFileReader {
     /// active `RecordIter` via a reference so the CLI can query it
     /// post-iteration (e.g., to distinguish L1-EXIT-003 partial-recovered
     /// from L1-EXIT-002 complete in the exit-class summary).
-    sync_losses: AtomicU64,
+    sync_losses: Arc<AtomicU64>,
     /// L1-EXIT-010 / L2-RDR-021: set true during `iter()` when the input is a
     /// valid but *empty* recording — its record stream opens directly on the
     /// end-of-records terminator (a null Type Word), so zero records are
@@ -206,8 +207,8 @@ impl MieFileReader {
         };
 
         Ok(Self {
-            path,
-            mmap,
+            path: Arc::from(path),
+            mmap: Arc::new(mmap),
             file_size,
             strict: opts.strict,
             input_time_format: opts.input_time_format,
@@ -215,7 +216,7 @@ impl MieFileReader {
             lookahead_records: opts.lookahead_records.max(1),
             standard_tick_rate_hz: opts.standard_tick_rate_hz,
             mux,
-            sync_losses: AtomicU64::new(0),
+            sync_losses: Arc::new(AtomicU64::new(0)),
             empty_recording: AtomicBool::new(false),
             calendar_year: opts.calendar_year,
         })
@@ -278,7 +279,7 @@ impl MieFileReader {
             return (
                 self.default_resolved_format(),
                 Some(MieError::HomogeneousPayload {
-                    path: self.path.clone(),
+                    path: self.path.to_path_buf(),
                     offset: hit.offset as u64,
                     sample_records: u32::try_from(crate::sync::HOMOGENEITY_SAMPLE_RECORDS)
                         .unwrap_or(u32::MAX),
@@ -479,7 +480,7 @@ impl MieFileReader {
                 (
                     false,
                     Some(MieError::NoValidRecords {
-                        path: self.path.clone(),
+                        path: self.path.to_path_buf(),
                         scan_bytes,
                     }),
                 )
@@ -488,6 +489,28 @@ impl MieFileReader {
     }
 
     pub fn iter(&self) -> RecordIter<'_> {
+        self.start_iter()
+    }
+
+    /// An iterator that does not borrow this reader.
+    ///
+    /// Yields exactly what [`iter`](Self::iter) yields. The difference is
+    /// ownership: the iterator shares the file mapping, the sync-loss counter
+    /// and the path with the reader through reference counts, so it may
+    /// outlive the reader -- the mapping is released when the last of the two
+    /// is dropped. That is what an embedder needs when the iterator's lifetime
+    /// is not a Rust scope: the Python binding stores one inside a Python
+    /// object.
+    ///
+    /// [`sync_losses`](Self::sync_losses) and
+    /// [`empty_recording`](Self::empty_recording) report on the most recently
+    /// started iteration, whichever of the two methods started it.
+    #[must_use]
+    pub fn iter_detached(&self) -> RecordIter<'static> {
+        self.start_iter()
+    }
+
+    fn start_iter<'a>(&self) -> RecordIter<'a> {
         // Reset the per-call counter so successive iter() calls on the
         // same reader handle don't accumulate stale counts.
         self.sync_losses.store(0, Ordering::Relaxed);
@@ -547,7 +570,8 @@ impl MieFileReader {
         log_info!("beginning decode of {}", self.path.display());
 
         RecordIter {
-            data,
+            data: Arc::clone(&self.mmap),
+            _reader: PhantomData,
             file_len,
             offset: start_offset.map_or(file_len, |h| h.offset),
             done: early_done,
@@ -561,8 +585,8 @@ impl MieFileReader {
             warned_irig_day: false,
             msg_count: 0,
             sync_losses: 0,
-            sync_losses_atomic: &self.sync_losses,
-            path_for_log: &self.path,
+            sync_losses_atomic: Arc::clone(&self.sync_losses),
+            path_for_log: Arc::clone(&self.path),
             mux: self.mux.clone(),
             calendar_year: self.calendar_year,
             last_irig_day: None,
@@ -580,7 +604,12 @@ impl<'a> IntoIterator for &'a MieFileReader {
 }
 
 pub struct RecordIter<'a> {
-    data: &'a [u8],
+    data: Arc<Mmap>,
+    /// Keeps `RecordIter<'a>`'s lifetime parameter, which is public API. The
+    /// iterator no longer borrows its reader -- it shares the mapping, the
+    /// sync-loss counter and the path through `Arc`s -- so `'a` constrains
+    /// nothing; [`MieFileReader::iter_detached`] returns `RecordIter<'static>`.
+    _reader: PhantomData<&'a MieFileReader>,
     file_len: usize,
     offset: usize,
     done: bool,
@@ -627,8 +656,8 @@ pub struct RecordIter<'a> {
     sync_losses: u64,
     /// Shared with `MieFileReader::sync_losses` so the CLI can query
     /// the cumulative count after iteration ends.
-    sync_losses_atomic: &'a AtomicU64,
-    path_for_log: &'a Path,
+    sync_losses_atomic: Arc<AtomicU64>,
+    path_for_log: Arc<Path>,
     /// L2-WRT-020 per-file MUX value, cloned (refcount bump) onto each message.
     mux: Option<Arc<str>>,
     /// L2-WRT-026 clause 4 / L2-LOG-002: the calendar year in force, or `None`
@@ -728,7 +757,7 @@ impl RecordIter<'_> {
             self.log_complete();
             return Step::Stop;
         }
-        let Some(type_raw) = read_u16(self.data, self.offset) else {
+        let Some(type_raw) = read_u16(&self.data, self.offset) else {
             self.done = true;
             return Step::Stop;
         };
@@ -765,7 +794,7 @@ impl RecordIter<'_> {
         // whether the *next* boundary is corrupt is the next iteration's
         // problem, and sync recovery already handles it (L2-SYN-005).
         if let Err(failure) =
-            validate_record_detailed(self.data, self.offset, self.file_len, Some(resolved), 1)
+            validate_record_detailed(&self.data, self.offset, self.file_len, Some(resolved), 1)
         {
             return self.handle_sync_loss(failure, type_raw, tw, record_bytes);
         }
@@ -783,7 +812,7 @@ impl RecordIter<'_> {
             return Step::Yield(Ok(msg));
         }
 
-        let Some(cmd_raw) = read_u16(self.data, cmd_byte_offset) else {
+        let Some(cmd_raw) = read_u16(&self.data, cmd_byte_offset) else {
             self.done = true;
             return Step::Stop;
         };
@@ -829,7 +858,7 @@ impl RecordIter<'_> {
     ) -> Step {
         self.sync_losses += 1;
         self.sync_losses_atomic.fetch_add(1, Ordering::Relaxed);
-        log_validation_context(self.data, self.offset);
+        log_validation_context(&self.data, self.offset);
         if self.strict {
             let err = match failure {
                 ValidationFailure::UnknownMessageType => MieError::UnknownTypeWord {
@@ -863,7 +892,7 @@ impl RecordIter<'_> {
             tw.word_count
         );
         match recover_sync(
-            self.data,
+            &self.data,
             self.offset,
             self.file_len,
             Some(self.resolved_format),
@@ -924,8 +953,8 @@ impl RecordIter<'_> {
     fn decode_timestamp_at(&mut self, resolved: TimestampFormat) -> Option<Timestamp> {
         match resolved {
             TimestampFormat::Standard => {
-                let upper = read_u16(self.data, self.offset + 2)?;
-                let lower = read_u16(self.data, self.offset + 4)?;
+                let upper = read_u16(&self.data, self.offset + 2)?;
+                let lower = read_u16(&self.data, self.offset + 4)?;
                 Some(Timestamp::Standard(decode_standard_timestamp(upper, lower)))
             }
             // Irig — and Auto, which is resolved to a concrete format eagerly in
@@ -935,9 +964,9 @@ impl RecordIter<'_> {
             // (L1-ROB-001) — the earlier `unreachable!()` nicked the no-panic
             // invariant even though it was provably unreachable.
             TimestampFormat::Irig | TimestampFormat::Auto => {
-                let upper = read_u16(self.data, self.offset + 2)?;
-                let middle = read_u16(self.data, self.offset + 4)?;
-                let lower = read_u16(self.data, self.offset + 6)?;
+                let upper = read_u16(&self.data, self.offset + 2)?;
+                let middle = read_u16(&self.data, self.offset + 4)?;
+                let lower = read_u16(&self.data, self.offset + 6)?;
                 let irig = decode_irig_timestamp(upper, middle, lower);
                 // L2-WRT-026 clause 4: under a calendar rendering, a backward
                 // day step means the recording crosses New Year while the whole
@@ -1217,7 +1246,7 @@ impl RecordIter<'_> {
         delta: Option<f64>,
     ) -> MieResult<MieMessage> {
         let error_word_offset = self.offset + (usize::from(tw.word_count) - 1) * 2;
-        let Some(error_code) = read_u16(self.data, error_word_offset) else {
+        let Some(error_code) = read_u16(&self.data, error_word_offset) else {
             return Err(MieError::PayloadError {
                 offset: self.offset as u64,
                 detail: "error word out of bounds".into(),
@@ -1946,6 +1975,29 @@ mod tests {
             "the lone record before the terminator decodes"
         );
         assert!(!reader.empty_recording());
+    }
+
+    /// `iter_detached` yields exactly what `iter` yields, and keeps working
+    /// after the reader is gone: the read-only mapping is shared, so it lives
+    /// until the last of reader and iterator is dropped. That is the whole
+    /// point of the method -- the Python binding holds the iterator inside a
+    /// Python object whose lifetime no Rust scope bounds.
+    /// Requirements: L3-RS-003
+    #[test]
+    fn detached_iterator_matches_iter_and_outlives_the_reader() {
+        let mut bytes = rt15_sa11_rcv();
+        bytes.extend_from_slice(&rt15_sa11_rcv());
+        bytes.extend_from_slice(&[0x00, 0x00]);
+        let f = write_temp(&bytes);
+
+        let reader = MieFileReader::new(f.path()).unwrap();
+        let borrowed: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
+        let detached = reader.iter_detached();
+        drop(reader);
+        let owned: Vec<_> = detached.collect::<Result<_, _>>().unwrap();
+
+        assert_eq!(borrowed.len(), 2);
+        assert_eq!(owned, borrowed);
     }
 
     /// L2-SYN-028: the LAST record before the terminator SHALL NOT be dropped.

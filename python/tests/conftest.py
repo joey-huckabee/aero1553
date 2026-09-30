@@ -8,8 +8,10 @@ vendor-generated CSV output.
 from __future__ import annotations
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from dataclasses import dataclass
 from pathlib import Path
+from typing import TypeVar
 
 import pytest
 
@@ -291,24 +293,75 @@ def multi_record_data() -> bytes:
     return RECORD_RT15_SA11_RCV + RECORD_RT15_SA22_RCV + RECORD_RT15_SA22_XMT
 
 
-@pytest.fixture
-def standard_timestamp_data() -> bytes:
-    """A Standard-format (free-running counter) recording.
+CONFORMANCE_INPUTS = Path(__file__).resolve().parents[2] / "tests" / "conformance" / "inputs"
 
-    Read from the shared conformance fixture rather than rebuilt here, so the
-    bytes stay identical to what the cross-implementation oracle uses.
+
+def conformance_input(name: str) -> bytes:
+    """The bytes of a shared conformance fixture (``tests/conformance/inputs``).
+
+    Reading the fixture rather than rebuilding it keeps the bytes identical to
+    what the cross-implementation oracle uses. ``#`` starts a comment.
     """
-    source = (
-        Path(__file__).resolve().parents[2]
-        / "tests"
-        / "conformance"
-        / "inputs"
-        / "standard-timestamps.hex"
-    )
+    source = CONFORMANCE_INPUTS / f"{name}.hex"
     hex_text = "".join(
         line.split("#", 1)[0].strip() for line in source.read_text(encoding="utf-8").splitlines()
     )
     return bytes.fromhex(hex_text)
+
+
+@pytest.fixture
+def standard_timestamp_data() -> bytes:
+    """A Standard-format (free-running counter) recording."""
+    return conformance_input("standard-timestamps")
+
+
+T = TypeVar("T")
+
+
+def replace(obj: T, **changes: object) -> T:
+    """A copy of a record value with some fields changed.
+
+    The record types (``MieMessage``, ``TypeWord``, ...) are compiled classes,
+    not dataclasses, so ``dataclasses.replace`` does not apply. They implement
+    the ``copy.replace`` protocol instead; ``copy.replace`` itself is Python
+    3.13+, and the package supports 3.10, so this calls the protocol method
+    directly.
+    """
+    result: T = obj.__replace__(**changes)  # type: ignore[attr-defined]
+    return result
+
+
+@dataclass(frozen=True)
+class CliRun:
+    """One in-process ``aero1553`` run: its exit status and what it wrote."""
+
+    rc: int
+    out: str
+    err: str
+
+
+RunCli = Callable[[list[str]], CliRun]
+
+
+@pytest.fixture
+def run_cli(capfd: pytest.CaptureFixture[str]) -> RunCli:
+    """Run ``aero1553.cli.main(argv)`` and capture its output.
+
+    The CLI is the Rust implementation, running in-process, and it writes to
+    the stdout / stderr FILE DESCRIPTORS -- not to ``sys.stdout`` -- so the
+    capture has to happen at that level: ``capfd``, never ``capsys``, and never
+    a ``sys.stdout`` swap. Anything captured before the call is discarded, so
+    each ``CliRun`` holds exactly one run's output.
+    """
+    from aero1553.cli import main
+
+    def run(argv: list[str]) -> CliRun:
+        capfd.readouterr()
+        rc = main(argv)
+        out, err = capfd.readouterr()
+        return CliRun(rc=rc, out=out, err=err)
+
+    return run
 
 
 @pytest.fixture

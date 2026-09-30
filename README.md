@@ -32,7 +32,7 @@ Build, install, and library-usage instructions live with each implementation:
 - **Rust** — [`rust/README.md`](rust/README.md): native release binary, crate /
   library API, `cargo` workflow.
 - **Python** — [`python/README.md`](python/README.md): `aero1553` CLI plus the
-  importable `aero1553` package, Poetry workflow.
+  importable `aero1553` package, uv + maturin workflow.
 - **C++** — [`cpp/README.md`](cpp/README.md): `make` on Linux (authoritative),
   CMake/MSVC on Windows, and the GCC 4.8.5 fidelity tier.
 
@@ -58,21 +58,22 @@ aero1553 --config config/default.toml decode recording.mie -o decoded.csv
 ## CLI Reference
 
 `aero1553` has three subcommands — `decode` (binary → CSV), `count`, and
-`dump` — with an identical flag surface in the Rust and Python builds. The
+`dump` — with an identical flag surface in the Rust, Python and C++ builds. The
 **complete per-flag reference** (every option, with its default, value range, and
 config-key equivalent) lives in
-**[`docs/CLI-REFERENCE.md`](docs/CLI-REFERENCE.md)**. Each CLI's own
-`aero1553 <subcommand> --help` lists the same flags, but they are not one
-generated source: Python's help is produced by `argparse` from its argument
-definitions, while Rust's is a hand-maintained help string. The
-`cli-surface-parity` check in `tests/conformance/run.py` fails CI if the two ever
-advertise a different set of long options — including a flag the Rust parser
-still accepts but its help stopped listing.
+**[`docs/CLI-REFERENCE.md`](docs/CLI-REFERENCE.md)**. The Python package's
+command line is the Rust CLI, run in-process, so those two share one parser and
+one help text. C++ keeps its own, and the `cli-surface-parity` check in
+`tests/conformance/run.py` fails CI if any of the three ever advertises a
+different set of long options — including a flag a parser still accepts but its
+help stopped listing.
 
 Config-file keys are documented in
 [`docs/CONFIG-REFERENCE.md`](docs/CONFIG-REFERENCE.md); task-oriented
 walkthroughs (multi-file merge, MUX from the filename, filtering, vendor diffs)
 are in the [User Guide](docs/USER-GUIDE.md) and [Examples](docs/EXAMPLES.md).
+Using the Python package as a library -- CSV output, NumPy, pandas and
+dataclasses -- is covered by the [Python library guide](docs/PYTHON-GUIDE.md).
 
 ### Common examples
 
@@ -204,6 +205,7 @@ docs/
 ├── L3-REQ.md           Level 3 implementation obligations (incl. PY/RS)
 ├── MAINTAINER-GUIDE.md Repo layout, dev setup, workflows for adding things
 ├── MIE-FORMAT.md       Comprehensive binary format + CSV column reference
+├── PYTHON-GUIDE.md     The Python library: CSV output, NumPy, pandas, dataclasses
 ├── USER-GUIDE.md       End-to-end CLI walkthrough for analysts and operators
 ├── VENDOR-CSV-DIFFS.md Alignment statement vs DDC vendor CSV (column-by-column)
 ├── TRACE-MATRIX.md     Auto-generated trace matrix (L1 -> L2 -> L3 -> tests)
@@ -232,7 +234,7 @@ Shared Rust/Python conformance suite (run with an interpreter that has
 
 ```bash
 (cd rust && cargo build)
-poetry -C python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/run.py
 ```
 
 ## Known Limitations

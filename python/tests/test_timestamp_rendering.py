@@ -28,6 +28,7 @@ from aero1553.models import (
     is_leap_year,
     parse_output_time_format,
 )
+from tests.conftest import RunCli
 
 DOY_RENDER = TimeRender()
 
@@ -235,17 +236,17 @@ class TestCliSurface:
     """The four flags and the retired one (L2-CLI-018 / L2-CLI-019)."""
 
     @staticmethod
-    def _first_row(capsys: pytest.CaptureFixture[str]) -> str:
-        lines = capsys.readouterr().out.splitlines()
+    def _first_row(capfd: pytest.CaptureFixture[str]) -> str:
+        lines = capfd.readouterr().out.splitlines()
         assert len(lines) > 1, "expected a header and at least one data row"
         return lines[1]
 
     @pytest.mark.requirement("L2-WRT-011", "L2-WRT-025")
     def test_default_rendering_is_unchanged(
-        self, tmp_mie_file: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         assert main(["decode", str(tmp_mie_file)]) == EXIT_OK
-        assert self._first_row(capsys).startswith("192:15:54:50.456225,")
+        assert self._first_row(capfd).startswith("192:15:54:50.456225,")
 
     @pytest.mark.requirement("L2-WRT-025", "L2-CLI-018")
     @pytest.mark.parametrize(
@@ -264,29 +265,29 @@ class TestCliSurface:
     def test_renderings_through_the_cli(
         self,
         tmp_mie_file: Path,
-        capsys: pytest.CaptureFixture[str],
+        capfd: pytest.CaptureFixture[str],
         args: list[str],
         expected: str,
     ) -> None:
         assert main(["decode", str(tmp_mie_file), *args]) == EXIT_OK
-        assert self._first_row(capsys).startswith(f"{expected},")
+        assert self._first_row(capfd).startswith(f"{expected},")
 
     @pytest.mark.requirement("L2-WRT-026", "L2-CLI-018")
     @pytest.mark.parametrize("fmt", ["iso", "dom"])
     def test_calendar_rendering_without_a_year_is_a_usage_error(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str], fmt: str
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str], fmt: str
     ) -> None:
         output = tmp_path / f"out-{fmt}.csv"
         code = main(["decode", str(tmp_mie_file), "-o", str(output), "--output-time-format", fmt])
         assert code == EXIT_USAGE
-        stderr = capsys.readouterr().err
+        stderr = capfd.readouterr().err
         assert "--year" in stderr, "must name the flag"
         assert "[output] year" in stderr, "must name the config key too"
         assert not output.exists(), "nothing may be written when the year is missing"
 
     @pytest.mark.requirement("L2-WRT-026")
     def test_doy_ignores_year_and_offset(
-        self, tmp_mie_file: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         code = main(
             [
@@ -300,7 +301,7 @@ class TestCliSurface:
             ]
         )
         assert code == EXIT_OK
-        assert self._first_row(capsys).startswith("192:15:54:50.456225,")
+        assert self._first_row(capfd).startswith("192:15:54:50.456225,")
 
     @pytest.mark.requirement("L2-CLI-018")
     @pytest.mark.parametrize(
@@ -322,27 +323,27 @@ class TestCliSurface:
     def test_values_are_validated_at_parse_time(
         self,
         tmp_mie_file: Path,
-        capsys: pytest.CaptureFixture[str],
+        capfd: pytest.CaptureFixture[str],
         flag: str,
         value: str,
     ) -> None:
         assert main(["decode", str(tmp_mie_file), flag, value]) == EXIT_USAGE
-        assert flag in capsys.readouterr().err
+        assert flag in capfd.readouterr().err
 
     @pytest.mark.requirement("L2-CLI-018")
     def test_year_bounds_are_accepted_at_the_edges(
-        self, tmp_mie_file: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         for year in (YEAR_MIN, YEAR_MAX):
             code = main(
                 ["decode", str(tmp_mie_file), "--output-time-format", "iso", "--year", str(year)]
             )
             assert code == EXIT_OK
-            assert self._first_row(capsys).startswith(f"{year:04d}-")
+            assert self._first_row(capfd).startswith(f"{year:04d}-")
 
     @pytest.mark.requirement("L2-CLI-019")
     def test_retired_time_format_flag_names_both_replacements(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """Unlike ``--inline-errors`` this flag has a successor -- two of them --
         so the diagnostic must say which is which. That is the one question a
@@ -350,19 +351,18 @@ class TestCliSurface:
         output = tmp_path / "out.csv"
         code = main(["decode", str(tmp_mie_file), "-o", str(output), "--time-format", "irig"])
         assert code == EXIT_USAGE
-        stderr = capsys.readouterr().err
+        stderr = capfd.readouterr().err
         for expected in ("--time-format", "--input-time-format", "--output-time-format"):
             assert expected in stderr, f"diagnostic should mention {expected}"
         assert not output.exists(), "no output on a retired-flag usage error"
 
     @pytest.mark.requirement("L2-CLI-018")
-    def test_help_advertises_the_timestamp_flags(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_help_advertises_the_timestamp_flags(self, capfd: pytest.CaptureFixture[str]) -> None:
         """The cross-implementation parity gate scrapes ``--help``, so a flag
         the parser accepts but help omits fails the conformance run. The
         retired flag is deliberately NOT advertised."""
-        with pytest.raises(SystemExit):
-            main(["decode", "--help"])
-        stdout = capsys.readouterr().out
+        assert main(["decode", "--help"]) == EXIT_OK
+        stdout = capfd.readouterr().out
         for flag in (
             "--input-time-format",
             "--output-time-format",
@@ -379,7 +379,7 @@ class TestConfigSurface:
 
     @pytest.mark.requirement("L2-CFG-012")
     def test_retired_config_key_is_rejected_not_ignored(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """The generic unknown-key rule only WARNs, which for a *rename* would
         silently discard a forced format and revert to auto-detection."""
@@ -387,13 +387,13 @@ class TestConfigSurface:
         config.write_text('[decode]\ntime_format = "irig"\n', encoding="utf-8")
         code = main(["--config", str(config), "decode", str(tmp_mie_file)])
         assert code != EXIT_OK
-        stderr = capsys.readouterr().err
+        stderr = capfd.readouterr().err
         assert "decode.input_time_format" in stderr
         assert "output.output_time_format" in stderr
 
     @pytest.mark.requirement("L2-CFG-012", "L2-WRT-025")
     def test_config_supplies_the_rendering_and_the_year(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         """A site config alone is enough -- no flags on the command line."""
         config = tmp_path / "site.toml"
@@ -403,18 +403,18 @@ class TestConfigSurface:
         )
         code = main(["--config", str(config), "decode", str(tmp_mie_file)])
         assert code == EXIT_OK
-        row = capsys.readouterr().out.splitlines()[1]
+        row = capfd.readouterr().out.splitlines()[1]
         assert row.startswith("2024-07-10T15:54:50.456225-05:00,")
 
     @pytest.mark.requirement("L2-CFG-012")
     def test_cli_year_overrides_the_config_year(
-        self, tmp_mie_file: Path, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+        self, tmp_mie_file: Path, tmp_path: Path, capfd: pytest.CaptureFixture[str]
     ) -> None:
         config = tmp_path / "site.toml"
         config.write_text('[output]\noutput_time_format = "iso"\nyear = 2024\n', encoding="utf-8")
         code = main(["--config", str(config), "decode", str(tmp_mie_file), "--year", "2026"])
         assert code == EXIT_OK
-        assert capsys.readouterr().out.splitlines()[1].startswith("2026-07-11T")
+        assert capfd.readouterr().out.splitlines()[1].startswith("2026-07-11T")
 
     @pytest.mark.requirement("L2-CFG-012")
     @pytest.mark.parametrize(
@@ -446,7 +446,7 @@ class TestNonCalendarRecordings:
         self,
         tmp_path: Path,
         standard_timestamp_data: bytes,
-        capsys: pytest.CaptureFixture[str],
+        capfd: pytest.CaptureFixture[str],
     ) -> None:
         source = tmp_path / "std.mie"
         source.write_bytes(standard_timestamp_data)
@@ -464,7 +464,7 @@ class TestNonCalendarRecordings:
             ]
         )
         assert code == EXIT_NO_RECORDS
-        assert "free-running counter" in capsys.readouterr().err
+        assert "free-running counter" in capfd.readouterr().err
         assert not output.exists()
 
     @pytest.mark.requirement("L2-WRT-026")
@@ -472,12 +472,12 @@ class TestNonCalendarRecordings:
         self,
         tmp_path: Path,
         standard_timestamp_data: bytes,
-        capsys: pytest.CaptureFixture[str],
+        capfd: pytest.CaptureFixture[str],
     ) -> None:
         source = tmp_path / "std.mie"
         source.write_bytes(standard_timestamp_data)
         assert main(["decode", str(source)]) == EXIT_OK
-        assert capsys.readouterr().out.splitlines()[1].startswith("0x")
+        assert capfd.readouterr().out.splitlines()[1].startswith("0x")
 
 
 class TestAdvisoryLevel:
@@ -485,51 +485,55 @@ class TestAdvisoryLevel:
 
     @pytest.mark.requirement("L2-LOG-001", "L2-LOG-002")
     def test_advisory_escalates_under_a_calendar_rendering(
-        self,
-        tmp_mie_file: Path,
-        caplog: pytest.LogCaptureFixture,
+        self, tmp_mie_file: Path, run_cli: RunCli
     ) -> None:
         """`INFO` under ``doy``, where a skewed day is visibly a day number;
-        `WARNING` under a calendar rendering, where the same skew is resolved
-        into something that reads as a fact."""
-        import logging
+        `WARN` under a calendar rendering, where the same skew is resolved
+        into something that reads as a fact.
 
-        def advisory_levels(argv: list[str]) -> list[int]:
-            caplog.clear()
-            with caplog.at_level(logging.DEBUG, logger="aero1553.reader"):
-                assert main(argv) == EXIT_OK
+        Read off the CLI's stderr: each log line opens with its level
+        (``INFO [aero1553::reader] ...``), and ``--log-level DEBUG`` lets every
+        level through so the escalation is what decides the prefix.
+        """
+
+        def advisory_levels(argv: list[str]) -> list[str]:
+            result = run_cli(["--log-level", "DEBUG", *argv])
+            assert result.rc == EXIT_OK
             return [
-                record.levelno for record in caplog.records if "day-of-year" in record.getMessage()
+                line.split(" ", 1)[0] for line in result.err.splitlines() if "day-of-year" in line
             ]
 
-        assert advisory_levels(["decode", str(tmp_mie_file)]) == [logging.INFO]
+        assert advisory_levels(["decode", str(tmp_mie_file)]) == ["INFO"]
 
         for fmt in ("iso", "dom"):
             levels = advisory_levels(
                 ["decode", str(tmp_mie_file), "--output-time-format", fmt, "--year", "2026"]
             )
-            assert levels == [logging.WARNING], f"{fmt} should escalate the advisory"
+            assert levels == ["WARN"], f"{fmt} should escalate the advisory"
 
     @pytest.mark.requirement("L2-LOG-002")
     def test_opt_out_still_wins_under_a_calendar_rendering(
-        self,
-        tmp_mie_file: Path,
-        caplog: pytest.LogCaptureFixture,
+        self, tmp_mie_file: Path, run_cli: RunCli
     ) -> None:
-        import logging
+        """``--no-irig-day-advisory`` silences the advisory even where a
+        calendar rendering would escalate it to WARN.
 
-        caplog.clear()
-        with caplog.at_level(logging.DEBUG, logger="aero1553.reader"):
-            code = main(
-                [
-                    "--no-irig-day-advisory",
-                    "decode",
-                    str(tmp_mie_file),
-                    "--output-time-format",
-                    "iso",
-                    "--year",
-                    "2026",
-                ]
-            )
-        assert code == EXIT_OK
-        assert not [r for r in caplog.records if "day-of-year" in r.getMessage()]
+        The same run without the flag is the control: it must show the
+        advisory, so its absence below is the flag's doing and not a run that
+        never logged at all.
+        """
+        argv = [
+            "--log-level",
+            "DEBUG",
+            "decode",
+            str(tmp_mie_file),
+            "--output-time-format",
+            "iso",
+            "--year",
+            "2026",
+        ]
+        assert "day-of-year" in run_cli(argv).err
+
+        result = run_cli(["--no-irig-day-advisory", *argv])
+        assert result.rc == EXIT_OK
+        assert "day-of-year" not in result.err

@@ -1,0 +1,83 @@
+name: Performance
+
+# The performance suite (perf/README.md): the Rust library, the Python
+# library and both CLIs, timed on the golden recordings (tests/golden), with
+# every case's output checked against the golden pins.
+#
+# What fails the build, and what does not:
+#
+#   * A WRONG ANSWER fails it. A case whose output does not match the pinned
+#     CSV hash, row count or RT checksum is a correctness failure, whatever its
+#     time.
+#   * A GATE fails it. Gates (perf/gates.json) are ratios between two cases of
+#     THIS run, measured side by side on this runner -- e.g. the Python
+#     library decode against the Rust library decode. Shared runners vary run
+#     to run by more than any regression worth catching, so an absolute time
+#     limit would fail at random; a ratio of two cases on the same machine
+#     does not.
+#   * Everything else is REPORTED: the job summary shows the full table (raw
+#     runs, phases, import times, totals, records/s, peak memory), and the
+#     JSON report is kept as an artifact for comparing runs over time.
+#
+# Linux only: CI's gates are calibrated for ubuntu. Windows is measured
+# locally with the same command (perf/README.md).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  perf:
+    name: Performance suite (Rust + Python)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      - name: Cache Cargo dependencies
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+          key: cargo-perf-${{ runner.os }}-${{ hashFiles('rust/Cargo.lock', 'python/native/Cargo.lock') }}
+          restore-keys: |
+            cargo-perf-${{ runner.os }}-
+
+      - name: Install uv and Python
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.20"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      - name: Install the package (builds the extension in release mode)
+        run: uv --directory python sync --locked
+
+      - name: Run the performance suite
+        run: uv --directory python run python ../perf/run.py --repeat 5 --out ../perf-out
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-report
+          path: perf-out/
+          if-no-files-found: ignore

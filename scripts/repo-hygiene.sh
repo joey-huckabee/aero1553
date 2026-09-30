@@ -130,9 +130,13 @@ fi
 # `aero1553 --version` could report a different number depending on which
 # implementation the operator happened to run.
 step "all three implementations declare the same version"
-py_ver=$(awk '/^\[(tool\.poetry|project)\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/pyproject.toml)
+py_ver=$(awk '/^\[project\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/pyproject.toml)
 cpp_ver=$(awk -F'"' '/kVersion *=/{print $2; exit}' cpp/src/cli.cpp)
 cmake_ver=$(awk '/^ *VERSION [0-9]/{print $2; exit}' cpp/CMakeLists.txt)
+# The PyO3 binding crate is compiled into the Python wheel, so its version is
+# the Python package's too -- and its Cargo.lock records it a second time.
+native_ver=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/native/Cargo.toml)
+native_lock_ver=$(awk '/^name = "aero1553-py"$/{getline; gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/native/Cargo.lock)
 # The C++ CI smoke steps assert the exact --version STRING, once for Linux and
 # once for Windows. They are a sixth place the version lives, and the first cut
 # to use this gate still missed them: the gate passed while CI failed on
@@ -141,12 +145,16 @@ cmake_ver=$(awk '/^ *VERSION [0-9]/{print $2; exit}' cpp/CMakeLists.txt)
 smoke_vers=$(grep -o 'aero1553 [0-9][0-9.]*' .github/workflows/cpp-ci.yml \
              | awk '{print $2}' | sort -u)
 smoke_count=$(printf '%s\n' "$smoke_vers" | grep -c .)
-if [[ -z "$py_ver" || -z "$cpp_ver" || -z "$cmake_ver" || -z "$smoke_vers" ]]; then
-    bad "could not read a version (python=$py_ver cpp=$cpp_ver cmake=$cmake_ver smoke=$smoke_vers)"
+if [[ -z "$py_ver" || -z "$cpp_ver" || -z "$cmake_ver" || -z "$smoke_vers" \
+      || -z "$native_ver" || -z "$native_lock_ver" ]]; then
+    bad "could not read a version (python=$py_ver native=$native_ver native-lock=$native_lock_ver cpp=$cpp_ver cmake=$cmake_ver smoke=$smoke_vers)"
 elif [[ "$toml_ver" != "$py_ver" || "$toml_ver" != "$cpp_ver" \
+     || "$toml_ver" != "$native_ver" || "$toml_ver" != "$native_lock_ver" \
      || "$toml_ver" != "$cmake_ver" || "$smoke_count" != "1" || "$smoke_vers" != "$toml_ver" ]]; then
     list "rust/Cargo.toml            $toml_ver" \
          "python/pyproject.toml      $py_ver" \
+         "python/native/Cargo.toml   $native_ver" \
+         "python/native/Cargo.lock   $native_lock_ver" \
          "cpp/src/cli.cpp            $cpp_ver" \
          "cpp/CMakeLists.txt         $cmake_ver" \
          "cpp-ci.yml --version smoke $(printf '%s ' $smoke_vers)"
@@ -619,6 +627,33 @@ mapfile -t cmake28_hits < <(
 if (( ${#cmake28_hits[@]} )); then
     list "${cmake28_hits[@]}"
     bad "the fidelity container has no CMake at all; see the ADR-0002 amendment"
+fi
+
+# ── 21. The Python package ships the repository LICENSE ──────────────
+# The license text sits at the repository root, outside python/, and PEP 639
+# forbids a `license-files` path outside the project directory -- so through
+# v3.0.0 neither the wheel nor the sdist carried it at all, only the SPDX id.
+# python/LICENSE is a COPY, and a copy is a second source of truth: this keeps
+# it identical to the original, and keeps pyproject.toml declaring it.
+step "python/LICENSE is identical to LICENSE and declared in pyproject.toml"
+if ! cmp -s LICENSE python/LICENSE; then
+    bad "python/LICENSE differs from (or is missing beside) the root LICENSE -- cp LICENSE python/LICENSE"
+fi
+if ! grep -qE '^license-files *= *\["LICENSE"\]' python/pyproject.toml; then
+    bad "python/pyproject.toml does not declare license-files = [\"LICENSE\"]"
+fi
+
+# ── 22. The Python extension is built like the Rust binary ────────────
+# Cargo takes [profile.release] from the crate being BUILT, so the binding
+# crate (python/native) needs its own copy of the core crate's profile. Before
+# it had one, a decode from Python ran 17% behind the binary built from the
+# identical source. A copy drifts; this keeps the two sections identical.
+step "python/native release profile matches rust/Cargo.toml"
+profile_of() { awk '/^\[profile\.release\]/{p=1;next} /^\[/{p=0} p && NF && !/^#/' "$1"; }
+if [[ "$(profile_of rust/Cargo.toml)" != "$(profile_of python/native/Cargo.toml)" ]]; then
+    list "rust/Cargo.toml:" $(profile_of rust/Cargo.toml) \
+         "python/native/Cargo.toml:" $(profile_of python/native/Cargo.toml)
+    bad "[profile.release] differs between rust/ and python/native/ -- the extension and the binary would be built differently"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────

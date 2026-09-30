@@ -244,6 +244,8 @@ struct GlobalArgs {
 /// L1-EXIT-002..008. Kept as named constants so every exit site is
 /// self-documenting and the taxonomy lives in one place.
 mod exit_code {
+    /// Success, including a completed `--allow-partial` decode (L1-EXIT-004).
+    pub(crate) const SUCCESS: u8 = 0;
     /// Runtime / decode error: input I/O (incl. file-not-found), writer
     /// failure, strict-mode record & structural-invariant failures.
     pub(crate) const RUNTIME: u8 = 1;
@@ -312,8 +314,32 @@ impl CliError {
 
 // ── Top-level entry ───────────────────────────────────────────────────
 
+/// Run the CLI and return the process exit status.
+///
+/// `argv[0]` is the program name and is skipped, as in `std::env::args()`.
+/// The status is the L2-CLI-011 taxonomy (`0` success, `1` runtime, `2` no
+/// records, `3` sync loss, `4` usage, `5` config, `6` merge-incompatible).
 #[must_use]
 pub fn run(argv: Vec<String>) -> ExitCode {
+    ExitCode::from(run_to_code(argv))
+}
+
+/// [`run`], returning the exit status as a number.
+///
+/// `std::process::ExitCode` is opaque -- nothing can read the status back out
+/// of it -- which is right for a `main` and wrong for an embedder. The Python
+/// package's `aero1553.cli.main()` returns this value as an `int`.
+///
+/// Diagnostics go to stderr exactly as the binary writes them, even when an
+/// embedder has installed a [`log::set_sink`] for the library's log lines:
+/// the command line's output is its contract, and it does not change with
+/// the host it runs in.
+#[must_use]
+pub fn run_to_code(argv: Vec<String>) -> u8 {
+    log::with_stderr(|| run_command(argv))
+}
+
+fn run_command(argv: Vec<String>) -> u8 {
     let mut iter = argv.into_iter().skip(1).peekable();
 
     // Pull global flags + --help / --version that may appear before the command.
@@ -345,16 +371,16 @@ pub fn run(argv: Vec<String>) -> ExitCode {
 
     log_info!("aero1553 v{VERSION}");
 
-    // Decode returns a Result<ExitCode, CliError> so it can choose exit
+    // Decode returns a Result<u8, CliError> so it can choose exit
     // codes 2 (no-records) and 3 (partial-unrecoverable) directly. The
     // CliError on the failure path carries its own code so a config
     // error (5) is distinguished from a generic runtime error (1).
     // Count/Dump use the simpler Result<(), CliError> contract and map
     // Ok to exit 0.
-    let result: Result<ExitCode, CliError> = match command {
+    let result: Result<u8, CliError> = match command {
         Command::Decode(args) => run_decode(globals, *args),
-        Command::Count(input) => run_count(globals, input).map(|()| ExitCode::SUCCESS),
-        Command::Dump(args) => run_dump(globals, *args).map(|()| ExitCode::SUCCESS),
+        Command::Count(input) => run_count(globals, input).map(|()| exit_code::SUCCESS),
+        Command::Dump(args) => run_dump(globals, *args).map(|()| exit_code::SUCCESS),
     };
 
     match result {
@@ -362,14 +388,14 @@ pub fn run(argv: Vec<String>) -> ExitCode {
         Err(e) => {
             log_error!("{}", e.message);
             eprintln!("Error: {}", e.message);
-            ExitCode::from(e.code)
+            e.code
         }
     }
 }
 
-fn die(msg: &str) -> ExitCode {
+fn die(msg: &str) -> u8 {
     eprintln!("Error: {msg}\n\n{HELP}");
-    ExitCode::from(exit_code::USAGE)
+    exit_code::USAGE
 }
 
 /// True for any accepted spelling of the version flag: the short `-V` / `-v`,
@@ -391,10 +417,7 @@ fn is_version_flag(arg: &str) -> bool {
 /// `Err(code)` when the caller (`run`) should return that exit code
 /// immediately — help or version was printed, or the command line was a usage
 /// error (including no subcommand at all).
-fn parse_global_flags(
-    iter: &mut ArgIter<'_>,
-    globals: &mut GlobalArgs,
-) -> Result<String, ExitCode> {
+fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Result<String, u8> {
     loop {
         // Peek, because the first non-flag token is the SUBCOMMAND and belongs
         // to the caller. Split a clone so the joined and separated spellings
@@ -403,20 +426,20 @@ fn parse_global_flags(
         // a second, independent implementation.
         let Some(peeked) = iter.peek().cloned() else {
             eprint!("{HELP}");
-            return Err(ExitCode::from(exit_code::USAGE));
+            return Err(exit_code::USAGE);
         };
         let a = Arg::split(peeked);
         match a.name.as_str() {
             "-h" | "--help" if a.bare() => {
                 print!("{HELP}");
-                return Err(ExitCode::SUCCESS);
+                return Err(exit_code::SUCCESS);
             }
             // `--version=1` is not a version request: it declines here and is
             // returned below as the subcommand token, reporting itself as an
             // unknown command.
             s if a.bare() && is_version_flag(s) => {
                 println!("aero1553 {VERSION}");
-                return Err(ExitCode::SUCCESS);
+                return Err(exit_code::SUCCESS);
             }
             // POSIX end-of-options. Scoped to THIS parser: the subcommand
             // gets a fresh scan, so `-- decode rec.mie --no-mux` still honours
@@ -430,7 +453,7 @@ fn parse_global_flags(
                     Some(token) => Ok(token),
                     None => {
                         eprint!("{HELP}");
-                        Err(ExitCode::from(exit_code::USAGE))
+                        Err(exit_code::USAGE)
                     }
                 };
             }
@@ -496,18 +519,18 @@ fn help_pending(iter: &mut ArgIter<'_>) -> bool {
     false
 }
 
-fn parse_or_help<T>(result: Result<T, ParseError>, iter: &mut ArgIter<'_>) -> Result<T, ExitCode> {
+fn parse_or_help<T>(result: Result<T, ParseError>, iter: &mut ArgIter<'_>) -> Result<T, u8> {
     match result {
         Ok(c) => Ok(c),
         Err(ParseError::HelpRequested) => {
             print!("{HELP}");
-            Err(ExitCode::SUCCESS)
+            Err(exit_code::SUCCESS)
         }
         Err(ParseError::Other(e)) => {
             // A pending `-h` outranks a deferred diagnostic; see `help_pending`.
             if help_pending(iter) {
                 print!("{HELP}");
-                return Err(ExitCode::SUCCESS);
+                return Err(exit_code::SUCCESS);
             }
             Err(die(&e))
         }
@@ -516,7 +539,7 @@ fn parse_or_help<T>(result: Result<T, ParseError>, iter: &mut ArgIter<'_>) -> Re
 
 /// Dispatch `cmd_token` to its argument parser, wrapping the parsed args in a
 /// `Command`. `Err(code)` means `run` should return that exit code.
-fn parse_subcommand(cmd_token: &str, iter: &mut ArgIter<'_>) -> Result<Command, ExitCode> {
+fn parse_subcommand(cmd_token: &str, iter: &mut ArgIter<'_>) -> Result<Command, u8> {
     match cmd_token {
         "decode" => Ok(Command::Decode(Box::new(parse_or_help(
             parse_decode(iter),
@@ -539,7 +562,7 @@ fn parse_subcommand(cmd_token: &str, iter: &mut ArgIter<'_>) -> Result<Command, 
         other => {
             if help_pending(iter) {
                 print!("{HELP}");
-                return Err(ExitCode::SUCCESS);
+                return Err(exit_code::SUCCESS);
             }
             Err(die(&format!("Unknown command: {other:?}")))
         }
@@ -1443,7 +1466,7 @@ fn execute_decode_or_merge(
     write_opts: WriteOptions,
     merge_requested: bool,
     open_dropped: bool,
-) -> Result<crate::error::MieResult<crate::writer::WriteOutcome>, ExitCode> {
+) -> Result<crate::error::MieResult<crate::writer::WriteOutcome>, u8> {
     if !merge_requested {
         // L2-WRT-021: canonical row order is the LAST stage before the writer, so
         // the guarantee holds over exactly the rows that reach the CSV.
@@ -1499,7 +1522,7 @@ fn execute_decode_or_merge(
     }
 }
 
-fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<ExitCode, CliError> {
+fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError> {
     let cfg = resolve_config(&globals)?;
 
     // Resolve the input set before `build_config_overrides` moves the filter
@@ -1712,13 +1735,13 @@ where
 }
 
 /// Map a writer-side result + the reader's sync-loss count to an
-/// `ExitCode` per L1-EXIT-002 through L1-EXIT-005 and L2-CLI-011. Emits the
+/// exit status per L1-EXIT-002 through L1-EXIT-005 and L2-CLI-011. Emits the
 /// one-line exit-class summary required by L1-EXIT-005 in every branch.
 fn classify_decode_exit(
     r: crate::error::MieResult<crate::writer::WriteOutcome>,
     sync_losses: u64,
     empty_recording: bool,
-) -> ExitCode {
+) -> u8 {
     match r {
         Ok(outcome) => {
             // L1-EXIT-010: a valid but empty recording (opened on the
@@ -1740,17 +1763,17 @@ fn classify_decode_exit(
                 "complete"
             };
             log_info!("decode exit class: {class} (sync_losses={sync_losses})");
-            ExitCode::SUCCESS
+            exit_code::SUCCESS
         }
         Err(e) if e.is_broken_pipe() => {
             log_info!("decode exit class: complete (broken-pipe on stdout)");
-            ExitCode::SUCCESS
+            exit_code::SUCCESS
         }
         Err(e @ MieError::NoValidRecords { .. }) => {
             log_error!("{e}");
             eprintln!("Error: {e}");
             log_info!("decode exit class: no-records");
-            ExitCode::from(exit_code::NO_RECORDS)
+            exit_code::NO_RECORDS
         }
         Err(e @ MieError::HomogeneousPayload { .. }) => {
             // L2-SYN-018 + L1-EXIT-002: semantically a "wrong file
@@ -1760,7 +1783,7 @@ fn classify_decode_exit(
             log_error!("{e}");
             eprintln!("Error: {e}");
             log_info!("decode exit class: no-records");
-            ExitCode::from(exit_code::NO_RECORDS)
+            exit_code::NO_RECORDS
         }
         Err(e @ MieError::TimestampFormatMismatch { .. }) => {
             // L2-DEC-016 + L1-EXIT-002: ambiguous timestamp format is
@@ -1772,7 +1795,7 @@ fn classify_decode_exit(
             log_error!("{e}");
             eprintln!("Error: {e}");
             log_info!("decode exit class: no-records (timestamp-format-mismatch)");
-            ExitCode::from(exit_code::NO_RECORDS)
+            exit_code::NO_RECORDS
         }
         Err(e @ MieError::CalendarUnavailable { .. }) => {
             // L2-WRT-026 + L1-EXIT-002: the operator asked for a rendering the
@@ -1784,7 +1807,7 @@ fn classify_decode_exit(
             log_error!("{e}");
             eprintln!("Error: {e}");
             log_info!("decode exit class: no-records (calendar-unavailable)");
-            ExitCode::from(exit_code::NO_RECORDS)
+            exit_code::NO_RECORDS
         }
         Err(e @ MieError::UnrecoverableSyncLoss { .. }) => {
             log_error!("{e}");
@@ -1793,7 +1816,7 @@ fn classify_decode_exit(
                 "decode exit class: partial-unrecoverable (sync_losses={sync_losses}); \
                  pass --allow-partial to preserve the rows decoded so far"
             );
-            ExitCode::from(exit_code::SYNC_LOSS)
+            exit_code::SYNC_LOSS
         }
         Err(e @ MieError::IncompatibleMergeInputs { .. }) => {
             // L1-EXIT-009 / L2-MRG-003: inputs cannot be ordered on a common
@@ -1801,7 +1824,7 @@ fn classify_decode_exit(
             log_error!("{e}");
             eprintln!("Error: {e}");
             log_info!("decode exit class: merge-incompatible");
-            ExitCode::from(exit_code::MERGE_INCOMPATIBLE)
+            exit_code::MERGE_INCOMPATIBLE
         }
         Err(e @ MieError::NonMonotonicInput { .. }) => {
             // L2-MRG-006: a strict-mode merge hit an input whose records are
@@ -1810,12 +1833,12 @@ fn classify_decode_exit(
             log_error!("{e}");
             eprintln!("Error: {e}");
             log_info!("decode exit class: non-monotonic-input (strict)");
-            ExitCode::from(exit_code::RUNTIME)
+            exit_code::RUNTIME
         }
         Err(e) => {
             log_error!("{e}");
             eprintln!("Error: {e}");
-            ExitCode::from(exit_code::RUNTIME)
+            exit_code::RUNTIME
         }
     }
 }
@@ -2366,10 +2389,30 @@ mod tests {
             &mut globals,
         )
         .unwrap_err();
-        assert_eq!(err, ExitCode::from(exit_code::USAGE));
+        assert_eq!(err, exit_code::USAGE);
         assert!(
             globals.log_level.is_none(),
             "must not have consumed a value"
+        );
+    }
+
+    /// `run_to_code` hands an embedder the L2-CLI-011 status as a number --
+    /// the Python binding returns it from `aero1553.cli.main()` -- so the
+    /// number itself is the contract, not just the process exit it becomes.
+    /// Requirements: L2-CLI-011
+    #[test]
+    fn run_to_code_returns_the_exit_taxonomy_as_a_number() {
+        let argv = |a: &[&str]| -> Vec<String> {
+            std::iter::once("aero1553")
+                .chain(a.iter().copied())
+                .map(String::from)
+                .collect()
+        };
+        assert_eq!(run_to_code(argv(&["--version"])), exit_code::SUCCESS);
+        assert_eq!(run_to_code(argv(&["no-such-command"])), exit_code::USAGE);
+        assert_eq!(
+            run_to_code(argv(&["count", "definitely-missing-input.mie"])),
+            exit_code::RUNTIME
         );
     }
 

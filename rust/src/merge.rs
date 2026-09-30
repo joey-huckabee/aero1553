@@ -17,6 +17,7 @@
 //! No new external dependency: the heap is `std::collections::BinaryHeap`
 //! and the `--glob` matcher is hand-rolled (L3-RS-014, preserving L3-RS-002).
 
+use std::borrow::Borrow;
 use std::cmp::{Ordering, Reverse};
 use std::collections::{BinaryHeap, VecDeque};
 use std::fs;
@@ -427,10 +428,56 @@ impl<'a> MergedRecordIter<'a> {
         allow_partial: bool,
         strict: bool,
     ) -> MieResult<Self> {
-        let mut iters: Vec<RecordIter<'a>> = readers.iter().map(|r| r.iter()).collect();
+        Self::open(
+            readers.iter().map(MieFileReader::iter).collect(),
+            readers.iter().map(|r| r.path().to_path_buf()).collect(),
+            tick,
+            allow_partial,
+            strict,
+        )
+    }
+
+    /// [`new`](Self::new), over iterators that do not borrow the readers.
+    ///
+    /// Each input is read through [`MieFileReader::iter_detached`], so the
+    /// merge holds no borrow and may outlive `readers` -- what an embedder
+    /// needs when the merge's lifetime is not a Rust scope (the Python binding
+    /// keeps one inside a Python object). Behaviour is otherwise identical.
+    ///
+    /// # Errors
+    ///
+    /// As [`new`](Self::new).
+    ///
+    /// `readers` may hold the readers themselves or references to them, since
+    /// an embedder's readers need not sit in one contiguous slice.
+    pub fn new_detached<R: Borrow<MieFileReader>>(
+        readers: &[R],
+        tick: Option<f64>,
+        allow_partial: bool,
+        strict: bool,
+    ) -> MieResult<MergedRecordIter<'static>> {
+        MergedRecordIter::open(
+            readers.iter().map(|r| r.borrow().iter_detached()).collect(),
+            readers
+                .iter()
+                .map(|r| r.borrow().path().to_path_buf())
+                .collect(),
+            tick,
+            allow_partial,
+            strict,
+        )
+    }
+
+    fn open(
+        mut iters: Vec<RecordIter<'a>>,
+        paths: Vec<PathBuf>,
+        tick: Option<f64>,
+        allow_partial: bool,
+        strict: bool,
+    ) -> MieResult<Self> {
         let mut heap = BinaryHeap::new();
-        let mut next_seq = vec![0u64; readers.len()];
-        let mut prev_us = vec![None; readers.len()];
+        let mut next_seq = vec![0u64; paths.len()];
+        let mut prev_us = vec![None; paths.len()];
         // A priming-time failure under `allow_partial` arms this terminal so the
         // writer commits a `.partial` (L2-MRG-004), exactly like a mid-file
         // failure. The file contributed no records (truncated at offset 0).
@@ -439,7 +486,7 @@ impl<'a> MergedRecordIter<'a> {
         for (idx, iter) in iters.iter_mut().enumerate() {
             match iter.next() {
                 Some(Ok(msg)) => {
-                    check_mergeable(&msg, idx, readers[idx].path())?;
+                    check_mergeable(&msg, idx, &paths[idx])?;
                     let us = merge_micros(&msg, tick);
                     prev_us[idx] = Some(us);
                     heap.push(Reverse(HeapEntry {
@@ -456,7 +503,7 @@ impl<'a> MergedRecordIter<'a> {
                             "merge: input #{} ({}) could not be read; truncating it \
                              from the merge (--allow-partial): {}",
                             idx,
-                            readers[idx].path().display(),
+                            paths[idx].display(),
                             e
                         );
                         pending_terminal = Some(MieError::UnrecoverableSyncLoss {
@@ -473,8 +520,7 @@ impl<'a> MergedRecordIter<'a> {
             }
         }
 
-        let warned_backward = vec![false; readers.len()];
-        let paths = readers.iter().map(|r| r.path().to_path_buf()).collect();
+        let warned_backward = vec![false; paths.len()];
         Ok(Self {
             iters,
             heap,

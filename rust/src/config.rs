@@ -729,7 +729,12 @@ fn parse_output_time_format(s: &str) -> Result<OutputTimeFormat, ConfigError> {
 /// The shape is checked exactly rather than leniently: `+5:00`, `+0500` and a
 /// trailing-space variant are all rejected, because a zone that parsed loosely
 /// here would silently shift every ISO timestamp in the file.
-pub(crate) fn parse_utc_offset(s: &str) -> Result<i16, ConfigError> {
+///
+/// # Errors
+///
+/// Returns [`ConfigError`] when `s` does not match the grammar, or its hours
+/// or minutes are out of range.
+pub fn parse_utc_offset(s: &str) -> Result<i16, ConfigError> {
     let invalid = || {
         ConfigError(format!(
             "Invalid output.utc_offset: {s:?}. Valid: Z, or +HH:MM / -HH:MM \

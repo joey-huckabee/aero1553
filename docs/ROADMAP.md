@@ -220,6 +220,11 @@ two proposed options were both framed around it.
 `.github/workflows/sonarcloud.yml`, scoped to those rules in that one file, with
 the flow and the reasoning written out next to the exclusion.
 
+**Since v4.0.0** the Python reader, manifest read and dump are the Rust crate's,
+run through the compiled extension, so the `reader.py` / `merge.py` / `dump.py`
+suppressions were removed: the code they covered no longer exists. The judgement
+below is unchanged and is what the C++ `dump.cpp` entry records.
+
 The justification is narrower than the `config.py` one: a manifest's contents are
 exactly as trusted as the operator who chose that manifest. Reading the files it
 lists is the documented purpose of `--manifest` (`L2-MRG-001`); the process holds
@@ -340,9 +345,9 @@ conformance oracle if attempted.
 
 ## Config ergonomics (deferred)
 
-The two config parsers are aligned on a **whitelist** of the flat `[section]` +
-`key = value` schema: anything outside it is a config error (exit 5) on both
-implementations, and a differential parity corpus keeps them aligned. When that
+The config parsers (Rust's, which the Python package also runs, and C++'s) are
+aligned on a **whitelist** of the flat `[section]` + `key = value` schema:
+anything outside it is a config error (exit 5) on every implementation, and a differential parity corpus keeps them aligned. When that
 whitelist was drawn, a few *readable* full-TOML number forms were **rejected on
 both** for strictness and consistency:
 
@@ -353,8 +358,8 @@ These are genuinely handy for a human writing a config, and `tomllib` already
 accepts them; the decision to reject was about keeping the Rust hand-rolled
 parser minimal and the two implementations identical, not because the forms are
 harmful. A future release could instead **accept them on both** — teach the Rust
-number parser to strip `_` and honor the `0x` / `0o` / `0b` prefixes, widen the
-Python whitelist's value grammar to match, and flip the corresponding
+number parser to strip `_` and honor the `0x` / `0o` / `0b` prefixes, teach the C++
+loader the same, and flip the corresponding
 `config_parity.py` snippets from `reject` to `accept`. It is an additive
 ergonomics change with no effect on `config/default.toml` (which uses plain
 numbers); not scheduled, recorded here so the option isn't lost. Any change must

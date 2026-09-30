@@ -1,4 +1,4 @@
-python/poetry.lock text eol=lf
+python/uv.lock text eol=lf
 tests/conformance/** text eol=lf
 cpp/** text eol=lf
 

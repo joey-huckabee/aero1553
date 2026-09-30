@@ -24,17 +24,17 @@ Aero1553 ships as a Rust crate (`rust/src/`), a Python package (`python/src/aero
 | Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` | `cpp/src/reader.cpp` |
 | Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/aero1553/merge.py` | `cpp/src/merge.cpp` |
 | Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/aero1553/delta.py` | `cpp/src/delta.cpp` |
-| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | `python/src/aero1553/decode.py` | `cpp/src/decode.cpp` |
-| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | `python/src/aero1553/sync.py` | `cpp/src/sync.cpp` |
+| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | -- (the Rust module, via the extension) | `cpp/src/decode.cpp` |
+| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | -- (the Rust module, via the extension) | `cpp/src/sync.cpp` |
 | Domain models + error code constants | `rust/src/models.rs` | `python/src/aero1553/models.py` | `cpp/src/models.cpp` |
 | Error types | `rust/src/error.rs` (single enum) | `python/src/aero1553/exceptions.py` (class hierarchy) | `cpp/src/error.cpp` (single enum + kind) |
-| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (streaming, stdlib `csv`) | `cpp/src/writer.cpp` (streaming) |
+| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (the Rust writer, via the extension) | `cpp/src/writer.cpp` (streaming) |
 | Logging | `rust/src/log.rs` (hand-rolled) | `python/src/aero1553/logger.py` (stdlib `logging`) | `cpp/src/log.cpp` (hand-rolled) |
 | Hex dump | `rust/src/dump.rs` | `python/src/aero1553/dump.py` | `cpp/src/dump.cpp` |
 
-The sync helpers (`sync.rs` / `sync.py` / `sync.cpp`) are **pure** in all three implementations — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
+The sync helpers (`sync.rs` / `sync.cpp`; the Python package runs the Rust one) are **pure** — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
 
-Per L1-CONF-001 all three implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*` / `L3-CPP-*`) cover the technology-specific obligations (stdlib `csv` / tomllib for Python; memmap2 / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
+Per L1-CONF-001 all three implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*` / `L3-CPP-*`) cover the technology-specific obligations (the compiled Rust extension for Python; memmap2 / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
 
 The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its name when the reader is constructed (config → `ReaderOptions` / reader kwargs), and attached to every `MieMessage` the reader yields — Rust as a shared `Arc<str>` (a refcount-bump clone per record), Python as a shared `str` reference. The value therefore rides along through the filter and merge iterators unchanged (so a merged stream keeps each record's source-file MUX), and the writer emits it without any extra per-record allocation — preserving the O(1)-in-record-count streaming guarantee.
 
@@ -106,7 +106,7 @@ The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its
   └───────────────────────────────┘    └───────────┘
 ```
 
-The only external Rust runtime dependency is `memmap2` (per `L3-RS-002`). Argument parsing, CSV emission, TOML parsing, logging, and error types are all hand-rolled. The Python package's CSV writer streams through the standard-library `csv` module (`L3-PY-004`); its only runtime dependency is `tomli` for config loading on Python 3.10 (`tomllib` is used on 3.11+, per `L3-PY-005`).
+The only external Rust runtime dependency is `memmap2` (per `L3-RS-002`). Argument parsing, CSV emission, TOML parsing, logging, and error types are all hand-rolled. The Python package's CSV writer and config loader are the Rust ones, run through its compiled extension (`L3-PY-004`, `L3-PY-005`), so the package declares no runtime dependency.
 
 ---
 

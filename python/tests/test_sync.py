@@ -1,7 +1,8 @@
-"""Tests for aero1553.sync module.
+"""Sync behaviour -- header detection, record validation, sync-loss recovery
+-- as the public reader exhibits it.
 
-Tests cover header detection, record validation, sync loss recovery,
-and interaction with the reader.
+The validation helpers are the Rust crate's (``rust/src/sync.rs``) and are
+unit-tested there; these pin what a Python caller observes.
 """
 
 from __future__ import annotations
@@ -11,276 +12,10 @@ from pathlib import Path
 import pytest
 
 from aero1553.models import TimestampFormat
-from aero1553.sync import (
-    ValidationFailure,
-    find_first_record,
-    recover_sync,
-    validate_record,
-    validate_record_detailed,
-)
-
-
-class TestValidateRecord:
-    """Tests for validate_record."""
-
-    @pytest.mark.requirement("L2-SYN-005")
-    def test_valid_irig_record(self, single_receive_record: bytes) -> None:
-        """Known-good IRIG receive record should validate."""
-        # Append a second record for look-ahead
-        data = single_receive_record * 2
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is True
-
-    @pytest.mark.requirement("L2-SYN-001")
-    def test_invalid_type_at_offset(self) -> None:
-        """Random data should not validate."""
-        data = b"\xff\xff" * 40
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is False
-
-    @pytest.mark.requirement("L2-SYN-003")
-    def test_too_short(self) -> None:
-        """Data shorter than Type Word should not validate."""
-        assert validate_record(b"\x02", 0, 1, TimestampFormat.IRIG) is False
-
-    @pytest.mark.requirement("L2-SYN-002")
-    def test_zero_word_count(self) -> None:
-        """Type Word with zero word count should fail."""
-        data = b"\x02\x00" + b"\x00" * 20
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is False
-
-    # ── IRIG range validation (L2-SYN-004, L2-SYN-019) ──────────────
-
-    @staticmethod
-    def _irig_record(upper: int, middle: int, lower: int) -> bytes:
-        """Build two minimal IRIG records back-to-back (so look-ahead
-        succeeds) with the given timestamp word values. wc=5, type=0x02,
-        Cmd raw 0x283E. Two records of 10 bytes each = 20 bytes."""
-        type_raw = 0x0502  # type=0x02, bus A, wc=5, error=0
-        cmd_raw = 0x283E  # rt=5, dir=Recv, sa=1, dwc=30
-        rec = (
-            type_raw.to_bytes(2, "little")
-            + upper.to_bytes(2, "little")
-            + middle.to_bytes(2, "little")
-            + lower.to_bytes(2, "little")
-            + cmd_raw.to_bytes(2, "little")
-        )
-        return rec * 2
-
-    @staticmethod
-    def _irig_upper(freerun: bool, day: int, hour: int) -> int:
-        return ((1 if freerun else 0) << 15) | ((day & 0x1FF) << 5) | (hour & 0x1F)
-
-    @staticmethod
-    def _irig_middle(minute: int, second: int, us_hi4: int) -> int:
-        return ((minute & 0x3F) << 10) | ((second & 0x3F) << 4) | (us_hi4 & 0xF)
-
-    @pytest.mark.requirement("L2-SYN-004")
-    def test_irig_accepts_valid_ranges(self) -> None:
-        data = self._irig_record(
-            self._irig_upper(False, 192, 15),
-            self._irig_middle(54, 50, 6),
-            0xF621,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is True
-
-    @pytest.mark.requirement("L2-SYN-004")
-    def test_irig_rejects_day_zero(self) -> None:
-        data = self._irig_record(
-            self._irig_upper(False, 0, 15),
-            self._irig_middle(54, 50, 0),
-            0,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is False
-
-    @pytest.mark.requirement("L2-SYN-004")
-    def test_irig_rejects_day_above_366(self) -> None:
-        data = self._irig_record(
-            self._irig_upper(False, 367, 15),
-            self._irig_middle(54, 50, 0),
-            0,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is False
-
-    @pytest.mark.requirement("L2-SYN-019")
-    def test_irig_accepts_day_zero_when_freerun(self) -> None:
-        """L2-SYN-019: freerun bypasses the day-of-year range check."""
-        data = self._irig_record(
-            self._irig_upper(True, 0, 15),
-            self._irig_middle(54, 50, 0),
-            0,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is True
-
-    @pytest.mark.requirement("L2-SYN-004")
-    def test_irig_rejects_microsecond_at_one_million(self) -> None:
-        # 1_000_000 = (0xF << 16) | 0x4240
-        data = self._irig_record(
-            self._irig_upper(False, 192, 15),
-            self._irig_middle(54, 50, 0xF),
-            0x4240,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is False
-
-    @pytest.mark.requirement("L2-SYN-004")
-    def test_irig_accepts_microsecond_at_max_valid(self) -> None:
-        # 999_999 = (0xF << 16) | 0x423F
-        data = self._irig_record(
-            self._irig_upper(False, 192, 15),
-            self._irig_middle(54, 50, 0xF),
-            0x423F,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is True
-
-    @pytest.mark.requirement("L2-SYN-019")
-    def test_irig_rejects_microsecond_even_when_freerun(self) -> None:
-        """L2-SYN-019 relaxes only the DAY check; microseconds still
-        enforced."""
-        data = self._irig_record(
-            self._irig_upper(True, 0, 15),
-            self._irig_middle(54, 50, 0xF),
-            0x4240,
-        )
-        assert validate_record(data, 0, len(data), TimestampFormat.IRIG) is False
-
-    @pytest.mark.requirement("L2-SYN-014")
-    def test_boolean_and_detailed_validation_never_disagree(self) -> None:
-        """L2-SYN-014: the two validators are one rule set, so they can
-        never disagree about validity.
-
-        True today because ``validate_record`` delegates to
-        ``validate_record_detailed(...) is None`` — but delegation is an
-        implementation choice a later refactor could quietly undo, and until
-        v2.12.0 the requirement was reported as met with no artifact behind
-        it. This pins the property across a valid record and every distinct
-        rejection reason. Mirrors the Rust
-        ``boolean_and_detailed_validation_never_disagree``.
-        """
-        valid = self._irig_record(
-            self._irig_upper(False, 192, 15),
-            self._irig_middle(54, 50, 0),
-            0,
-        )
-        first = valid[:10]
-        corpus = [
-            valid,
-            b"",
-            b"\x02",
-            b"\x03\x05" + bytes(8),
-            b"\x02\x02" + bytes(8),
-            b"\x02\x24" + bytes(8),
-            self._irig_record(
-                self._irig_upper(False, 192, 24),
-                self._irig_middle(54, 50, 0),
-                0,
-            ),
-            self._irig_record(
-                self._irig_upper(False, 192, 15),
-                self._irig_middle(60, 50, 0),
-                0,
-            ),
-            first + b"\x03\x05",
-            first + b"\x02\x02",
-        ]
-        for index, data in enumerate(corpus):
-            for lookahead in (1, 2, 4):
-                boolean = validate_record(data, 0, len(data), TimestampFormat.IRIG, lookahead)
-                detailed = validate_record_detailed(
-                    data, 0, len(data), TimestampFormat.IRIG, lookahead
-                )
-                assert boolean is (detailed is None), (
-                    f"case {index} (lookahead {lookahead}): "
-                    f"boolean said {boolean}, detailed said {detailed}"
-                )
-
-    @pytest.mark.requirement("L2-SYN-004")
-    def test_detailed_validation_reports_each_failure_reason(self) -> None:
-        valid = self._irig_record(
-            self._irig_upper(False, 192, 15),
-            self._irig_middle(54, 50, 0),
-            0,
-        )
-        first = valid[:10]
-        cases = [
-            (b"\x02", ValidationFailure.TYPE_WORD_UNREADABLE),
-            (b"\x03\x05" + bytes(8), ValidationFailure.UNKNOWN_MESSAGE_TYPE),
-            (b"\x02\x02" + bytes(8), ValidationFailure.INVALID_WORD_COUNT),
-            (b"\x02\x24" + bytes(8), ValidationFailure.RECORD_TRUNCATED),
-            (
-                self._irig_record(
-                    self._irig_upper(False, 192, 24),
-                    self._irig_middle(54, 50, 0),
-                    0,
-                ),
-                ValidationFailure.IRIG_HOUR_OUT_OF_RANGE,
-            ),
-            (
-                self._irig_record(
-                    self._irig_upper(False, 192, 15),
-                    self._irig_middle(60, 50, 0),
-                    0,
-                ),
-                ValidationFailure.IRIG_MINUTE_OUT_OF_RANGE,
-            ),
-            (
-                self._irig_record(
-                    self._irig_upper(False, 192, 15),
-                    self._irig_middle(54, 60, 0),
-                    0,
-                ),
-                ValidationFailure.IRIG_SECOND_OUT_OF_RANGE,
-            ),
-            (
-                self._irig_record(
-                    self._irig_upper(False, 192, 15),
-                    self._irig_middle(54, 50, 0xF),
-                    0x4240,
-                ),
-                ValidationFailure.IRIG_MICROSECOND_OUT_OF_RANGE,
-            ),
-            (
-                self._irig_record(
-                    self._irig_upper(False, 0, 15),
-                    self._irig_middle(54, 50, 0),
-                    0,
-                ),
-                ValidationFailure.IRIG_DAY_OUT_OF_RANGE,
-            ),
-            (
-                first + b"\x03\x05",
-                ValidationFailure.LOOKAHEAD_UNKNOWN_MESSAGE_TYPE,
-            ),
-            (
-                first + b"\x02\x02",
-                ValidationFailure.LOOKAHEAD_INVALID_WORD_COUNT,
-            ),
-        ]
-        for data, expected in cases:
-            assert validate_record_detailed(data, 0, len(data), TimestampFormat.IRIG) == expected
 
 
 class TestFindFirstRecord:
-    """Tests for find_first_record (header detection)."""
-
-    @pytest.mark.requirement("L2-SYN-006")
-    def test_no_header(self, single_receive_record: bytes) -> None:
-        """File starting directly with records should find offset 0."""
-        data = single_receive_record * 2
-        offset = find_first_record(data, len(data), TimestampFormat.IRIG)
-        assert offset == 0
-
-    @pytest.mark.requirement("L2-SYN-006")
-    def test_with_header(self, single_receive_record: bytes) -> None:
-        """File with a header before records should skip the header."""
-        header = b"\x00" * 20  # 20 bytes of padding
-        data = header + single_receive_record * 2
-        offset = find_first_record(data, len(data), TimestampFormat.IRIG)
-        assert offset == 20
-
-    @pytest.mark.requirement("L2-SYN-008")
-    def test_all_garbage(self) -> None:
-        """File with no valid records should return None."""
-        data = b"\xff\xff" * 100
-        offset = find_first_record(data, len(data), TimestampFormat.IRIG)
-        assert offset is None
+    """Header detection."""
 
     @pytest.mark.requirement("L2-SYN-006")
     def test_reader_skips_header(self, tmp_path: Path, single_receive_record: bytes) -> None:
@@ -308,22 +43,7 @@ class TestFindFirstRecord:
 
 
 class TestRecoverSync:
-    """Tests for recover_sync."""
-
-    @pytest.mark.requirement("L2-SYN-009")
-    def test_recovery_after_garbage(self, single_receive_record: bytes) -> None:
-        """Should find a valid record after a gap of garbage."""
-        garbage = b"\xff\xff" * 10  # 20 bytes of garbage
-        data = garbage + single_receive_record * 2
-        recovered = recover_sync(data, 0, len(data), TimestampFormat.IRIG)
-        assert recovered == 20
-
-    @pytest.mark.requirement("L2-SYN-011")
-    def test_no_recovery_possible(self) -> None:
-        """Should return None when no valid record exists."""
-        data = b"\xff\xff" * 100
-        recovered = recover_sync(data, 0, len(data), TimestampFormat.IRIG)
-        assert recovered is None
+    """Sync-loss recovery."""
 
     @pytest.mark.requirement("L2-SYN-015")
     @pytest.mark.requirement("L1-EXIT-003")
@@ -455,18 +175,23 @@ class TestSyncBoundsAndLogging:
     """L2-SYN-007, L2-SYN-012, L2-SYN-013: bounded scans and diagnostic logging."""
 
     @pytest.mark.requirement("L2-SYN-007")
-    def test_find_first_record_capped_at_max_scan(self) -> None:
-        """L2-SYN-007: header detection SHALL cap its scan at 64 KB. A valid
-        record placed past that cap SHALL NOT be found."""
-        from aero1553.sync import MAX_SCAN_BYTES, find_first_record
+    def test_header_scan_is_capped_at_64_kib(self, tmp_path: Path) -> None:
+        """L2-SYN-007: header detection SHALL cap its scan at 64 KB. Valid
+        records placed past that cap are not found, so the file is refused as
+        having no records; the same records inside the cap decode."""
+        from aero1553.exceptions import MieNoValidRecordsError
+        from aero1553.reader import MieFileReader
         from tests.conftest import RECORD_RT15_SA11_RCV
 
-        garbage = b"\xff" * (MAX_SCAN_BYTES + 1024)
-        # Two valid records past the cap so look-ahead would succeed if
-        # the scanner reached them — but it shouldn't.
-        data = garbage + RECORD_RT15_SA11_RCV * 2
-        offset = find_first_record(data, len(data), TimestampFormat.IRIG)
-        assert offset is None
+        records = RECORD_RT15_SA11_RCV * 2  # two, so the look-ahead would confirm
+        past = tmp_path / "past.mie"
+        past.write_bytes(b"\xff" * (65_536 + 1024) + records)
+        with pytest.raises(MieNoValidRecordsError):
+            list(MieFileReader(past, input_time_format=TimestampFormat.IRIG))
+
+        inside = tmp_path / "inside.mie"
+        inside.write_bytes(b"\xff" * 1024 + records)
+        assert len(list(MieFileReader(inside, input_time_format=TimestampFormat.IRIG))) == 2
 
     @pytest.mark.requirement("L2-SYN-012")
     def test_header_detection_logs_size_at_info(
@@ -498,32 +223,6 @@ class TestSyncBoundsAndLogging:
         # The header size (24 bytes) should appear in the message.
         assert any("24" in m for m in info_msgs), (
             f"expected header-size byte count in INFO log; got {info_msgs}"
-        )
-
-    @pytest.mark.requirement("L2-SYN-012")
-    def test_sync_helpers_emit_no_log_output(
-        self,
-        single_receive_record: bytes,
-        caplog: pytest.LogCaptureFixture,
-    ) -> None:
-        """The sync helpers are pure — they never log (matches ``sync.rs``).
-
-        Pinning this stops log statements from creeping back into the validation
-        helpers, where they narrate an outcome without the caller's context.
-        """
-        import logging
-
-        from aero1553.sync import find_first_record, recover_sync
-
-        data = b"\x00" * 24 + single_receive_record * 2
-        with caplog.at_level(logging.DEBUG, logger="aero1553"):
-            assert find_first_record(data, len(data), TimestampFormat.IRIG) == 24
-            # A scan that finds nothing must be just as quiet.
-            assert find_first_record(b"\xff" * 64, 64, TimestampFormat.IRIG) is None
-            recover_sync(data, 0, len(data), TimestampFormat.IRIG)
-        sync_records = [r for r in caplog.records if r.name.startswith("aero1553.sync")]
-        assert sync_records == [], (
-            f"sync helpers must not log; got {[r.getMessage() for r in sync_records]}"
         )
 
     @pytest.mark.requirement("L2-RDR-021")
@@ -645,86 +344,3 @@ class TestSyncBoundsAndLogging:
         assert any("recover" in m.lower() for m in info_msgs), (
             f"expected INFO about recovery; got infos={info_msgs}"
         )
-
-
-class TestNRecordLookahead:
-    """L2-SYN-026 N-record configurable look-ahead.
-
-    Mirrors rust/src/sync.rs::tests::validate_lookahead_*.
-    """
-
-    @staticmethod
-    def _make_valid_record_36w(count: int) -> bytes:
-        """count copies of a 72-byte record (Type 0x2402, wc=36)."""
-        out = bytearray()
-        for _ in range(count):
-            out += bytes([0x02, 0x24]) + bytes(70)
-        return bytes(out)
-
-    @pytest.mark.requirement("L2-SYN-026")
-    def test_n1_skips_lookahead(self) -> None:
-        from aero1553.sync import validate_record
-
-        # Valid record + 4 bytes of plausible-looking but invalid
-        # Type-Word garbage. N=1 must not peek; N=2 must reject.
-        buf = self._make_valid_record_36w(1) + b"\xff\xff\x00\x00"
-        assert validate_record(buf, 0, len(buf), None, lookahead_records=1)
-        assert not validate_record(buf, 0, len(buf), None, lookahead_records=2)
-
-    @pytest.mark.requirement("L2-SYN-026")
-    def test_n4_catches_second_corruption(self) -> None:
-        from aero1553.sync import validate_record
-
-        # Two valid records + invalid Type Word at the third record's
-        # position. N=2 (default) only checks records 1 and 2 (both
-        # valid) and accepts. N=4 reaches record 3 and rejects.
-        buf = self._make_valid_record_36w(2) + b"\xff\xff\x00\x00"
-        assert validate_record(buf, 0, len(buf), None, lookahead_records=2)
-        assert not validate_record(buf, 0, len(buf), None, lookahead_records=4)
-
-    @pytest.mark.requirement("L2-SYN-026")
-    def test_eof_terminates_gracefully(self) -> None:
-        from aero1553.sync import validate_record
-
-        # Single valid record with no follower. Any N >= 1 must accept —
-        # EOF mid-walk is not a rejection.
-        buf = self._make_valid_record_36w(1)
-        for n in (1, 2, 4, 8, 32):
-            assert validate_record(buf, 0, len(buf), None, lookahead_records=n), (
-                f"N={n}: EOF must not reject when the candidate itself is valid"
-            )
-
-
-class TestEndOfRecordsTerminator:
-    """L2-SYN-028 end-of-records terminator (null Type Word 0x0000).
-
-    Mirrors rust/src/sync.rs::tests::{validate_lookahead_terminator_confirms_
-    last_record, recover_sync_does_not_honor_terminator}.
-    """
-
-    @staticmethod
-    def _record_36w() -> bytes:
-        return bytes([0x02, 0x24]) + bytes(70)
-
-    @pytest.mark.requirement("L2-SYN-028")
-    def test_lookahead_terminator_confirms_last_record(self) -> None:
-        from aero1553.sync import validate_record
-
-        # A valid record whose look-ahead boundary is the 0x0000 terminator is
-        # confirmed as the last record — not dropped. Without this the final
-        # record of every well-formed recording would be lost.
-        buf = self._record_36w() + b"\x00\x00"
-        assert validate_record(buf, 0, len(buf), None, lookahead_records=2)
-
-    @pytest.mark.requirement("L2-SYN-028")
-    def test_recover_sync_does_not_honor_terminator(self) -> None:
-        from aero1553.sync import recover_sync, validate_record
-
-        # [2 bytes garbage][valid record][0x0000]. Recovery must NOT validate
-        # the record off its terminator follower (a mis-aligned candidate could
-        # otherwise land on a stray zero); recovery requires a real follower.
-        buf = b"\xff\xff" + self._record_36w() + b"\x00\x00"
-        assert recover_sync(buf, 0, len(buf), None) is None
-        # Forward validation of that same record (at its true boundary) accepts
-        # it — proving the trusted-boundary vs recovery split is intentional.
-        assert validate_record(buf, 2, len(buf), None, lookahead_records=2)

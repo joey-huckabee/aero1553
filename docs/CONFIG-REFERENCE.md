@@ -586,9 +586,9 @@ When a load-time validation fails, the CLI exits `5` (the configuration-error cl
 
 ## Per-implementation notes
 
-### Python and `tomllib`
+### Python
 
-Python's TOML parser is the standard-library `tomllib` on Python 3.11+ and the `tomli` package on Python 3.10 (L3-PY-005). Either way, the schema validation is identical — the TOML library only parses; the decoder validates.
+The Python package's `aero1553.config.load_config` is the Rust loader described below, run through the package's compiled extension (L3-PY-005): the accepted subset, the schema checks, the error messages and the unknown-key warnings are the CLI's. Before v4.0.0 Python parsed with `tomllib` (or `tomli` on 3.10) and validated separately.
 
 ### Rust hand-rolled TOML parser (accepted subset)
 
@@ -601,7 +601,7 @@ To preserve the crate's single-dependency design (only `memmap2`), Rust parses T
   - **booleans** (`true` / `false`), and **single-line** arrays of the above (`[1, 2, 3]` or `["A", "B"]`);
 - `#` line comments and trailing comments (a `#` inside a quoted string is preserved).
 
-**Anything outside this flat subset is a load-time config error (exit `5`) on _both_ implementations.** Rather than accept different subsets and reconcile them one form at a time, Python validates every config line against the same grammar the Rust parser accepts (a whitelist run before `tomllib`), and both refuse the rest. The full-TOML forms that are therefore rejected include:
+**Anything outside this flat subset is a load-time config error (exit `5`) on every implementation.** Rather than accept different subsets and reconcile them one form at a time, every loader accepts exactly this grammar and refuses the rest (since v4.0.0 the Python package runs the Rust loader itself, L3-PY-005). The full-TOML forms that are therefore rejected include:
 
 - multi-line / spanning arrays;
 - underscore digit separators in numbers (`1_000_000` — write `1000000`), `0x` / `0o` / `0b` integer prefixes, leading zeros (`08`, `01`), and a bare trailing dot (`1.`);
@@ -610,9 +610,9 @@ To preserve the crate's single-dependency design (only `memmap2`), Rust parses T
 - quoted keys (`"strict" = ...`);
 - dotted keys (`decode.strict = true`), dotted section headers (`[output.no_clobber]`), and array-of-tables headers (`[[decode]]`).
 
-`tomllib` and Rust's native number/string parsing each accept forms the other does not (`tomllib` honors dotted keys and normalizes `1_000`; Rust's `i64`/`f64` accept `08` / `1.`), so the two are pinned to this single explicit grammar instead of reconciled form by form. Two guards run both CLIs against each other in CI: a curated parity corpus (`tests/conformance/config_parity.py`) and a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts identical accept/reject — so a new divergence is caught by CI rather than in the field.
+A full TOML parser and a language's native number/string parsing each accept forms the other does not (`tomllib` honors dotted keys and normalizes `1_000`; Rust's `i64`/`f64` accept `08` / `1.`), so the loaders are pinned to this single explicit grammar instead of reconciled form by form. Two guards run the CLIs against each other in CI: a curated parity corpus (`tests/conformance/config_parity.py`) and a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts identical accept/reject — so a new divergence is caught by CI rather than in the field.
 
-**Duplicate keys and re-declared sections are rejected by both implementations.** A repeated `(section, key)`, or a `[section]` header declared more than once (even with different keys inside), is a load-time config error (exit `5`) on Rust as well as Python — the hand-rolled parser previously kept the *first* value / silently merged the re-opened section; it now matches `tomllib`, which raises per the TOML spec.
+**Duplicate keys and re-declared sections are rejected by both implementations.** A repeated `(section, key)`, or a `[section]` header declared more than once (even with different keys inside), is a load-time config error (exit `5`) on every implementation — the hand-rolled parser previously kept the *first* value / silently merged the re-opened section; it now raises, as the TOML spec requires.
 
 The bundled `config/default.toml` stays within this subset, so a config derived from it is portable across both implementations.
 
