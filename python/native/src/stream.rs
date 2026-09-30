@@ -189,19 +189,34 @@ impl PySource {
 /// through. A `RecordIterator` is taken over whole (and left consumed);
 /// anything else is iterated through Python.
 pub fn source(obj: &Bound<'_, PyAny>) -> PyResult<(BoxedStream, ErrorSlot)> {
-    if let Ok(native) = obj.cast::<PyRecordIterator>() {
-        let mut native = native.borrow_mut();
-        let stream = native
-            .stream
-            .take()
-            .unwrap_or_else(|| Box::new(std::iter::empty()));
-        return Ok((stream, native.slot.clone()));
+    if let Some(taken) = take_native(obj) {
+        return Ok(taken);
+    }
+    // Not a stream itself, but perhaps something whose iterator is one -- a
+    // `MieFileReader`, whose `__iter__` hands out the native stream. Taking
+    // that over keeps `write_csv(reader)` or `order_rows(reader)` in Rust;
+    // iterating it through Python instead built a Python object per record
+    // only to convert it straight back (measured: +17% on a whole decode).
+    let iter = obj.try_iter()?;
+    if let Some(taken) = take_native(&iter) {
+        return Ok(taken);
     }
     let slot = new_slot();
     let source = PySource {
-        iter: obj.try_iter()?.unbind(),
+        iter: iter.unbind(),
         slot: slot.clone(),
         done: false,
     };
     Ok((Box::new(source), slot))
+}
+
+/// Take a native `RecordIterator`'s stream over, if `obj` is one.
+fn take_native(obj: &Bound<'_, PyAny>) -> Option<(BoxedStream, ErrorSlot)> {
+    let native = obj.cast::<PyRecordIterator>().ok()?;
+    let mut native = native.borrow_mut();
+    let stream = native
+        .stream
+        .take()
+        .unwrap_or_else(|| Box::new(std::iter::empty()));
+    Some((stream, native.slot.clone()))
 }
