@@ -42,6 +42,10 @@ pinned hash by `tests/golden/golden.py`.
 | `py.attrs_pandas` | reading attributes by hand, then `DataFrame.from_records` -- what a user writes without `to_dict()` |
 | `py.csv_pandas` | decode to CSV, then `pandas.read_csv` |
 
+The cases that write CSV write it to memory-backed storage (`/dev/shm`) where
+there is some: on a CI runner's disk, writeback of the 100-150 MB each run
+produces stalled some runs and not others, which decided a gate by luck.
+
 Each Python case runs in its own process (so its peak memory is its own) and
 is split into phases where that tells you something -- `columns` then
 `dataframe`, `decode+write` then `read_csv`.

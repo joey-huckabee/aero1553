@@ -65,6 +65,21 @@ def recording(name: str, data: Path) -> Path:
     return golden.write(name, data)
 
 
+def memory_backed_dir() -> str | None:
+    """Where the cases write their CSV: memory-backed storage when there is
+    some (``/dev/shm`` on Linux), else the default temporary directory.
+
+    The write cases produce 100-150 MB of CSV per run, five runs each. On a
+    CI runner's disk, dirty-page writeback then stalls some runs and not
+    others -- the first run of a case was reliably fast and the rest up to 60%
+    slower -- so which case a stall landed on decided a gate: the merge ratio
+    read 0.91 on one run and 1.25 on the next with no code change. Writing to
+    memory takes the disk out of a measurement of the decoder.
+    """
+    shm = Path("/dev/shm")
+    return str(shm) if shm.is_dir() and os.access(shm, os.W_OK) else None
+
+
 def build_rust() -> tuple[Path, Path]:
     """Build the release CLI and the bench harness; return both executables."""
     subprocess.run(["cargo", "build", "--release", "--quiet"], cwd=RUST, check=True)
@@ -153,7 +168,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
     data.mkdir(parents=True, exist_ok=True)
     a, b = recording(a_name, data), recording(b_name, data)
     cli, harness = build_rust()
-    scratch = Path(tempfile.mkdtemp(prefix="aero1553-perf-out-"))
+    scratch = Path(tempfile.mkdtemp(prefix="aero1553-perf-out-", dir=memory_backed_dir()))
 
     results: dict[str, dict[str, Any]] = {}
     problems: list[str] = []
@@ -167,6 +182,9 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
     def check_csv(case: str, path: Path, pinned: str) -> None:
         if sha256(path) != pinned:
             problems.append(f"{case}: CSV output differs from the golden pin")
+        # Checked, so no longer needed -- and in memory-backed storage, each
+        # output kept would hold its size in RAM for the rest of the run.
+        path.unlink(missing_ok=True)
 
     # Interpreter start-up and imports, each in a fresh process.
     startup, _ = time_process([sys.executable, "-c", "pass"], args.repeat, peak=False)
