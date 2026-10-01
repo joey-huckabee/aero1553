@@ -175,6 +175,19 @@
       ]
     },
     {
+      "name": "errors-separate-iso",
+      "input": "inputs/errors-inline.hex",
+      "expected": "expected/errors-separate-iso.csv",
+      "expected_errors": "expected/errors-separate-iso_errors.csv",
+      "args": [
+        "--separate-errors",
+        "--output-time-format",
+        "iso",
+        "--year",
+        "2026"
+      ]
+    },
+    {
       "name": "spurious-standalone",
       "input": "inputs/spurious-standalone.hex",
       "expected": "expected/spurious-standalone.csv"
