@@ -59,6 +59,10 @@ def _recording(template: bytes) -> bytes:
     Command Word) carries the record's index. Without it every record would be
     byte-identical outside the timestamp, which all three decoders rightly
     reject as single-byte padding rather than a recording.
+
+    Raises:
+        AssertionError: The template's timestamp is too close to a second
+            boundary for ``RECORDS`` steps to stay inside it.
     """
     middle = int.from_bytes(template[4:6], "little")
     lower = int.from_bytes(template[6:8], "little")
@@ -82,7 +86,13 @@ def _recording(template: bytes) -> bytes:
 
 
 def check_broken_pipe(invocations: dict[str, list[str]], root: Path, temp: Path) -> None:
-    """Close each implementation's stdout early; require exit 0 from every one."""
+    """Close each implementation's stdout early; require exit 0 from every one.
+
+    Raises:
+        AssertionError: Any implementation failed the drained decode, produced
+            too little output for the check to mean anything, did not start with
+            the CSV header, or exited non-zero after its consumer closed the pipe.
+    """
     from run import read_hex  # local import: run.py imports this module
 
     template = read_hex(Path(__file__).resolve().parent / "inputs" / "count-one.hex")
