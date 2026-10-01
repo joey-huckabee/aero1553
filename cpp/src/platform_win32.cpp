@@ -498,7 +498,7 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
     return true;
 }
 
-void set_stdout_binary() {
+void prepare_stdout() {
     // Without this the CRT rewrites every newline into CRLF on the way out,
     // which breaks every stdout conformance oracle on Windows alone while the
     // file-destination oracles keep passing -- a split that is very hard to

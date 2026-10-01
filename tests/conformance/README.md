@@ -112,6 +112,21 @@ minimal Rust parser), so `run.py` cross-checks them when both are present:
 This is what stops config divergences from being found one at a time: the fuzzer
 searches the space so CI catches a mismatch before a reviewer does.
 
+## Contract checks
+
+Some behavior cannot be written as a manifest case, because every case drains
+the output it compares. These checks hold each implementation to the
+specification **on its own**, so unlike the differential checks above they run
+at any implementation count, `--only` included:
+
+- **`broken_pipe.py`** — L2-WRT-018: a consumer that closes stdout early
+  (`decode x.mie | head -1`) is a clean exit `0`. It reads one line from each
+  implementation's stdout, closes the pipe while the producer still has over a
+  megabyte left to write, and requires exit `0`. A drained decode runs first to
+  prove the recording decodes cleanly and that its CSV really is larger than a
+  pipe buffer, since a producer that finishes before the pipe closes would pass
+  without meeting a broken pipe at all.
+
 ## Manifest schema
 
 `manifest.json` is a single object with one key, `"cases"`, whose value is an

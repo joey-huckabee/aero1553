@@ -15,6 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
+from broken_pipe import check_broken_pipe
 from config_fuzz import check_config_parser_fuzz
 from config_parity import check_config_parser_parity
 from config_path_parity import check_config_path_parity
@@ -727,6 +728,11 @@ def main() -> int:
         dir=args.temp_root,
     ) as temp_dir:
         temp = Path(temp_dir)
+
+        # A contract check, not a differential one: each implementation is held
+        # to L2-WRT-018 on its own, so it runs at any implementation count. The
+        # manifest cannot express it -- every case there drains the output.
+        check_broken_pipe({impl.label: impl.prefix(args) for impl in impls}, ROOT, temp)
 
         # Differential config-parser checks, over EVERY implementation under
         # test rather than a fixed pair. The comparison is all-pairs: any two
