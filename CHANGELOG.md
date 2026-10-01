@@ -242,6 +242,14 @@ shared behavior) holds at any compatible version pair. See
   when a resolved path needs it, as Rust's standard library does. Shorter
   paths reach Windows exactly as before, so device names such as `NUL` keep
   their meaning.
+- **A final record found by sync recovery is no longer dropped when the
+  recording ends with the `0x0000` terminator** (all three implementations;
+  L2-SYN-028 amended). Every DDC recording ends that way, so when corruption
+  sat just before the last record, that record vanished -- though the same
+  file without the terminator kept it. Recovery now accepts the terminator
+  when it is the file's last word, which ends a candidate exactly where
+  end-of-file does. A zero word anywhere else still does not confirm a
+  recovery candidate, so the false-positive guard is unchanged.
 
 ## [3.0.0] — 2026-08-28
 

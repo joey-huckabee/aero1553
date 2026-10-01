@@ -1,0 +1,39 @@
+# L2-SYN-028 recovery-landing regression fixture: header-and-sync-recovery.hex
+# byte for byte, plus the 0x0000 end-of-records terminator that every DDC
+# recording ends with.
+#
+# Sync recovery lands on the final record. Recovery's look-ahead did not honor
+# the terminator anywhere -- the carve-out that stops a mis-aligned candidate
+# from validating off a stray zero DATA word -- so a recovered final record
+# followed by the terminator failed validation and was silently dropped,
+# though the same file without the terminator kept it. A terminator that is
+# the last word of the file is honored in recovery too: it carries exactly the
+# weight of end-of-file, which recovery already accepts. The expected CSV is
+# header-and-sync-recovery's, all three rows.
+
+FF00 FF00 FF00 FF00 FF00 FF00 FF00 FF00 FF00 FF00
+
+02240F1826DB21F6
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000
+71C7 0078
+
+02110F1826DB38F7
+CB7A
+0010 0000 0700 0008 0000 0000 0000 0000 0000 C880 E803
+0078
+
+FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF FFFF
+
+04240F1826DBE3F9
+DE7E 0078
+2010 8241 0000 0815 0000 0000 0000 0000
+00FE 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0300 0000 0000 0000 0000 0000
+0000 0020 0000 0000 0000 0000
+
+# End-of-records terminator: the last word of the file.
+0000

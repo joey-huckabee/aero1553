@@ -11,6 +11,11 @@
       "expected": "expected/header-and-sync-recovery.csv"
     },
     {
+      "name": "sync-recovery-then-terminator",
+      "input": "inputs/sync-recovery-then-terminator.hex",
+      "expected": "expected/sync-recovery-then-terminator.csv"
+    },
+    {
       "name": "errors-inline",
       "input": "inputs/errors-inline.hex",
       "expected": "expected/errors-inline.csv"
