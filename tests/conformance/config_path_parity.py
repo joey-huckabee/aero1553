@@ -31,10 +31,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from differential import describe_divergence
-from typing import Callable
 
 #: A case yields ``(path to pass to --config, expected exit code, message
 #: substring both implementations must print)``, or ``None`` to skip itself on
@@ -144,6 +144,11 @@ def check_config_path_parity(
 
     ``input_mie`` is a materialized, valid single-record recording, so a usable
     config decodes to exit 0 and only the ``--config`` path differs between cases.
+
+    Raises:
+        AssertionError: if the implementations' exit codes diverge on any case,
+            agree on a code other than the expected one, or any stderr lacks
+            the case's expected message.
     """
     failures: list[str] = []
     skipped: list[str] = []
@@ -171,9 +176,7 @@ def check_config_path_parity(
             codes[impl] = result.returncode
             stderrs[impl] = result.stderr
 
-        divergence = describe_divergence(
-            {impl: f"exit {code}" for impl, code in codes.items()}
-        )
+        divergence = describe_divergence({impl: f"exit {code}" for impl, code in codes.items()})
         if divergence is not None:
             failures.append(f"{name}: DIVERGENT exit codes — {divergence}")
             continue
@@ -181,24 +184,16 @@ def check_config_path_parity(
         if agreed != expect_code:
             # Unanimous and unanimously wrong: a specification or case
             # problem rather than an implementation one.
-            failures.append(
-                f"{name}: all exited {agreed}, expected {expect_code}"
-            )
+            failures.append(f"{name}: all exited {agreed}, expected {expect_code}")
             continue
         if expect_msg is not None:
             for impl, err in stderrs.items():
                 if expect_msg not in err:
                     failures.append(
-                        f"{name}: {impl} stderr missing {expect_msg!r} — got "
-                        f"{err.strip()[:160]!r}"
+                        f"{name}: {impl} stderr missing {expect_msg!r} — got {err.strip()[:160]!r}"
                     )
 
     if failures:
-        raise AssertionError(
-            "config-path parity failures:\n  " + "\n  ".join(failures)
-        )
+        raise AssertionError("config-path parity failures:\n  " + "\n  ".join(failures))
     note = f" ({len(skipped)} skipped: {', '.join(skipped)})" if skipped else ""
-    print(
-        f"PASS config-path-parity ({checked} cases across "
-        f"{', '.join(invocations)}){note}"
-    )
+    print(f"PASS config-path-parity ({checked} cases across {', '.join(invocations)}){note}")

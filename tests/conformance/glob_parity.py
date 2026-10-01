@@ -44,8 +44,8 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable
 
 from differential import describe_divergence
 
@@ -181,6 +181,10 @@ def check_glob_parity(invocations: dict[str, list[str]], root: Path, temp: Path)
     answer must be the one L2-MRG-001 specifies (unanimity on a wrong answer is
     a specification problem, not an implementation one -- and all three DID
     agree on the wildcards while resolving different sets).
+
+    Raises:
+        AssertionError: if the implementations diverge on any case, or agree
+            on an answer other than the one L2-MRG-001 specifies.
     """
     recording = (temp / "glob-parity-source.mie").read_bytes()
     failures: list[str] = []

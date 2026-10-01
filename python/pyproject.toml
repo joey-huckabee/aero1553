@@ -249,9 +249,25 @@ allowed-confusables = ["–", "—", "×", "µ"]
     "SLF001",
 ]
 
-# A benchmark's report IS its output, printed to the terminal it was run from
-# (T201), and like the test helpers above its functions have no callers
-# outside the file (DOC*).
+# The repository's Python OUTSIDE this package -- the shared conformance
+# harness and golden-recording tool (../tests), the repo scripts (../scripts)
+# and the performance suite (../perf). CI lints them with this same config,
+# passed explicitly (`--config pyproject.toml`), because no pyproject sits
+# above them and ruff would otherwise choose a config by the cwd. The globs are
+# relative to this directory, hence the `..`.
+#
+# T201: each of these is a command-line program, and what it prints IS its
+# output -- a PASS/FAIL line, a report, a diff -- not a stray debug print. The
+# package `src` has no such program and stays gated.
+# DOC201: like the test helpers above, these functions have no callers outside
+# the repo tooling that defines them, so a `Returns:` section restates the
+# one-line summary. DOC501 is NOT ignored: which exceptions a harness helper
+# raises is how its caller tells a failed check from a crashed one.
+# (These entries replace the `benchmarks/**` one the retired python/benchmarks
+# scripts carried, which ignored T201 and DOC* for the same reasons.)
+"../tests/**" = ["T201", "DOC201"]
+"../scripts/**" = ["T201", "DOC201"]
+"../perf/**" = ["T201", "DOC201"]
 
 # Vulture finds dead code. Scan src + tests together so test usage counts (a
 # function used only by tests is not "dead"). The ignored names are intentional:

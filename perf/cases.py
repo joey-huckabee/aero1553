@@ -71,11 +71,11 @@ class Transaction:
 
 def _peak_bytes() -> int | None:
     if sys.platform != "win32":
-        import resource  # noqa: PLC0415 -- POSIX only
+        import resource  # POSIX only
 
         return resource.getrusage(resource.RUSAGE_SELF).ru_maxrss * 1024
     try:
-        import psutil  # noqa: PLC0415 -- optional on Windows
+        import psutil  # optional on Windows
     except ImportError:
         return None
     return int(psutil.Process().memory_info().peak_wset)
@@ -100,13 +100,17 @@ def _rt_fingerprint(rts: Any) -> tuple[int, int]:
 
 
 def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> dict[str, Any]:
-    """Run ``case`` once; return its fingerprint."""
-    from aero1553 import MieFileReader, columns  # noqa: PLC0415
-    from aero1553.config import FilterConfig  # noqa: PLC0415
-    from aero1553.filters import apply_filters  # noqa: PLC0415
-    from aero1553.merge import merge_readers  # noqa: PLC0415
-    from aero1553.order import order_rows  # noqa: PLC0415
-    from aero1553.writer import write_csv  # noqa: PLC0415
+    """Run ``case`` once; return its fingerprint.
+
+    Raises:
+        ValueError: if ``case`` is not one of the cases this file defines.
+    """
+    from aero1553 import MieFileReader, columns
+    from aero1553.config import FilterConfig
+    from aero1553.filters import apply_filters
+    from aero1553.merge import merge_readers
+    from aero1553.order import order_rows
+    from aero1553.writer import write_csv
 
     a = inputs[0]
     if case == "py.iterate":
@@ -136,7 +140,7 @@ def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> d
         out = p("decode+write", lambda: write_csv(order_rows(MieFileReader(a)), output))
         return {"rows": out.normal_count + out.error_count}
     if case == "py.cli_decode":
-        from aero1553.cli import main  # noqa: PLC0415
+        from aero1553.cli import main
 
         code = p("decode+write", lambda: main(["decode", str(a), "-o", str(output)]))
         return {"exit": code}
@@ -148,7 +152,7 @@ def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> d
         )
         return {"rows": out.normal_count + out.error_count}
     if case == "py.columns_numpy":
-        import numpy as np  # noqa: PLC0415
+        import numpy as np
 
         cols = p("columns", lambda: columns(MieFileReader(a)))
         arrays = p(
@@ -158,10 +162,10 @@ def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> d
         rows, rt_sum = _rt_fingerprint(arrays["rt"])
         return {"rows": rows, "rt_sum": rt_sum}
     if case in ("py.columns_pandas", "py.columns_pandas_numeric"):
-        import numpy as np  # noqa: PLC0415
-        import pandas as pd  # noqa: PLC0415
+        import numpy as np
+        import pandas as pd
 
-        from aero1553.table import FIELDS  # noqa: PLC0415
+        from aero1553.table import FIELDS
 
         text = {"timestamp", "msg_label", "mux", "datetime", "data_words"}
         fields = [f for f in FIELDS if f not in text] if case.endswith("numeric") else None
@@ -204,14 +208,14 @@ def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> d
         rows, rt_sum = _rt_fingerprint([r.rt for r in rows_])
         return {"rows": rows, "rt_sum": rt_sum}
     if case == "py.to_dict_pandas":
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         dicts = p("to_dict", lambda: [m.to_dict() for m in MieFileReader(a)])
         df = p("dataframe", lambda: pd.DataFrame.from_records(dicts))
         rows, rt_sum = _rt_fingerprint(df["rt"].fillna(-1).astype(int).to_numpy())
         return {"rows": rows, "rt_sum": rt_sum}
     if case == "py.attrs_pandas":
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         def by_hand() -> list[dict[str, Any]]:
             out = []
@@ -237,7 +241,7 @@ def run_case(case: str, inputs: list[Path], output: Path | None, p: Phases) -> d
         rows, rt_sum = _rt_fingerprint(df["rt"].fillna(-1).astype(int).to_numpy())
         return {"rows": rows, "rt_sum": rt_sum}
     if case == "py.csv_pandas":
-        import pandas as pd  # noqa: PLC0415
+        import pandas as pd
 
         p("decode+write", lambda: write_csv(order_rows(MieFileReader(a)), output))
         df = p("read_csv", lambda: pd.read_csv(output, dtype=str, keep_default_na=False))
@@ -254,7 +258,7 @@ def main() -> int:
     parser.add_argument("--repeat", type=int, default=3)
     args = parser.parse_args()
 
-    import aero1553  # noqa: F401, PLC0415 -- imported before timing, like the libraries below
+    import aero1553  # noqa: F401 -- imported before timing, like the libraries below
 
     for lib in NEEDS[args.case]:
         __import__(lib)

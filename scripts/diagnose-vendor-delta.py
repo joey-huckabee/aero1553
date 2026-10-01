@@ -75,7 +75,7 @@ CANDIDATE_KEYS: list[tuple[str, KeyFn]] = [
     ("RT + MSG + BUS", lambda r: (r["RT"], r["MSG"], r.get("BUS", "")) if r["RT"] else None),
     ("MSG only", lambda r: r["MSG"] or None),
     ("BUS only", lambda r: r.get("BUS") or None),
-    ("previous row, whatever it was (inter-message gap)", lambda r: "*"),
+    ("previous row, whatever it was (inter-message gap)", lambda _r: "*"),
 ]
 
 #: Unit scalings to try: name -> divisor applied to the microsecond difference.

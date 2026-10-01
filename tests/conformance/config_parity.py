@@ -154,6 +154,10 @@ def check_config_parser_parity(
 
     ``input_mie`` is a materialized, valid single-record recording so an accepted
     config decodes to exit 0. Only the config differs between snippets.
+
+    Raises:
+        AssertionError: if the implementations diverge on any snippet, or
+            agree on a verdict other than the expected one.
     """
     failures: list[str] = []
     for name, toml, expect in CORPUS:
@@ -190,14 +194,7 @@ def check_config_parser_parity(
             # Unanimous, and unanimously wrong. Worth reporting separately from
             # a divergence: every parser agreeing on the wrong answer is a
             # corpus or specification problem, not an implementation one.
-            failures.append(
-                f"{name}: {describe_agreement(classes, codes)}, expected {expect}"
-            )
+            failures.append(f"{name}: {describe_agreement(classes, codes)}, expected {expect}")
     if failures:
-        raise AssertionError(
-            "config-parser parity failures:\n  " + "\n  ".join(failures)
-        )
-    print(
-        f"PASS config-parser-parity ({len(CORPUS)} snippets across "
-        f"{', '.join(invocations)})"
-    )
+        raise AssertionError("config-parser parity failures:\n  " + "\n  ".join(failures))
+    print(f"PASS config-parser-parity ({len(CORPUS)} snippets across {', '.join(invocations)})")

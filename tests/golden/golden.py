@@ -258,7 +258,12 @@ def manifest() -> dict:
 
 
 def write(name: str, directory: Path, *, verify: bool = True) -> Path:
-    """Write recording ``name`` into ``directory``; check it against the pin."""
+    """Write recording ``name`` into ``directory``; check it against the pin.
+
+    Raises:
+        RuntimeError: if ``verify`` is set and the built bytes do not match the
+            SHA-256 pinned in golden.json (nothing is written in that case).
+    """
     data = build(name)
     if verify:
         pinned = manifest()["recordings"][name]["sha256"]

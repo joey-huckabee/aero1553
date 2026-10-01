@@ -23,7 +23,6 @@ from glob_parity import check_glob_parity
 from long_paths import check_long_paths
 from record_fuzz import check_record_stream_fuzz
 
-
 ROOT = Path(__file__).resolve().parents[2]
 SUITE = Path(__file__).resolve().parent
 MANIFEST = SUITE / "manifest.json"
@@ -102,11 +101,16 @@ def validate_case_schema(case: Any, index: int) -> None:
 
     Fails fast on the first malformed case; rerun after fixing to
     see any subsequent ones.
+
+    Raises:
+        RuntimeError: if the case is not an object, lacks ``name``, has
+            neither or both of ``input`` / ``inputs``, names an unknown
+            field, holds a field of the wrong type (or a non-string list
+            element), or gives a ``mode`` outside ``ALLOWED_MODES``.
     """
     if not isinstance(case, dict):
         raise RuntimeError(
-            f"manifest case at index {index}: expected an object, "
-            f"got {type(case).__name__}"
+            f"manifest case at index {index}: expected an object, got {type(case).__name__}"
         )
     name = case.get("name") if isinstance(case.get("name"), str) else None
     label = repr(name) if name else f"at index {index}"
@@ -116,9 +120,7 @@ def validate_case_schema(case: Any, index: int) -> None:
     has_input = "input" in case
     has_inputs = "inputs" in case
     if not (has_input or has_inputs):
-        raise RuntimeError(
-            f"manifest case {label}: missing required 'input' or 'inputs' field"
-        )
+        raise RuntimeError(f"manifest case {label}: missing required 'input' or 'inputs' field")
     if has_input and has_inputs:
         raise RuntimeError(
             f"manifest case {label}: specify exactly one of 'input' or 'inputs', not both"
@@ -158,8 +160,7 @@ def validate_case_schema(case: Any, index: int) -> None:
 
     if "mode" in case and case["mode"] not in ALLOWED_MODES:
         raise RuntimeError(
-            f"manifest case {label}: mode {case['mode']!r} is not one of "
-            f"{sorted(ALLOWED_MODES)}"
+            f"manifest case {label}: mode {case['mode']!r} is not one of {sorted(ALLOWED_MODES)}"
         )
 
 
@@ -227,13 +228,17 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def select_impls(args: argparse.Namespace) -> list["ImplSpec"]:
+def select_impls(args: argparse.Namespace) -> list[ImplSpec]:
     """Resolve which implementations this run covers.
 
     The default is EVERY registered implementation, and opting out is
     explicit. The alternative -- quietly running whichever binaries happen to
     be present -- would let a job whose build step silently failed still report
     a full pass, which is the failure mode where a green gate proves nothing.
+
+    Raises:
+        ValueError: if ``--only`` / ``--skip`` names no implementation or an
+            unknown one, or ``--skip`` leaves none to run.
     """
     known = list(IMPLS)
     if args.rust_only:
@@ -266,10 +271,27 @@ def select_impls(args: argparse.Namespace) -> list["ImplSpec"]:
 
 
 def read_hex(path: Path) -> bytes:
-    chunks: list[str] = []
-    for line in path.read_text(encoding="utf-8").splitlines():
-        chunks.append(line.split("#", 1)[0])
+    chunks = [line.split("#", 1)[0] for line in path.read_text(encoding="utf-8").splitlines()]
     return bytes.fromhex("".join(chunks))
+
+
+def materialize(
+    into: Path, input_specs: list[str], input_names: list[str] | None, case_name: str
+) -> list[Path]:
+    """A case's hex fixtures written as .mie files under `into`.
+
+    Each file is named from ``input_names`` when the case gives them, else
+    ``<case_name>-in<i>.mie``. Module-level, with every input passed in, so it
+    cannot read a previous case's names through a closure over the case loop.
+    """
+    into.mkdir(parents=True, exist_ok=True)
+    written = []
+    for i, spec in enumerate(input_specs):
+        fname = input_names[i] if input_names else f"{case_name}-in{i}.mie"
+        src = into / fname
+        src.write_bytes(read_hex(SUITE / spec))
+        written.append(src)
+    return written
 
 
 def run_command(
@@ -292,8 +314,9 @@ def run_command(
     ``stderr`` is always returned so call sites can run substring
     checks against the human-readable status lines.
 
-    Raises RuntimeError on unexpected exit codes, command timeouts,
-    or missing output.
+    Raises:
+        RuntimeError: on an unexpected exit code, a command timeout, or a
+            missing output file.
     """
     print(f"RUN  {case_name} ({implementation})", flush=True)
     try:
@@ -423,6 +446,10 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
     was installed into. The interpreter is sanity-checked by importing ``aero1553``
     so the runner fails fast with a clear error rather than emitting a
     confusing ``No module named aero1553`` for every case.
+
+    Raises:
+        RuntimeError: if the interpreter does not exist or cannot import
+            ``aero1553``.
     """
     # absolute(), NOT resolve(): a virtualenv's bin/python is a SYMLINK to the
     # base interpreter, and resolving it throws the venv away. `python3 -m venv
@@ -471,6 +498,10 @@ def prepare_cpp_bin(args: argparse.Namespace) -> None:
     toolchain choice (make vs MSVC, which sanitizer tier), and guessing wrong
     would produce a confusing failure inside a build the caller did not ask
     for.
+
+    Raises:
+        RuntimeError: if ``--cpp-bin`` names a missing file, or no binary is
+            found by asking the Makefile or searching the build layouts.
     """
     if args.cpp_bin:
         args.cpp_bin = args.cpp_bin.resolve()
@@ -641,8 +672,8 @@ def _help_flags(base_command: list[str]) -> set[str]:
     regardless of subcommand), so its union comes from any single ``--help``;
     the Python argparse help is per-subcommand, so the union spans them all."""
     flags: set[str] = set()
-    invocations = [base_command + ["--help"]]
-    invocations += [base_command + [sub, "--help"] for sub in _HELP_SUBCOMMANDS]
+    invocations = [[*base_command, "--help"]]
+    invocations += [[*base_command, sub, "--help"] for sub in _HELP_SUBCOMMANDS]
     for inv in invocations:
         result = subprocess.run(inv, capture_output=True, text=True, check=False)
         flags |= set(_FLAG_RE.findall(result.stdout + result.stderr))
@@ -663,6 +694,10 @@ def check_cli_surface(args: argparse.Namespace, impls: list[ImplSpec]) -> None:
     registry entry: their surface is deliberately smaller, so comparing it
     would fail by design rather than on a regression. They are named in the
     output, so the exclusion cannot pass unnoticed.
+
+    Raises:
+        AssertionError: if any compared implementation's flag set differs
+            from the first one's.
     """
     excluded = [impl.label for impl in impls if not impl.full_cli_surface]
     comparable = [impl for impl in impls if impl.full_cli_surface]
@@ -686,10 +721,7 @@ def check_cli_surface(args: argparse.Namespace, impls: list[ImplSpec]) -> None:
             f"  only in {label}: {', '.join(only_other)}"
         )
     note = f" (not compared: {', '.join(excluded)})" if excluded else ""
-    print(
-        f"PASS cli-surface-parity ({len(reference)} flags across "
-        f"{', '.join(surfaces)}){note}"
-    )
+    print(f"PASS cli-surface-parity ({len(reference)} flags across {', '.join(surfaces)}){note}")
 
 
 def main() -> int:
@@ -806,17 +838,6 @@ def main() -> int:
             if case_dir is not temp:
                 case_dir.mkdir(parents=True, exist_ok=True)
 
-            def materialize(into: Path) -> list[Path]:
-                """The case's hex fixtures written as .mie files under `into`."""
-                into.mkdir(parents=True, exist_ok=True)
-                written = []
-                for i, spec in enumerate(input_specs):
-                    fname = input_names[i] if input_names else f"{name}-in{i}.mie"
-                    src = into / fname
-                    src.write_bytes(read_hex(SUITE / spec))
-                    written.append(src)
-                return written
-
             # With `output_name` the destination sits BESIDE the inputs, so each
             # implementation needs its own directory: the point of such a case is
             # that nothing may be written, and sharing a directory would let a
@@ -824,10 +845,12 @@ def main() -> int:
             per_impl_sources: dict[str, list[Path]] = {}
             if output_name:
                 for impl in running:
-                    per_impl_sources[impl.name] = materialize(case_dir / impl.name)
+                    per_impl_sources[impl.name] = materialize(
+                        case_dir / impl.name, input_specs, input_names, name
+                    )
                 sources = per_impl_sources[running[0].name]
             else:
-                sources = materialize(case_dir)
+                sources = materialize(case_dir, input_specs, input_names, name)
             expected_exit = int(case.get("expected_exit", 0))
             mode = case.get("mode", "decode")
 
@@ -860,9 +883,7 @@ def main() -> int:
                 output = outputs[impl.name]
                 if pre_existing is not None and output is not None:
                     output.write_text(pre_existing, encoding="utf-8")
-                read_path = (
-                    Path(f"{output}.partial") if partial_oracle and output else None
-                )
+                read_path = Path(f"{output}.partial") if partial_oracle and output else None
                 produced[impl.name], captured_stderr[impl.name] = run_command(
                     impl.command(args, case, per_impl_sources.get(impl.name, sources), output),
                     output,

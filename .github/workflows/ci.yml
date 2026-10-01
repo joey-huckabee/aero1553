@@ -455,11 +455,25 @@ jobs:
         working-directory: python
         run: uv run ruff check
 
+      - name: Run ruff check (repo Python outside the package)
+        # The conformance harness, golden tool, repo scripts and perf suite,
+        # under the SAME config. No pyproject sits above them, so without
+        # --config ruff picks one by the cwd; --config pins it, and its
+        # relative globs (the `../` per-file-ignores) resolve against the cwd,
+        # which is why this, too, runs from python/.
+        working-directory: python
+        run: uv run ruff check --config pyproject.toml ../tests ../scripts ../perf
+
       - name: Run ruff format --check
         # Verifies the package + tests are ruff-formatted (Black-style, line
         # length 100 to match the pylint gate). Run `ruff format` to fix.
         working-directory: python
         run: uv run ruff format --check
+
+      - name: Run ruff format --check (repo Python outside the package)
+        # Same files and same pinned config as the check above.
+        working-directory: python
+        run: uv run ruff format --check --config pyproject.toml ../tests ../scripts ../perf
 
   vulture:
     name: Python dead code (vulture)

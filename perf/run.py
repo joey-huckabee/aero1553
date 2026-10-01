@@ -81,7 +81,12 @@ def memory_backed_dir() -> str | None:
 
 
 def build_rust() -> tuple[Path, Path]:
-    """Build the release CLI and the bench harness; return both executables."""
+    """Build the release CLI and the bench harness; return both executables.
+
+    Raises:
+        subprocess.CalledProcessError: if either cargo invocation fails.
+        RuntimeError: if cargo's JSON messages name no ``perf`` bench executable.
+    """
     subprocess.run(["cargo", "build", "--release", "--quiet"], cwd=RUST, check=True)
     out = subprocess.run(
         ["cargo", "bench", "--bench", "perf", "--no-run", "--message-format=json", "--quiet"],
@@ -144,7 +149,7 @@ def time_import(lib: str, repeat: int) -> list[float]:
     ]
 
 
-def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
+def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--repeat", type=int, default=5)
     parser.add_argument("--data", type=Path, help="Where to keep the golden recordings (cached).")
@@ -317,7 +322,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
     print(markdown)
     summary = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary:
-        with open(summary, "a", encoding="utf-8") as fh:
+        with Path(summary).open("a", encoding="utf-8") as fh:
             fh.write(markdown)
 
     if problems:
@@ -329,7 +334,7 @@ def main() -> int:  # noqa: C901, PLR0912, PLR0915 -- a linear script
 
 
 def _version() -> str:
-    import aero1553  # noqa: PLC0415
+    import aero1553
 
     return aero1553.__version__
 
