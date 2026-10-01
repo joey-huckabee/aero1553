@@ -108,11 +108,12 @@ pub fn validate_record(
 /// Type Word (`0x0000`) at the candidate's next-record boundary confirms the
 /// candidate as the last record in the stream. This is the trusted-boundary
 /// path used by forward decode and first-record detection. Sync **recovery**,
-/// which probes arbitrary un-aligned offsets, must NOT honor the terminator
-/// (a mis-aligned candidate could otherwise land its boundary on a stray zero
-/// *data* word and validate as a bogus "last record"); `recover_sync` calls
-/// the strict form via the private `validate_record_detailed_impl` with
-/// `honor_terminator = false`.
+/// which probes arbitrary un-aligned offsets, honors the terminator only as
+/// the last word of the file (a mis-aligned candidate could otherwise land its
+/// boundary on a stray zero *data* word mid-file and validate as a bogus "last
+/// record", while one in the final two bytes ends the candidate where EOF
+/// would); `recover_sync` calls the private `validate_record_detailed_impl`
+/// with `honor_terminator = false`.
 ///
 /// # Errors
 ///
@@ -134,7 +135,9 @@ pub fn validate_record_detailed(
 /// Core validator. `honor_terminator` controls whether a null Type Word
 /// (`0x0000`) at the candidate's look-ahead boundary is treated as the
 /// L2-SYN-028 end-of-records terminator (graceful confirmation) or as an
-/// invalid follower (rejection). See [`validate_record_detailed`].
+/// invalid follower (rejection). With it false, a terminator that is the last
+/// word of the file still confirms, exactly as EOF does. See
+/// [`validate_record_detailed`].
 fn validate_record_detailed_impl(
     data: &[u8],
     offset: usize,
@@ -267,11 +270,14 @@ fn validate_lookahead_records(
         };
         // L2-SYN-028: a null Type Word (0x0000) is the end-of-records
         // terminator, not an invalid follower — treat it like EOF so the last
-        // real record of a recording is confirmed rather than dropped. Only on
-        // the trusted-boundary path; sync recovery passes `honor_terminator =
-        // false` so a mis-aligned candidate cannot validate off a stray zero
-        // data word.
-        if honor_terminator && is_terminator_type_word(next_raw) {
+        // real record of a recording is confirmed rather than dropped. On the
+        // trusted-boundary path anywhere. In sync recovery (`honor_terminator
+        // = false`) only as the LAST word of the file: a zero mid-file may be
+        // a data word under a mis-aligned candidate, but one in the final two
+        // bytes ends the candidate exactly where EOF would, and EOF already
+        // confirms it (above). Without this, a recovered final record was
+        // dropped from every file that carried the terminator.
+        if is_terminator_type_word(next_raw) && (honor_terminator || next_offset + 2 == file_len) {
             break;
         }
         let next_tw = decode_type_word(next_raw);
@@ -447,7 +453,9 @@ pub fn recover_sync(
         // mis-aligned candidate whose declared length happens to land its
         // boundary on a zero data word must NOT validate as a bogus
         // "last record before terminator". Recovery requires a real
-        // follower record (or EOF), never a stray zero.
+        // follower record, EOF, or the terminator as the file's last word
+        // (which ends the candidate exactly where EOF would) -- never a stray
+        // zero mid-file.
         if validate_record_detailed_impl(
             data,
             candidate,
@@ -965,23 +973,44 @@ mod tests {
         );
     }
 
-    /// L2-SYN-028: sync recovery must NOT honor the terminator. During
-    /// recovery the scan probes un-aligned offsets, so a candidate whose
-    /// declared length lands its boundary on a stray zero *data word* must
-    /// not validate as a bogus "last record". A record followed immediately
-    /// by the terminator is therefore invisible to `recover_sync` (recovery
-    /// requires a real follower record or EOF), even though forward
-    /// validation accepts it.
+    /// L2-SYN-028: sync recovery honors the terminator when it is the last
+    /// word of the file. That is how every DDC recording ends, so a recovered
+    /// final record followed by it must be found -- it was once dropped,
+    /// though the same file without the terminator kept it. A terminator in
+    /// the final two bytes ends the candidate exactly where EOF would, and EOF
+    /// already confirms.
     /// Requirements: L2-SYN-028
     #[test]
-    fn recover_sync_does_not_honor_terminator() {
-        // [2 bytes garbage][valid 72-byte record][0x0000 terminator].
-        // recover_sync from offset 0 scans forward; the only structurally
-        // valid record (at offset 2) is followed by the terminator, so the
-        // strict recovery look-ahead rejects it and recovery fails.
+    fn recover_sync_honors_terminator_as_last_word() {
+        // [2 bytes garbage][valid 72-byte record][0x0000 terminator][EOF].
         let mut buf = vec![0xFF, 0xFF];
         buf.extend(make_valid_record_36w(1));
         buf.extend_from_slice(&[0x00, 0x00]);
+        let hit = recover_sync(
+            &buf,
+            0,
+            buf.len(),
+            None,
+            MAX_SCAN_BYTES,
+            DEFAULT_LOOKAHEAD_RECORDS,
+        )
+        .expect("recovery must find a final record followed by the terminator at EOF");
+        assert_eq!(hit.offset, 2);
+    }
+
+    /// L2-SYN-028: sync recovery does NOT honor a zero word mid-file. The scan
+    /// probes un-aligned offsets, so a candidate whose declared length lands
+    /// its boundary on a stray zero *data word* must not validate as a bogus
+    /// "last record". Forward validation, walking trusted boundaries, still
+    /// accepts the same record -- the split is intentional.
+    /// Requirements: L2-SYN-028
+    #[test]
+    fn recover_sync_does_not_honor_terminator_mid_file() {
+        // [2 bytes garbage][valid 72-byte record][0x0000][more garbage]: the
+        // zero is followed by bytes, so it is not the file's last word.
+        let mut buf = vec![0xFF, 0xFF];
+        buf.extend(make_valid_record_36w(1));
+        buf.extend_from_slice(&[0x00, 0x00, 0xFF, 0xFF, 0xFF, 0xFF]);
         assert!(
             recover_sync(
                 &buf,
@@ -992,10 +1021,8 @@ mod tests {
                 DEFAULT_LOOKAHEAD_RECORDS
             )
             .is_none(),
-            "recovery must not validate a record off a terminator follower"
+            "recovery must not validate a record off a zero word mid-file"
         );
-        // But forward validation of that same record (at its true boundary)
-        // does accept it — proving the split is intentional.
         assert!(validate_record(
             &buf,
             2,

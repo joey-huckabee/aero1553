@@ -5,7 +5,8 @@
 // The subtle behaviours here are the ones a reviewer is least likely to
 // reconstruct from the code, so each has its own case with the reason stated:
 //
-//   * the terminator is honoured on trusted boundaries and NOT during recovery
+//   * the terminator is honoured on trusted boundaries, and during recovery
+//     only as the last word of the file
 //   * an unknown timestamp format uses the permissive (Standard) floor
 //   * freerun suppresses the day-range check and nothing else
 //   * the look-ahead advances by each record's DECLARED length, not by 2 bytes
@@ -370,7 +371,34 @@ TEST_CASE("a null Type Word confirms the last record on a trusted boundary",
           sy::VALIDATION_OK);
 }
 
-TEST_CASE("recovery does NOT honour the terminator", "[sync][L2-SYN-011]") {
+TEST_CASE("recovery honours the terminator as the last word of the file",
+          "[sync][L2-SYN-011][L2-SYN-028]") {
+    // Every DDC recording ends "...record, 0x0000". When recovery lands on the
+    // final record, its follower is that terminator; rejecting it dropped the
+    // record from every such file, while the same file without the terminator
+    // kept it. A zero in the final two bytes ends the candidate exactly where
+    // EOF would, and EOF already confirms.
+    //
+    //   [0] 0xFFFF                  bytes 0-1    garbage, forces recovery
+    //   [1] Type(BC_TO_RT, wc=5)    bytes 2-3    the final record
+    //   [2..4] IRIG timestamp       bytes 4-9
+    //   [5] one payload word        bytes 10-11
+    //   [6] 0x0000                  bytes 12-13  the terminator, then EOF
+    std::vector<uint16_t> words;
+    words.push_back(0xFFFF);
+    words.push_back(type_word(mie::MESSAGE_TYPE_BC_TO_RT, 5));
+    push_valid_irig(words);
+    words.push_back(0x1234);
+    words.push_back(0x0000);
+
+    const std::vector<uint8_t> data = le_bytes(words);
+    sy::ScanHit hit;
+    REQUIRE(sy::recover_sync(&data[0], data.size(), 0, data.size(), irig_fmt(), sy::MAX_SCAN_BYTES,
+                             2, hit));
+    CHECK(hit.offset == 2);
+}
+
+TEST_CASE("recovery does NOT honour a zero word mid-file", "[sync][L2-SYN-011][L2-SYN-028]") {
     // The asymmetry that matters. Recovery probes arbitrary un-aligned offsets,
     // so a mis-aligned candidate whose declared length happens to land its
     // boundary on a stray zero DATA word must not validate as a bogus "last

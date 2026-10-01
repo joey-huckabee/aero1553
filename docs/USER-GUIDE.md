@@ -682,7 +682,7 @@ The `decode exit class:` summary log line names the class explicitly, even when 
 
 **"Unrecoverable mid-file sync loss at offset 0x... after N recovery attempts"** (exit 3): The recording has corruption the decoder can't skip past. Re-run with `--allow-partial` to inspect what was decoded before the loss; investigate the source recording for storage / transmission issues.
 
-**"First record after header detection is truncated"** (exit 1 in strict mode): The first valid Type Word's declared extent runs past EOF. Usually means the recording was aborted before the first complete record was written. Lenient mode terminates cleanly with zero records (and exits 0); strict mode raises so it's visible.
+**"First record after header detection is truncated"** (exit 1 in strict mode): The first valid Type Word's declared extent runs past EOF. Usually means the recording was aborted before the first complete record was written. Lenient mode logs this as a WARN and then fails with "no valid records" (exit 2), because a decode that produced no rows is not a success; strict mode raises this distinct error instead (exit 1).
 
 **WARN lines like `non-monotonic timestamp at 0x...` or `L2-SYN anomaly at 0x...`**: These don't fail the decode — they're observations about the recording. The first means a record's timestamp went backwards on the same RT/MSG key (DELTA is left empty for that row); the second means a Status Word RT didn't match its Command Word RT (possible bus interference). If you see high rates of either, investigate the recording source.
 

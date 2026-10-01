@@ -444,15 +444,25 @@ class TestMieFileReader:
         assert len(messages) == 2
 
     @pytest.mark.requirement("L2-RDR-004")
-    def test_first_record_truncation_lenient_terminates_clean(self, tmp_path: Path) -> None:
-        """L2-RDR-004: lenient mode SHALL terminate cleanly with zero
-        records emitted on first-record truncation."""
+    def test_first_record_truncation_lenient_raises_no_valid_records(self, tmp_path: Path) -> None:
+        """L2-RDR-004: lenient mode SHALL emit zero records and terminate
+        with the no-valid-records class (exit 2), not a clean end of
+        stream. A clean end was the v2.12.0 route by which a non-MIE input
+        reported a successful decode -- and this test once pinned it."""
+        from aero1553.exceptions import (
+            MieFirstRecordTruncatedError,
+            MieNoValidRecordsError,
+        )
         from tests.conftest import RECORD_RT15_SA11_RCV
 
         fpath = tmp_path / "first_truncated_lenient.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV[:20])
-        messages = list(MieFileReader(fpath))
-        assert messages == []
+        reader = MieFileReader(fpath)
+        with pytest.raises(MieNoValidRecordsError) as exc_info:
+            list(reader)
+        # The strict class stays strict-only.
+        assert not isinstance(exc_info.value, MieFirstRecordTruncatedError)
+        assert not reader.empty_recording
 
 
 class TestCsvWriter:

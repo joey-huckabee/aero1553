@@ -137,10 +137,15 @@ ValidationFailure validate_lookahead_records(const uint8_t* data, std::size_t si
         // invalid follower -- treat it like EOF so the LAST real record of a
         // recording is confirmed rather than dropped.
         //
-        // Only on the trusted-boundary path. Recovery passes false, because a
-        // mis-aligned candidate could otherwise land its declared boundary on a
-        // stray zero DATA word and validate as a bogus "last record".
-        if (honor_terminator && decode::is_terminator_type_word(next_raw)) {
+        // On the trusted-boundary path anywhere. In recovery (false) only as the
+        // LAST word of the file: mid-file, a mis-aligned candidate could land
+        // its declared boundary on a stray zero DATA word and validate as a
+        // bogus "last record", but a zero in the final two bytes ends the
+        // candidate exactly where EOF would, and EOF already confirms (above).
+        // Without that, a recovered final record was dropped from every file
+        // that carried the terminator.
+        if (decode::is_terminator_type_word(next_raw) &&
+            (honor_terminator || file_len - next_offset == 2)) {
             break;
         }
         const TypeWord next_tw = decode::decode_type_word(next_raw);
@@ -329,7 +334,8 @@ bool recover_sync(const uint8_t* data, std::size_t size, std::size_t offset, std
         // honor_terminator = false. A mis-aligned candidate whose declared
         // length happens to land its boundary on a zero data word must NOT
         // validate as a bogus "last record before the terminator". Recovery
-        // demands a real follower, or EOF.
+        // demands a real follower, EOF, or the terminator as the file's last
+        // word -- which ends the candidate where EOF would.
         if (validate_record_impl(data, size, candidate, file_len, ts_format, lookahead_records,
                                  false) == VALIDATION_OK) {
             out = ScanHit(candidate, candidate - offset);

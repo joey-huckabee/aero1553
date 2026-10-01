@@ -144,10 +144,12 @@ bool diagnose_header_scan_failure(const uint8_t* data, std::size_t size, std::si
 /// Walk forward from `offset` looking for the next valid record, after a
 /// mid-file validation failure.
 ///
-/// Uses STRICT look-ahead -- the terminator is not honoured. A mis-aligned
-/// candidate whose declared length happens to land its boundary on a zero
-/// *data* word must not validate as a bogus "last record before the
-/// terminator". Recovery requires a real follower, or EOF.
+/// Uses STRICT look-ahead -- the terminator is honoured only as the last word
+/// of the file. A mis-aligned candidate whose declared length happens to land
+/// its boundary on a zero *data* word mid-file must not validate as a bogus
+/// "last record before the terminator". Recovery requires a real follower,
+/// EOF, or a terminator in the file's final two bytes, which ends the
+/// candidate exactly where EOF would.
 bool recover_sync(const uint8_t* data, std::size_t size, std::size_t offset, std::size_t file_len,
                   const Optional<TimestampFormat>& ts_format, std::size_t max_scan,
                   std::size_t lookahead_records, ScanHit& out);

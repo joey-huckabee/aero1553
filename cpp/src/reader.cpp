@@ -380,6 +380,9 @@ bool MieFileReader::diagnose_no_records(const Optional<TimestampFormat>& format_
     // L2-RDR-004: separate "no MIE record here at all" from "a structurally
     // valid Type Word whose declared extent runs past EOF". The second means
     // the recording was cut short; the first means the wrong file was passed.
+    // Either way, outside strict mode the outcome is the no-valid-records class.
+    const auto scan_bytes =
+        static_cast<uint64_t>(file_len < sync::MAX_SCAN_BYTES ? file_len : sync::MAX_SCAN_BYTES);
     std::size_t trunc_offset = 0;
     std::size_t record_bytes = 0;
     std::size_t available = 0;
@@ -395,14 +398,18 @@ bool MieFileReader::diagnose_no_records(const Optional<TimestampFormat>& format_
                 static_cast<uint64_t>(available))));
             return false;
         }
+        // Lenient: the WARN keeps the specific diagnosis, but the outcome is the
+        // no-valid-records class (exit 2). This branch once returned a clean end
+        // of stream, so a file that decodes to no rows -- a text file, say,
+        // whose bytes happen to form one plausible Type Word -- exited 0 with a
+        // header-only CSV, indistinguishable from success.
         MIE_LOG_WARN("first record after header detection is truncated at " + hex(trunc_offset) +
                      ": declared " + dec(record_bytes) + " bytes, only " + dec(available) +
-                     " available -- lenient mode terminates cleanly with zero records");
-        return true;
+                     " available -- no records decoded");
+        error.reset(new MieError(MieError::no_valid_records(path_, scan_bytes)));
+        return false;
     }
 
-    const auto scan_bytes =
-        static_cast<uint64_t>(file_len < sync::MAX_SCAN_BYTES ? file_len : sync::MAX_SCAN_BYTES);
     MIE_LOG_ERROR("no valid records found in first " + dec(scan_bytes) + " bytes of " + path_);
     error.reset(new MieError(MieError::no_valid_records(path_, scan_bytes)));
     return false;

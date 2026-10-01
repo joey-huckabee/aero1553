@@ -342,7 +342,7 @@ TEST_CASE("the construction-time rejection closes the walk after one throw",
     CHECK(walk.closed_after_throw);
 }
 
-TEST_CASE("a truncated first record is a rejection in strict mode and a clean stop in lenient",
+TEST_CASE("a truncated first record is a rejection in both modes, with distinct classes",
           "[reader][L2-RDR-004]") {
     // A valid Type Word declaring 8 words, with only 5 words of file behind it.
     // The distinction matters to an operator: this means the recording was cut
@@ -358,11 +358,15 @@ TEST_CASE("a truncated first record is a rejection in strict mode and a clean st
         CHECK(walk.kind == mie::KIND_FIRST_RECORD_TRUNCATED);
     }
 
-    SECTION("lenient stops cleanly with zero records") {
+    SECTION("lenient rejects as no valid records, naming the truncation") {
+        // Not a clean stop. That was the v2.12.0 route by which a non-MIE input
+        // exited 0 with a header-only CSV, and this section once pinned it.
         const LogCapture capture(mie::log::LEVEL_WARN);
         const Walk walk = walk_words(words, mie::ReaderOptions());
-        CHECK_FALSE(walk.threw);
+        CHECK(walk.threw);
+        CHECK(walk.kind == mie::KIND_NO_VALID_RECORDS);
         CHECK(walk.messages.empty());
+        CHECK_FALSE(walk.empty_recording);
         CHECK(capture.contains("truncated"));
     }
 }

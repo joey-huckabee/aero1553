@@ -44,9 +44,10 @@ pub enum MieError {
     /// The first valid Type Word found after header detection has a
     /// declared extent that runs past EOF. Per L2-RDR-004 this is a
     /// distinct error class from [`Self::RecordTruncated`]: strict mode
-    /// surfaces it; lenient mode terminates cleanly with zero records
-    /// emitted (the reader returns `None` from `iter()` rather than
-    /// yielding the truncated record).
+    /// surfaces it; lenient mode emits zero records and yields
+    /// [`Self::NoValidRecords`] instead (exit 2), with a WARN naming the
+    /// truncation. It is never a clean end of stream: a file that decodes
+    /// to no rows is not a successful decode.
     ///
     /// Operationally this signals that the recording was aborted before
     /// the first complete record was written — distinct from a

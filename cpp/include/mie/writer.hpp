@@ -168,10 +168,10 @@ class CsvWriter {
   public:
     /// Writes the header immediately. Throws MieError if that fails.
     ///
-    /// `render` selects the TIME_STAMP rendering (L2-WRT-025); it defaults to
-    /// day-of-year so an existing caller keeps the vendor-compatible output
-    /// unchanged -- the same reason `doy` is the CLI default (L1-OUT-004).
-    explicit CsvWriter(CsvSink& sink);
+    /// `render` selects the TIME_STAMP rendering (L2-WRT-025). It is required:
+    /// a one-argument overload that defaulted to day-of-year was how the split
+    /// writer's main CSV came to ignore `--output-time-format` while its errors
+    /// CSV honoured it. Pass `TimeRender()` for the vendor rendering.
     CsvWriter(CsvSink& sink, const TimeRender& render);
 
     /// Format and emit one row. Throws MieError on a write failure.

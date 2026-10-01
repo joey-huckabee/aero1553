@@ -17,8 +17,10 @@
 int main(int argc, char** argv) {
     // First, before anything writes a byte. On Windows the CRT otherwise
     // rewrites every newline into CRLF on the way out, which breaks byte-exact
-    // output on that platform alone (L2-WRT-012).
-    mie::platform::set_stdout_binary();
+    // output on that platform alone (L2-WRT-012). On POSIX a closed downstream
+    // pipe would otherwise kill the process with SIGPIPE instead of exiting 0
+    // (L2-WRT-018).
+    mie::platform::prepare_stdout();
 
     // Through the platform layer, not straight off argv. On Windows the CRT
     // built argv in the ANSI codepage, so a path containing any character that

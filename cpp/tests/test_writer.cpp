@@ -447,6 +447,37 @@ TEST_CASE("split mode routes clean and errored records apart", "[writer][L2-ERR-
     CHECK(errors_csv.compare(0, std::string(mie::CSV_HEADER).size(), mie::CSV_HEADER) == 0);
 }
 
+TEST_CASE("split mode renders TIME_STAMP the same way in both files",
+          "[writer][L2-ERR-008][L2-WRT-025]") {
+    // The main writer was once built without the time rendering while the
+    // errors writer had it, so `--separate-errors --output-time-format iso`
+    // wrote ISO to _errors.csv and day-of-year to the main CSV. A default
+    // WriteOptions renders day-of-year either way, which is why the other split
+    // tests never saw it.
+    TempPath out("split_iso.csv");
+    const std::string errors_path = out.also_remove(mie::error_path_for(out.str()));
+
+    std::vector<mie::MieMessage> messages;
+    messages.push_back(sample(100));
+    messages.push_back(errored());
+    VectorSource source(messages);
+
+    mie::WriteOptions options;
+    options.time_render.format = mie::OUTPUT_TIME_ISO;
+    options.time_render.year = 2026;
+    mie::write_csv_split(source, out.str(), options);
+
+    // Day 192 of 2026 is 11 July. Each file's first data row follows the header
+    // line, so search from the end of the header.
+    const std::string header(mie::CSV_HEADER);
+    const std::string main_csv = read_raw(out.str());
+    const std::string errors_csv = read_raw(errors_path);
+    CHECK(main_csv.compare(header.size(), 11, "2026-07-11T") == 0);
+    CHECK(errors_csv.compare(header.size(), 11, "2026-07-11T") == 0);
+    CHECK(main_csv.find("192:") == std::string::npos);
+    CHECK(errors_csv.find("192:") == std::string::npos);
+}
+
 TEST_CASE("a clean recording leaves no errors file behind", "[writer][L2-ERR-008]") {
     // The errors file is opened LAZILY, on the first error row, so a clean
     // recording produces neither an empty _errors.csv nor a temp file.
