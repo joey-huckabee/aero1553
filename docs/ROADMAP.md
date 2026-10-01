@@ -365,6 +365,46 @@ ergonomics change with no effect on `config/default.toml` (which uses plain
 numbers); not scheduled, recorded here so the option isn't lost. Any change must
 keep the two parsers byte-for-byte aligned via the parity corpus.
 
+## Cross-implementation review follow-ups (2026-09)
+
+A review of all three implementations in September 2026 found six
+high-severity defects; those were fixed in #136 and are recorded in
+`CHANGELOG.md` under `[Unreleased]`. Its medium- and lower-severity findings
+are still to be triaged against the current code. Two follow-ups are already
+known:
+
+- **Python long paths on Windows -- untested.** #136 made the C++ build accept
+  paths longer than 260 characters by adding the `\\?\` prefix itself, as Rust's
+  standard library does. Python reads through the Rust extension, but writes
+  CSV through its own file handling, and passed `tests/conformance/long_paths.py`
+  only on a machine where the `LongPathsEnabled` registry switch is on (where
+  `python.exe`'s long-path manifest takes effect). With the switch off, writing
+  output into a deep directory probably fails. To do: run the check on a
+  Windows machine with the switch off; if Python fails, give its output path
+  handling the same treatment, and decide whether the check should force that
+  configuration in CI rather than inherit the runner's.
+
+- **Keeping the implementations aligned by contract, not by code shape.** Every
+  C++-only defect in the review was behaviour that Rust's runtime or standard
+  library provides implicitly and C++ has to ask for (ignoring SIGPIPE, the
+  `\\?\` long-path prefix), or a flag combination no test exercised
+  (`--separate-errors` with `--output-time-format`). Making the C++ read like
+  the Rust would have prevented none of them. Two pieces of work would:
+  - **An inventory of implicit runtime behaviour**: what Rust and CPython do
+    for free that C++ must do explicitly. Known entries: SIGPIPE disposition,
+    long paths, locale independence, binary stdout, UTF-16 command-line
+    arguments, flushing on exit. Each entry gets a contract check in
+    `tests/conformance/` in the style of `broken_pipe.py` and `long_paths.py`,
+    so it holds for all three implementations, `--only cpp` included.
+  - **Differential testing over flag combinations.** A generator, like
+    `record_fuzz.py` is for inputs, that runs every implementation over
+    pairwise combinations of the decode flags and compares exit codes and
+    output all-pairs. Single-flag cases cannot catch a defect that needs two
+    flags to appear.
+
+  The working rule that goes with both, already followed in #136: a bug fixed in
+  one implementation still gets a shared test that runs against all three.
+
 ## Shared Commitments
 
 - **`config/default.toml` and TOML config support remain a first-class feature.** The Rust build ships a hand-rolled TOML loader for our config schema; the file format is stable, and key names are stable **within a major version**. The v3.0.0 rename of `decode.time_format` to `decode.input_time_format` is the first and so far only exception, and it was taken at a major bump precisely because this commitment exists: the retired key is *rejected* by name rather than ignored, so no configuration silently changes meaning across the boundary (`L2-CFG-012`).
