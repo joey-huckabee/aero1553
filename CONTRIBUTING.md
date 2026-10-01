@@ -252,6 +252,9 @@ uv --directory python run pytest
 uv --directory python run pylint src/aero1553      # lint (CI-gated, must stay 10/10)
 uv --directory python run ruff check               # ruff lint (CI-gated)
 uv --directory python run ruff format              # auto-format (CI runs ruff format --check)
+# tests/, scripts/, perf/ Python: same gates, config passed explicitly (no pyproject above them)
+uv --directory python run ruff check --config pyproject.toml ../tests ../scripts ../perf
+uv --directory python run ruff format --config pyproject.toml ../tests ../scripts ../perf
 uv --directory python run vulture                  # dead-code scan (CI-gated)
 uv --directory python run bandit -r src/aero1553     # security scan / SAST (CI-gated)
 uv --directory python run aero1553 --help

@@ -137,6 +137,9 @@ uv --directory python run mypy src                    # strict type check (CI-ga
 uv --directory python run pylint src/aero1553         # lint (CI-gated, fails below 10/10)
 uv --directory python run ruff check                  # ruff lint (CI-gated)
 uv --directory python run ruff format                 # auto-format (CI runs `ruff format --check`)
+# tests/, scripts/, perf/ Python: same gates, config passed explicitly (no pyproject above them)
+uv --directory python run ruff check --config pyproject.toml ../tests ../scripts ../perf
+uv --directory python run ruff format --config pyproject.toml ../tests ../scripts ../perf
 uv --directory python run vulture                     # dead-code scan (CI-gated)
 uv --directory python run bandit -r src/aero1553      # security scan / SAST (CI-gated)
 uv --directory python run pytest --cov               # coverage gate (fail_under=92 in pyproject.toml)
@@ -486,7 +489,7 @@ shows up as a gap rather than silently drifting:
 | `python` | `uv sync --locked` + `uv run pytest`; `uv lock --check` + `uv build` (asserts one `cp310-abi3` wheel) Linux/3.12-only | 5 versions × Linux (3.10–3.14), 2 versions × Windows (3.12, 3.14) | Block merge |
 | `mypy` | `uv run mypy src` — strict type check, analyzed as Python 3.10 (config in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
 | `pylint` | `uv run pylint src/aero1553` — lints the package; curated disables + line length in `python/pyproject.toml` `[tool.pylint.*]` (gate fails below 10/10) | `ubuntu-latest` (3.12) | Block merge |
-| `ruff` | `uv run ruff check` + `uv run ruff format --check` — fast lint + formatter check over the package **and tests** (config in `python/pyproject.toml` `[tool.ruff]`); run `ruff format` to fix | `ubuntu-latest` (3.12) | Block merge |
+| `ruff` | `uv run ruff check` + `uv run ruff format --check` — fast lint + formatter check over the package **and tests** (config in `python/pyproject.toml` `[tool.ruff]`); then both again with `--config pyproject.toml ../tests ../scripts ../perf` for the repo's Python outside the package; run `ruff format` to fix | `ubuntu-latest` (3.12) | Block merge |
 | `vulture` | `uv run vulture` — dead-code scan over the package **and tests**; scan paths + intentional-name ignores (interface args, documented constants) in `python/pyproject.toml` `[tool.vulture]` | `ubuntu-latest` (3.12) | Block merge |
 | `bandit` | `uv run bandit -r src/aero1553` — Python security static analysis (SAST) over the package source; fails on any finding at the default severity/confidence | `ubuntu-latest` (3.12) | Block merge |
 | `python-coverage` | `uv run pytest --cov` — 92% combined line+branch floor (`fail_under` in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
