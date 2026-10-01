@@ -223,6 +223,18 @@
       "config": "configs/strict.toml"
     },
     {
+      "name": "first-record-truncated-lenient",
+      "input": "inputs/first-record-truncated.hex",
+      "expected_exit": 2,
+      "expected_stderr_contains": "first record after header detection is truncated"
+    },
+    {
+      "name": "text-file-is-not-a-recording",
+      "input": "inputs/text-not-mie.hex",
+      "expected_exit": 2,
+      "expected_stderr_contains": "first record after header detection is truncated"
+    },
+    {
       "name": "empty-recording",
       "input": "inputs/empty-recording.hex",
       "expected": "expected/empty-recording.csv",

@@ -460,7 +460,8 @@ class MieFirstRecordTruncatedError(MieRecordError):
     or after the header, but the Type Word's declared extent runs past
     end-of-file. Strict mode surfaces this as a distinct error class
     (separate from generic :class:`MieRecordTruncatedError`); lenient
-    mode terminates cleanly with zero records emitted.
+    mode emits zero records and raises :class:`MieNoValidRecordsError`
+    instead (exit 2), with a WARN naming the truncation.
 
     The distinction matters operationally: a generic
     :class:`MieRecordTruncatedError` usually means a mid-stream cut

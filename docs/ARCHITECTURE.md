@@ -126,7 +126,7 @@ The scan advances in 2-byte (word-aligned) steps and caps at 64 KB (`MAX_SCAN_BY
 When `find_first_record` returns None, the reader calls `diagnose_header_scan_failure` (sync module) to distinguish two cases (per L2-RDR-004):
 
 - **`HomogeneousPayload`** — if `is_homogeneous_payload` reports byte-identical candidate records, the file is a single-byte pad (e.g., 0x20-fill that happens to parse as a SPURIOUS_DATA stream). Both modes reject.
-- **`FirstRecordTruncated`** — if there's a structurally-valid Type Word at or after the header but its declared extent runs past EOF, surface this distinct class. Strict mode raises; lenient mode terminates cleanly with zero records emitted.
+- **`FirstRecordTruncated`** — if there's a structurally-valid Type Word at or after the header but its declared extent runs past EOF, surface this distinct class. Strict mode raises; lenient mode emits zero records and fails with `NoValidRecords` (exit 2), after a WARN naming the truncation.
 - **`NoValidRecords`** — otherwise the file isn't an MIE recording at all. Both modes raise.
 
 ### Phase 2 — Continuous validation

@@ -209,6 +209,27 @@ shared behavior) holds at any compatible version pair. See
   Rust library's), which runner noise cannot trip the way an absolute time
   limit would. It replaces the ad-hoc `python/benchmarks/` scripts.
 
+### Fixed
+
+- **A file whose first record is truncated now exits `2` in lenient mode,
+  not `0`** (all three implementations; L2-RDR-004). Lenient is the
+  default, so this changes the exit code of ordinary invocations: such a
+  file used to "decode" successfully to a header-only CSV. That included
+  plain text files whose bytes happen to form one plausible Type Word --
+  `hello world, this is not an MIE file!!` exited `0`. The WARN naming the
+  truncation is kept; the outcome is now the no-valid-records class
+  (`NoValidRecords` / `MieNoValidRecordsError`), and no output file is
+  created. Strict mode is unchanged (`FirstRecordTruncated`, exit `1`). A
+  script that relied on exit `0` here was relying on the defect.
+- **C++: a consumer closing stdout early now exits `0`** (L2-WRT-018). On
+  Linux, `aero1553 decode x.mie | head -1` was killed by SIGPIPE and exited
+  `141`, failing any pipeline under `set -o pipefail`. Rust and Python were
+  already correct.
+- **C++: `--separate-errors` with `--output-time-format iso` or `dom` now
+  renders both files the same way.** The main CSV ignored the option and
+  wrote day-of-year while `_errors.csv` honoured it. Rust and Python were
+  already correct.
+
 ## [3.0.0] — 2026-08-28
 
 ### Changed — BREAKING
