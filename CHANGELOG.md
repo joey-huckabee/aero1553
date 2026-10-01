@@ -235,6 +235,13 @@ shared behavior) holds at any compatible version pair. See
   release the GIL; one thread then waited on the GIL while holding the lock
   and another waited on the lock while holding the GIL, and the process hung
   for good. The lock now covers only the cache lookup and store.
+- **C++ on Windows: paths longer than 260 characters now work.** A recording
+  in a deep directory, or an output written into one, failed as "MIE file
+  not found" -- even with `LongPathsEnabled` set, since the executable does
+  not opt in. The Win32 backend now adds the `\\?\` extended-length prefix
+  when a resolved path needs it, as Rust's standard library does. Shorter
+  paths reach Windows exactly as before, so device names such as `NUL` keep
+  their meaning.
 
 ## [3.0.0] — 2026-08-28
 

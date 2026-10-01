@@ -126,6 +126,15 @@ at any implementation count, `--only` included:
   prove the recording decodes cleanly and that its CSV really is larger than a
   pipe buffer, since a producer that finishes before the pipe closes would pass
   without meeting a broken pipe at all.
+- **`long_paths.py`** — a path longer than the Windows legacy limit (260) is an
+  ordinary path. It builds a directory over 320 characters deep and runs each
+  implementation from it and into it (with `--separate-errors`, so the errors
+  file is covered too), through `count`, and with a short output path spelled
+  as a long run of `./` segments. Every result must match the same
+  implementation's run at a short path byte for byte. It runs on every
+  platform; only Windows needed work to pass it, since Win32 refuses such paths
+  without the `\\?\` prefix that Rust's standard library adds and the C++ build
+  had not.
 
 ## Manifest schema
 

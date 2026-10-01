@@ -107,6 +107,58 @@ std::wstring strip_extended_prefix(const std::wstring& path) {
     return path;
 }
 
+/// Full paths shorter than this are passed to Win32 exactly as given.
+///
+/// MAX_PATH (260) is the classic limit, but CreateDirectoryW reserves twelve
+/// characters for an 8.3 file name inside the new directory, so 248 is where a
+/// legacy path can first fail. Rust's std uses the same threshold.
+const std::size_t kLegacyPathLimit = 248;
+
+/// Widen a UTF-8 path for a Win32 FILE API, extended-length when it has to be.
+///
+/// Without a `\\?\` prefix the W entry points still refuse a full path longer
+/// than MAX_PATH unless the process manifest opts in AND the machine enables
+/// LongPathsEnabled, so a long path failed as "file not found" here while the
+/// Rust build, whose std adds the prefix, read it fine.
+///
+/// The prefix is added only when needed, never by default. `\\?\` turns off
+/// Win32 path parsing: `/` stops being a separator, `.` and `..` stop being
+/// resolved, and device names such as `NUL` stop being devices -- so
+/// `-o NUL` would become a file. The full path is therefore resolved first
+/// (GetFullPathNameW does that parsing, and makes a short relative path that
+/// is long once joined to the working directory count as long), and only a
+/// result at or over the legacy limit is prefixed. A path short both as given
+/// and resolved passes through exactly as given, so every path that worked
+/// before this function existed reaches Win32 unchanged. Paths already in the
+/// `\\?\` or `\\.\` namespaces pass through untouched.
+std::wstring to_wide_path(const std::string& utf8_path) {
+    const std::wstring wide = to_wide(utf8_path);
+    if (wide.compare(0, 4, L"\\\\?\\") == 0 || wide.compare(0, 4, L"\\\\.\\") == 0) {
+        return wide;
+    }
+    const DWORD needed = ::GetFullPathNameW(wide.c_str(), 0, 0, 0);
+    if (needed == 0) {
+        return wide;  // let the real call report why the path is unusable
+    }
+    std::wstring full(static_cast<std::size_t>(needed), L'\0');
+    const DWORD written = ::GetFullPathNameW(wide.c_str(), needed, &full[0], 0);
+    if (written == 0 || written >= needed) {
+        return wide;
+    }
+    full.resize(static_cast<std::size_t>(written));
+    if (full.size() < kLegacyPathLimit) {
+        // Short once resolved. A path that is short as given goes through
+        // exactly as given; one that is only long as given (a run of `.\`
+        // segments, say) goes through resolved, which names the same file and
+        // fits the legacy limit.
+        return wide.size() < kLegacyPathLimit ? wide : full;
+    }
+    if (full.compare(0, 2, L"\\\\") == 0) {
+        return std::wstring(L"\\\\?\\UNC\\") + full.substr(2);
+    }
+    return std::wstring(L"\\\\?\\") + full;
+}
+
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -147,7 +199,7 @@ bool MappedFile::open(const std::string& utf8_path, OsError& err) {
     close();
     err.clear();
 
-    const std::wstring wide = to_wide(utf8_path);
+    const std::wstring wide = to_wide_path(utf8_path);
 
     // Open BEFORE testing the size, deliberately, and matching the POSIX
     // backend: a directory reports a zero size here, so a size-first check
@@ -247,7 +299,7 @@ bool AtomicFile::create(const std::string& final_utf8_path, OsError& err) {
 
     for (int attempt = 0; attempt < 8; ++attempt) {
         const std::string candidate = make_temp_name(final_utf8_path);
-        const std::wstring wide = to_wide(candidate);
+        const std::wstring wide = to_wide_path(candidate);
         // FILE_SHARE_READ | FILE_SHARE_DELETE, not 0.
         //
         // Share mode 0 denies every other opener, which makes the in-progress
@@ -372,8 +424,8 @@ bool AtomicFile::finish_stream(OsError& err) {
 }
 
 CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
-    const std::wstring wide_temp = to_wide(temp_path_);
-    const std::wstring wide_dest = to_wide(destination);
+    const std::wstring wide_temp = to_wide_path(temp_path_);
+    const std::wstring wide_dest = to_wide_path(destination);
 
     // MOVEFILE_REPLACE_EXISTING is the whole reason this is not std::rename.
     // Withholding it is equally deliberate: MoveFileExW with no flags is an
@@ -403,7 +455,7 @@ void AtomicFile::abort() {
         handle_ = 0;
     }
     if (!committed_ && !temp_path_.empty()) {
-        ::DeleteFileW(to_wide(temp_path_).c_str());
+        ::DeleteFileW(to_wide_path(temp_path_).c_str());
         temp_path_.clear();
     }
     buffer_.clear();
@@ -446,7 +498,7 @@ std::FILE* open_read(const std::string& utf8_path, OsError& err) {
     // a UTF-8 path with any non-ASCII byte names a different file -- usually
     // one that does not exist. Widening here is the same boundary every other
     // path operation in this backend crosses.
-    const std::wstring wide = to_wide(utf8_path);
+    const std::wstring wide = to_wide_path(utf8_path);
     std::FILE* handle = ::_wfopen(wide.c_str(), L"rb");
     if (handle == NULL) {
         // capture_stream_error, not fill_last_error: _wfopen is a CRT call and
@@ -463,7 +515,7 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
     err.clear();
     names.clear();
 
-    const std::wstring pattern = to_wide(path_join(utf8_dir, std::string("*")));
+    const std::wstring pattern = to_wide_path(path_join(utf8_dir, std::string("*")));
 
     WIN32_FIND_DATAW entry;
     const HANDLE search = ::FindFirstFileW(pattern.c_str(), &entry);
@@ -510,7 +562,7 @@ bool canonical_path(const std::string& utf8_path, std::string& out, OsError& err
     err.clear();
     out.clear();
 
-    const std::wstring wide = to_wide(utf8_path);
+    const std::wstring wide = to_wide_path(utf8_path);
     // FILE_FLAG_BACKUP_SEMANTICS is required to open a DIRECTORY handle, and
     // this function is called on directories -- paths_same_file resolves the
     // output's parent when the output itself does not exist yet.
@@ -547,8 +599,9 @@ bool file_metadata(const std::string& utf8_path, uint64_t& size, bool& is_regula
     size = 0;
     is_regular = false;
 
+    const std::wstring wide = to_wide_path(utf8_path);
     WIN32_FILE_ATTRIBUTE_DATA data;
-    if (::GetFileAttributesExW(to_wide(utf8_path).c_str(), GetFileExInfoStandard, &data) == 0) {
+    if (::GetFileAttributesExW(wide.c_str(), GetFileExInfoStandard, &data) == 0) {
         fill_last_error(err);
         return false;
     }
@@ -563,7 +616,7 @@ bool file_metadata(const std::string& utf8_path, uint64_t& size, bool& is_regula
 
 bool remove_file(const std::string& utf8_path, OsError& err) {
     err.clear();
-    if (::DeleteFileW(to_wide(utf8_path).c_str()) == 0) {
+    if (::DeleteFileW(to_wide_path(utf8_path).c_str()) == 0) {
         fill_last_error(err);
         return false;
     }

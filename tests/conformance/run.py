@@ -20,6 +20,7 @@ from config_fuzz import check_config_parser_fuzz
 from config_parity import check_config_parser_parity
 from config_path_parity import check_config_path_parity
 from glob_parity import check_glob_parity
+from long_paths import check_long_paths
 from record_fuzz import check_record_stream_fuzz
 
 
@@ -729,10 +730,13 @@ def main() -> int:
     ) as temp_dir:
         temp = Path(temp_dir)
 
-        # A contract check, not a differential one: each implementation is held
-        # to L2-WRT-018 on its own, so it runs at any implementation count. The
-        # manifest cannot express it -- every case there drains the output.
-        check_broken_pipe({impl.label: impl.prefix(args) for impl in impls}, ROOT, temp)
+        # Contract checks, not differential ones: each implementation is held to
+        # the specification on its own, so they run at any implementation count.
+        # The manifest cannot express either -- every case there drains the
+        # output, and the runner picks short paths.
+        contract = {impl.label: impl.prefix(args) for impl in impls}
+        check_broken_pipe(contract, ROOT, temp)
+        check_long_paths(contract, ROOT, temp)
 
         # Differential config-parser checks, over EVERY implementation under
         # test rather than a fixed pair. The comparison is all-pairs: any two
