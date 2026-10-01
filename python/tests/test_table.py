@@ -172,6 +172,67 @@ def test_fields_selects_in_schema_order_and_rejects_unknowns(tmp_path: Path) -> 
         columns([], fields=[])
 
 
+#: Run in a child interpreter by the test below. Each thread passes ``fields``
+#: as a generator that gives up the GIL between names, so a thread is always
+#: part-way through resolving its selection when another one starts.
+_CONCURRENT_FIELDS_SCRIPT = """
+import sys
+import threading
+import time
+
+from aero1553 import MieFileReader, columns
+
+records = list(MieFileReader(sys.argv[1]))
+
+def fields():
+    for name in ("rt", "file_offset"):
+        time.sleep(0)
+        yield name
+
+def work():
+    for _ in range(200):
+        records[0].to_dict(fields=fields())
+        columns(records, fields=fields())
+
+threads = [threading.Thread(target=work) for _ in range(4)]
+for thread in threads:
+    thread.start()
+for thread in threads:
+    thread.join()
+print("ok")
+"""
+
+
+@pytest.mark.requirement("L3-PY-020")
+def test_fields_resolution_is_safe_across_threads(tmp_path: Path) -> None:
+    """Concurrent ``to_dict(fields=...)`` / ``columns(fields=...)`` finish.
+
+    The binding caches the last resolved ``fields`` under a process-wide lock.
+    It once held that lock while iterating the caller's ``fields``, which runs
+    Python code and can release the GIL: one thread then held the lock waiting
+    for the GIL while another held the GIL waiting for the lock, and the
+    process hung for good. A hang freezes every thread -- including one that
+    would time out a join -- so the reproduction runs in a child process and
+    the timeout is the parent's.
+    """
+    import subprocess
+    import sys
+
+    path = _file(tmp_path, "basic-multi-record")
+    try:
+        result = subprocess.run(
+            [sys.executable, "-c", _CONCURRENT_FIELDS_SCRIPT, str(path)],
+            capture_output=True,
+            text=True,
+            timeout=60,
+            check=False,
+        )
+    except subprocess.TimeoutExpired:
+        pytest.fail("concurrent fields resolution deadlocked (child still running after 60 s)")
+    assert result.returncode == 0, result.stderr
+    assert result.stdout.strip() == "ok"
+
+
 @pytest.mark.requirement("L3-PY-020")
 def test_datetime_needs_a_year_only_when_asked_for() -> None:
     msg = _message(IrigTimestamp(192, 15, 54, 50, 1, False))

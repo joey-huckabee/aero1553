@@ -229,6 +229,12 @@ shared behavior) holds at any compatible version pair. See
   renders both files the same way.** The main CSV ignored the option and
   wrote day-of-year while `_errors.csv` honoured it. Rust and Python were
   already correct.
+- **Python: `to_dict(fields=...)` and `columns(fields=...)` no longer hang
+  when called from several threads at once.** The binding held a
+  process-wide lock while iterating `fields`, which runs Python code and can
+  release the GIL; one thread then waited on the GIL while holding the lock
+  and another waited on the lock while holding the GIL, and the process hung
+  for good. The lock now covers only the cache lookup and store.
 
 ## [3.0.0] — 2026-08-28
 
