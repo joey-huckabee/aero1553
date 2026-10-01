@@ -465,7 +465,12 @@ void prepare_stdout() {
     // to apply. Ignored, the write fails with EPIPE and the writer's existing
     // classification takes over. This is what Rust's runtime and CPython do
     // before main.
-    ::signal(SIGPIPE, SIG_IGN);
+    //
+    // The result is discarded deliberately. signal() fails only for an invalid
+    // signal number (EINVAL), and SIGPIPE is valid on every POSIX system; were
+    // it ever to fail, the disposition would stay at its default, which is the
+    // behaviour this call improves on rather than a new failure to report.
+    (void)::signal(SIGPIPE, SIG_IGN);
 }
 
 bool canonical_path(const std::string& utf8_path, std::string& out, OsError& err) {
