@@ -357,9 +357,7 @@ def violations_in(lit: Literal) -> list[tuple[int, str]]:
         for m in pattern.finditer(lit.text):
             value = int(m.group(1), base)
             if value > 0x7F:
-                found.append(
-                    (at(m.start()), "escape %s -> U+%04X" % (m.group(0), value))
-                )
+                found.append((at(m.start()), "escape %s -> U+%04X" % (m.group(0), value)))
     for m in NAMED_ESCAPE.finditer(lit.text):
         found.append((at(m.start()), "named escape %s" % m.group(0)))
     return sorted(set(found))
@@ -373,9 +371,7 @@ def main() -> int:
         for rel in roots:
             base = root / rel
             if not base.is_dir():
-                print(
-                    "assert-ascii-output: no such directory: %s" % rel, file=sys.stderr
-                )
+                print("assert-ascii-output: no such directory: %s" % rel, file=sys.stderr)
                 return 1
             for path in sorted(base.rglob("*")):
                 if path.suffix not in suffixes or not path.is_file():
@@ -395,8 +391,7 @@ def main() -> int:
                         failures += 1
                         text = lines[line_no - 1].strip() if line_no <= len(lines) else ""
                         print(
-                            "assert-ascii-output: FAIL %s:%d  %s"
-                            % (shown, line_no, reason),
+                            "assert-ascii-output: FAIL %s:%d  %s" % (shown, line_no, reason),
                             file=sys.stderr,
                         )
                         print("    %s" % text[:100], file=sys.stderr)
@@ -415,10 +410,7 @@ def main() -> int:
         )
         return 1
 
-    print(
-        "assert-ascii-output: OK (%d shipped source files, all string literals ASCII)"
-        % scanned
-    )
+    print("assert-ascii-output: OK (%d shipped source files, all string literals ASCII)" % scanned)
     return 0
 
 

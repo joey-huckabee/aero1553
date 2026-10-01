@@ -171,9 +171,7 @@ def check_config_path_parity(
             codes[impl] = result.returncode
             stderrs[impl] = result.stderr
 
-        divergence = describe_divergence(
-            {impl: f"exit {code}" for impl, code in codes.items()}
-        )
+        divergence = describe_divergence({impl: f"exit {code}" for impl, code in codes.items()})
         if divergence is not None:
             failures.append(f"{name}: DIVERGENT exit codes — {divergence}")
             continue
@@ -181,24 +179,16 @@ def check_config_path_parity(
         if agreed != expect_code:
             # Unanimous and unanimously wrong: a specification or case
             # problem rather than an implementation one.
-            failures.append(
-                f"{name}: all exited {agreed}, expected {expect_code}"
-            )
+            failures.append(f"{name}: all exited {agreed}, expected {expect_code}")
             continue
         if expect_msg is not None:
             for impl, err in stderrs.items():
                 if expect_msg not in err:
                     failures.append(
-                        f"{name}: {impl} stderr missing {expect_msg!r} — got "
-                        f"{err.strip()[:160]!r}"
+                        f"{name}: {impl} stderr missing {expect_msg!r} — got {err.strip()[:160]!r}"
                     )
 
     if failures:
-        raise AssertionError(
-            "config-path parity failures:\n  " + "\n  ".join(failures)
-        )
+        raise AssertionError("config-path parity failures:\n  " + "\n  ".join(failures))
     note = f" ({len(skipped)} skipped: {', '.join(skipped)})" if skipped else ""
-    print(
-        f"PASS config-path-parity ({checked} cases across "
-        f"{', '.join(invocations)}){note}"
-    )
+    print(f"PASS config-path-parity ({checked} cases across {', '.join(invocations)}){note}")

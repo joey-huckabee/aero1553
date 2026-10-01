@@ -103,8 +103,7 @@ def validate_case_schema(case: Any, index: int) -> None:
     """
     if not isinstance(case, dict):
         raise RuntimeError(
-            f"manifest case at index {index}: expected an object, "
-            f"got {type(case).__name__}"
+            f"manifest case at index {index}: expected an object, got {type(case).__name__}"
         )
     name = case.get("name") if isinstance(case.get("name"), str) else None
     label = repr(name) if name else f"at index {index}"
@@ -114,9 +113,7 @@ def validate_case_schema(case: Any, index: int) -> None:
     has_input = "input" in case
     has_inputs = "inputs" in case
     if not (has_input or has_inputs):
-        raise RuntimeError(
-            f"manifest case {label}: missing required 'input' or 'inputs' field"
-        )
+        raise RuntimeError(f"manifest case {label}: missing required 'input' or 'inputs' field")
     if has_input and has_inputs:
         raise RuntimeError(
             f"manifest case {label}: specify exactly one of 'input' or 'inputs', not both"
@@ -156,8 +153,7 @@ def validate_case_schema(case: Any, index: int) -> None:
 
     if "mode" in case and case["mode"] not in ALLOWED_MODES:
         raise RuntimeError(
-            f"manifest case {label}: mode {case['mode']!r} is not one of "
-            f"{sorted(ALLOWED_MODES)}"
+            f"manifest case {label}: mode {case['mode']!r} is not one of {sorted(ALLOWED_MODES)}"
         )
 
 
@@ -684,10 +680,7 @@ def check_cli_surface(args: argparse.Namespace, impls: list[ImplSpec]) -> None:
             f"  only in {label}: {', '.join(only_other)}"
         )
     note = f" (not compared: {', '.join(excluded)})" if excluded else ""
-    print(
-        f"PASS cli-surface-parity ({len(reference)} flags across "
-        f"{', '.join(surfaces)}){note}"
-    )
+    print(f"PASS cli-surface-parity ({len(reference)} flags across {', '.join(surfaces)}){note}")
 
 
 def main() -> int:
@@ -850,9 +843,7 @@ def main() -> int:
                 output = outputs[impl.name]
                 if pre_existing is not None and output is not None:
                     output.write_text(pre_existing, encoding="utf-8")
-                read_path = (
-                    Path(f"{output}.partial") if partial_oracle and output else None
-                )
+                read_path = Path(f"{output}.partial") if partial_oracle and output else None
                 produced[impl.name], captured_stderr[impl.name] = run_command(
                     impl.command(args, case, per_impl_sources.get(impl.name, sources), output),
                     output,

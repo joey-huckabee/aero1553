@@ -339,8 +339,7 @@ def collect_rust_markers(source_roots: list[Path]) -> dict[str, list[str]]:
                     _, _, after = stripped.partition("Requirements:")
                     for match in REQ_ID_PATTERN.finditer(after):
                         pending_ids.append(
-                            f"L{match.group('level')}-"
-                            f"{match.group('cat')}-{match.group('num')}"
+                            f"L{match.group('level')}-{match.group('cat')}-{match.group('num')}"
                         )
                     continue
                 if stripped.startswith("#["):
@@ -397,8 +396,7 @@ def collect_cpp_markers(tests_dir: Path) -> dict[str, list[str]]:
         for match in CPP_TEST_CASE.finditer(source):
             for req_match in REQ_ID_PATTERN.finditer(match.group("tags")):
                 req_id = (
-                    f"L{req_match.group('level')}-"
-                    f"{req_match.group('cat')}-{req_match.group('num')}"
+                    f"L{req_match.group('level')}-{req_match.group('cat')}-{req_match.group('num')}"
                 )
                 marker_map[req_id].append(f"{rel}::{match.group('name')}")
     return marker_map
@@ -526,9 +524,7 @@ def build_matrix() -> str:
             # otherwise be invisible in the matrix.
             l1_artifacts = sorted(test_markers.get(l1_id, []))
             artifacts_str = (
-                "<br>".join(f"`{a}`" for a in l1_artifacts)
-                if l1_artifacts
-                else "_(none)_"
+                "<br>".join(f"`{a}`" for a in l1_artifacts) if l1_artifacts else "_(none)_"
             )
             status = compute_status(
                 has_direct_artifacts=bool(test_markers.get(l1_id)),
@@ -565,9 +561,7 @@ def build_matrix() -> str:
                     set(l2_evidence.get(l2_id, []))
                     | {e for l3_id in l3_children for e in l3_evidence.get(l3_id, [])}
                 )
-            artifacts_str = (
-                "<br>".join(f"`{a}`" for a in artifacts) if artifacts else "_(TBD)_"
-            )
+            artifacts_str = "<br>".join(f"`{a}`" for a in artifacts) if artifacts else "_(TBD)_"
             status = _l2_status(
                 l2_id,
                 l2_to_l3,
