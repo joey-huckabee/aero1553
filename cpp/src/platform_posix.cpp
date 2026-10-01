@@ -23,6 +23,7 @@
 #include <dirent.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <signal.h>
 #include <stdlib.h>
 #include <string.h>
 #include <sys/mman.h>
@@ -456,9 +457,20 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
     return true;
 }
 
-void set_stdout_binary() {
-    // Nothing to do: POSIX streams do not translate line endings. The function
-    // exists so main() has one unconditional call site instead of an #ifdef.
+void prepare_stdout() {
+    // POSIX streams do not translate line endings, so there is no binary mode
+    // to set. What there is to do is SIGPIPE: left at its default, a closed
+    // downstream pipe kills the process (exit 141) before the failed write can
+    // return EPIPE, and L2-WRT-018's "broken pipe exits 0" never gets a chance
+    // to apply. Ignored, the write fails with EPIPE and the writer's existing
+    // classification takes over. This is what Rust's runtime and CPython do
+    // before main.
+    //
+    // The result is discarded deliberately. signal() fails only for an invalid
+    // signal number (EINVAL), and SIGPIPE is valid on every POSIX system; were
+    // it ever to fail, the disposition would stay at its default, which is the
+    // behaviour this call improves on rather than a new failure to report.
+    (void)::signal(SIGPIPE, SIG_IGN);
 }
 
 bool canonical_path(const std::string& utf8_path, std::string& out, OsError& err) {

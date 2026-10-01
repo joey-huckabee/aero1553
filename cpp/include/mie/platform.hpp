@@ -11,7 +11,8 @@
 //   1. mapping the input file read-only
 //   2. the atomic temp-file + rename output strategy (L2-WRT-015, L3-WRT-001)
 //   3. directory enumeration behind `--glob`
-//   4. byte-exact output (no CRLF translation, L2-WRT-012)
+//   4. byte-exact stdout (no CRLF translation, L2-WRT-012; a closed pipe is a
+//      write error, not a signal, L2-WRT-018)
 //   5. path identity and encoding (L2-WRT-014's InputOutputCollision check)
 //
 // `scripts/assert-platform-confined.sh` fails the build if any other
@@ -244,12 +245,18 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
 // 4. Byte-exact output
 // ---------------------------------------------------------------------------
 
-/// Put stdout into binary mode.
+/// Prepare stdout for the decoder's output. Call once, early, from main().
 ///
-/// A no-op on POSIX. On Windows the CRT otherwise rewrites every newline into
-/// CRLF, which silently breaks every stdout conformance oracle on that platform
-/// alone. Call once, early, from main().
-void set_stdout_binary();
+/// On Windows this puts stdout into binary mode: the CRT otherwise rewrites
+/// every newline into CRLF, which silently breaks every stdout conformance
+/// oracle on that platform alone.
+///
+/// On POSIX it ignores SIGPIPE. The default disposition kills the process the
+/// moment a downstream reader closes the pipe (`aero1553 decode x.mie | head`),
+/// so it exits 141 and the EPIPE that L2-WRT-018 turns into exit 0 is never
+/// seen. Rust's runtime and CPython both ignore SIGPIPE before main; C++ is the
+/// only implementation where it has to be asked for.
+void prepare_stdout();
 
 // ---------------------------------------------------------------------------
 // 5. Path identity, metadata, and encoding

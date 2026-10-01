@@ -11,6 +11,11 @@
       "expected": "expected/header-and-sync-recovery.csv"
     },
     {
+      "name": "sync-recovery-then-terminator",
+      "input": "inputs/sync-recovery-then-terminator.hex",
+      "expected": "expected/sync-recovery-then-terminator.csv"
+    },
+    {
       "name": "errors-inline",
       "input": "inputs/errors-inline.hex",
       "expected": "expected/errors-inline.csv"
@@ -175,6 +180,19 @@
       ]
     },
     {
+      "name": "errors-separate-iso",
+      "input": "inputs/errors-inline.hex",
+      "expected": "expected/errors-separate-iso.csv",
+      "expected_errors": "expected/errors-separate-iso_errors.csv",
+      "args": [
+        "--separate-errors",
+        "--output-time-format",
+        "iso",
+        "--year",
+        "2026"
+      ]
+    },
+    {
       "name": "spurious-standalone",
       "input": "inputs/spurious-standalone.hex",
       "expected": "expected/spurious-standalone.csv"
@@ -208,6 +226,18 @@
       "input": "inputs/first-record-truncated.hex",
       "expected_exit": 1,
       "config": "configs/strict.toml"
+    },
+    {
+      "name": "first-record-truncated-lenient",
+      "input": "inputs/first-record-truncated.hex",
+      "expected_exit": 2,
+      "expected_stderr_contains": "first record after header detection is truncated"
+    },
+    {
+      "name": "text-file-is-not-a-recording",
+      "input": "inputs/text-not-mie.hex",
+      "expected_exit": 2,
+      "expected_stderr_contains": "first record after header detection is truncated"
     },
     {
       "name": "empty-recording",

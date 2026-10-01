@@ -465,7 +465,7 @@
   <g id="platform">
     <rect class="box" x="40" y="980" width="860" height="75" rx="4"/>
     <text class="name" x="470" y="1001" text-anchor="middle">platform -- cpp/include/mie/platform.hpp, the only C++ code that touches the OS</text>
-    <text class="mono" x="470" y="1020" text-anchor="middle">MappedFile | AtomicFile | list_directory | set_stdout_binary | paths_same_file</text>
+    <text class="mono" x="470" y="1020" text-anchor="middle">MappedFile | AtomicFile | list_directory | prepare_stdout | paths_same_file</text>
     <text x="470" y="1039" text-anchor="middle">map the input, atomic output, directory enumeration (--glob), binary stdout, path identity</text>
   </g>
 

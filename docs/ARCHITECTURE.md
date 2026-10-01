@@ -126,7 +126,7 @@ The scan advances in 2-byte (word-aligned) steps and caps at 64 KB (`MAX_SCAN_BY
 When `find_first_record` returns None, the reader calls `diagnose_header_scan_failure` (sync module) to distinguish two cases (per L2-RDR-004):
 
 - **`HomogeneousPayload`** — if `is_homogeneous_payload` reports byte-identical candidate records, the file is a single-byte pad (e.g., 0x20-fill that happens to parse as a SPURIOUS_DATA stream). Both modes reject.
-- **`FirstRecordTruncated`** — if there's a structurally-valid Type Word at or after the header but its declared extent runs past EOF, surface this distinct class. Strict mode raises; lenient mode terminates cleanly with zero records emitted.
+- **`FirstRecordTruncated`** — if there's a structurally-valid Type Word at or after the header but its declared extent runs past EOF, surface this distinct class. Strict mode raises; lenient mode emits zero records and fails with `NoValidRecords` (exit 2), after a WARN naming the truncation.
 - **`NoValidRecords`** — otherwise the file isn't an MIE recording at all. Both modes raise.
 
 ### Phase 2 — Continuous validation
@@ -143,7 +143,7 @@ emits one context line capped at 32 bytes.
 
 `validate_record` uses an N-record look-ahead: a candidate is confirmed valid only if the next `N − 1` records each start with a valid Type Word (message type in the known set, word count plausible). The walk advances by each candidate's declared `word_count` so it checks the *next records*, not the next 2-byte positions. This dramatically reduces false positives from coincidental byte patterns. When fewer than 2 bytes remain at any look-ahead position, the walk terminates without rejecting the original candidate — checks 1–5 alone are authoritative for records that don't exist in the file (L2-SYN-005, L2-SYN-026).
 
-The format has no per-record sync marker, so the Type Word's `word_count` is the only framing; the look-ahead turns the redundancy of consecutive self-consistent lengths into a *synthetic* sync check. `MIE-FORMAT.md` §2.3 ("Why the look-ahead exists") is the deep rationale — the false-positive math, the chaining argument, and why the end-of-records terminator is accepted as an end-of-chain on the forward paths but not during recovery.
+The format has no per-record sync marker, so the Type Word's `word_count` is the only framing; the look-ahead turns the redundancy of consecutive self-consistent lengths into a *synthetic* sync check. `MIE-FORMAT.md` §2.3 ("Why the look-ahead exists") is the deep rationale — the false-positive math, the chaining argument, and why the end-of-records terminator is accepted as an end-of-chain on the forward paths, but during recovery only as the file's last word.
 
 The look-ahead depth `N` is configurable via the `decode.lookahead_records` TOML key or the `--lookahead-records` CLI flag, range `[1, 32]`, default `8` (raised from `2` in v2.12.0). Higher values catch wider classes of consecutive-same-shape corruption — and, more importantly, wrong-input false positives: ordinary prose contains chains that satisfy `N = 2` (every Markdown file in this repo decoded "successfully" at that depth), while `N = 8` rejects all but one of them. The cost is small (one Type Word read per extra look-ahead record).
 

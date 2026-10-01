@@ -170,10 +170,24 @@ fn cached(names: &Bound<'_, PyAny>, last: &Resolved) -> Option<[bool; FIELDS.len
 }
 
 /// Which fields `names` selects, from the cache when it is the same object.
+///
+/// `LAST_RESOLVED` is locked only around the lookup and the store, never while
+/// Python code runs. Iterating `names` runs the caller's code (a generator, a
+/// custom `__iter__`, a `str` subclass's `__repr__` in the error message), and
+/// that code can release the GIL. Holding the lock across it let one thread
+/// own the lock while waiting for the GIL and another own the GIL while waiting
+/// for the lock: the process hung for good. Dropping a replaced entry can run
+/// `__del__` the same way, so that happens after the lock is released too.
+/// Two threads that miss together both resolve, and the last store wins --
+/// the cache is an optimisation, so either entry is correct.
 fn resolve(py: Python<'_>, names: &Bound<'_, PyAny>) -> PyResult<[bool; FIELDS.len()]> {
-    let mut last = LAST_RESOLVED.lock().unwrap_or_else(PoisonError::into_inner);
-    if let Some(hit) = last.as_ref().and_then(|l| cached(names, l)) {
-        return Ok(hit);
+    {
+        let last = LAST_RESOLVED.lock().unwrap_or_else(PoisonError::into_inner);
+        // `cached` compares object identities and indexes a `list` directly;
+        // neither runs Python code.
+        if let Some(hit) = last.as_ref().and_then(|l| cached(names, l)) {
+            return Ok(hit);
+        }
     }
     if names.is_instance_of::<PyString>() {
         return Err(PyValueError::new_err(
@@ -206,11 +220,16 @@ fn resolve(py: Python<'_>, names: &Bound<'_, PyAny>) -> PyResult<[bool; FIELDS.l
         return Err(PyValueError::new_err("fields must name at least one field"));
     }
     if names.is_exact_instance_of::<PyTuple>() || names.is_exact_instance_of::<PyList>() {
-        *last = Some(Resolved {
+        let entry = Some(Resolved {
             fields: names.clone().unbind(),
             items,
             wanted,
         });
+        let replaced = std::mem::replace(
+            &mut *LAST_RESOLVED.lock().unwrap_or_else(PoisonError::into_inner),
+            entry,
+        );
+        drop(replaced);
     }
     Ok(wanted)
 }

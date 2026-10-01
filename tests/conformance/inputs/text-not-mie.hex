@@ -1,0 +1,12 @@
+# L2-RDR-004 fixture: a plain text file, not an MIE recording.
+#
+# The ASCII line "hello world, this is not an MIE file!!" plus a newline
+# (39 bytes). Its bytes happen to contain one structurally plausible Type
+# Word (at offset 0xC, declaring 104 bytes with 27 left), so the header
+# scan diagnoses a truncated first record rather than "no record at all".
+# Lenient mode once treated that as a clean end of stream and exited 0
+# with a header-only CSV -- a text file "decoded" successfully. It SHALL
+# exit 2 (no valid records) in lenient mode, the default.
+
+6865 6C6C 6F20 776F 726C 642C 2074 6869 7320 6973 206E 6F74
+2061 6E20 4D49 4520 6669 6C65 2121 0A

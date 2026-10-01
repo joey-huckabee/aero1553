@@ -302,10 +302,6 @@ std::string format_row(const MieMessage& message, const TimeRender& render) {
 // CsvWriter
 // ---------------------------------------------------------------------------
 
-CsvWriter::CsvWriter(CsvSink& sink) : sink_(&sink), rows_written_(0), render_() {
-    emit(CSV_HEADER, std::char_traits<char>::length(CSV_HEADER));
-}
-
 CsvWriter::CsvWriter(CsvSink& sink, const TimeRender& render)
     : sink_(&sink), rows_written_(0), render_(render) {
     emit(CSV_HEADER, std::char_traits<char>::length(CSV_HEADER));
@@ -552,7 +548,7 @@ WriteOutcome write_csv_split(MessageSource& messages, const std::string& output,
     uint64_t error_rows = 0;
 
     try {
-        CsvWriter main_writer(main_sink);
+        CsvWriter main_writer(main_sink, options.time_render);
         // Owned by a unique_ptr because the errors writer does not exist until
         // the first error row -- a clean recording must leave no empty
         // _errors.csv behind, and no temp file either. A raw new/delete pair

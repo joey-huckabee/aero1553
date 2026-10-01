@@ -459,16 +459,27 @@ impl MieFileReader {
                     }),
                 )
             }
+            // Lenient: the WARN keeps the specific diagnosis, but the outcome is
+            // the no-valid-records class (exit 2). This arm once returned a
+            // clean end of stream, so a file that decodes to no rows -- a text
+            // file, say, whose bytes happen to form one plausible Type Word --
+            // exited 0 with a header-only CSV, indistinguishable from success.
             Some((trunc_offset, record_bytes, available)) => {
                 log_warn!(
                     "first record after header detection is truncated \
                      at 0x{:X}: declared {} bytes, only {} available -- \
-                     lenient mode terminates cleanly with zero records",
+                     no records decoded",
                     trunc_offset,
                     record_bytes,
                     available
                 );
-                (true, None)
+                (
+                    false,
+                    Some(MieError::NoValidRecords {
+                        path: self.path.to_path_buf(),
+                        scan_bytes: file_len.min(MAX_SCAN_BYTES) as u64,
+                    }),
+                )
             }
             None => {
                 let scan_bytes = file_len.min(MAX_SCAN_BYTES) as u64;
@@ -1588,8 +1599,7 @@ mod tests {
     /// Regression: L2-RDR-004. A file that contains a structurally-
     /// valid Type Word whose declared extent runs past EOF SHALL surface
     /// `MieError::FirstRecordTruncated` in strict mode (distinct from the
-    /// generic `RecordTruncated`) and SHALL terminate cleanly with zero
-    /// records in lenient mode.
+    /// generic `RecordTruncated`). The lenient half is the next test.
     /// Requirements: L2-RDR-004
     #[test]
     fn first_record_truncated_strict_raises_distinct_error() {
@@ -1640,15 +1650,32 @@ mod tests {
         assert!(it.next().is_none());
     }
 
+    /// L2-RDR-004, lenient half: zero records, and the no-valid-records class
+    /// (exit 2) rather than a clean end of stream. A clean end was the v2.12.0
+    /// route by which a non-MIE input reported a successful decode -- and this
+    /// test once pinned exactly that.
     /// Requirements: L2-RDR-004
     #[test]
-    fn first_record_truncated_lenient_terminates_clean() {
+    fn first_record_truncated_lenient_reports_no_valid_records() {
         let full = rt15_sa11_rcv();
         let truncated = &full[..20];
         let f = write_temp(truncated);
         let reader = MieFileReader::new(f.path()).unwrap();
-        let msgs: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
-        assert!(msgs.is_empty(), "lenient mode SHALL yield zero records");
+        let mut it = reader.iter();
+        match it.next() {
+            Some(Err(e)) => assert_eq!(
+                e.kind(),
+                crate::error::MieErrorKind::NoValidRecords,
+                "expected NoValidRecords, got {:?}",
+                e.kind()
+            ),
+            other => panic!("expected Some(Err(NoValidRecords)), got {other:?}"),
+        }
+        assert!(it.next().is_none());
+        assert!(
+            !reader.empty_recording(),
+            "a truncated first record is not an empty recording"
+        );
     }
 
     /// L2-DEC-013: forcing the wrong timestamp format on a recording the

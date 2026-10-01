@@ -209,6 +209,48 @@ shared behavior) holds at any compatible version pair. See
   Rust library's), which runner noise cannot trip the way an absolute time
   limit would. It replaces the ad-hoc `python/benchmarks/` scripts.
 
+### Fixed
+
+- **A file whose first record is truncated now exits `2` in lenient mode,
+  not `0`** (all three implementations; L2-RDR-004). Lenient is the
+  default, so this changes the exit code of ordinary invocations: such a
+  file used to "decode" successfully to a header-only CSV. That included
+  plain text files whose bytes happen to form one plausible Type Word --
+  `hello world, this is not an MIE file!!` exited `0`. The WARN naming the
+  truncation is kept; the outcome is now the no-valid-records class
+  (`NoValidRecords` / `MieNoValidRecordsError`), and no output file is
+  created. Strict mode is unchanged (`FirstRecordTruncated`, exit `1`). A
+  script that relied on exit `0` here was relying on the defect.
+- **C++: a consumer closing stdout early now exits `0`** (L2-WRT-018). On
+  Linux, `aero1553 decode x.mie | head -1` was killed by SIGPIPE and exited
+  `141`, failing any pipeline under `set -o pipefail`. Rust and Python were
+  already correct.
+- **C++: `--separate-errors` with `--output-time-format iso` or `dom` now
+  renders both files the same way.** The main CSV ignored the option and
+  wrote day-of-year while `_errors.csv` honoured it. Rust and Python were
+  already correct.
+- **Python: `to_dict(fields=...)` and `columns(fields=...)` no longer hang
+  when called from several threads at once.** The binding held a
+  process-wide lock while iterating `fields`, which runs Python code and can
+  release the GIL; one thread then waited on the GIL while holding the lock
+  and another waited on the lock while holding the GIL, and the process hung
+  for good. The lock now covers only the cache lookup and store.
+- **C++ on Windows: paths longer than 260 characters now work.** A recording
+  in a deep directory, or an output written into one, failed as "MIE file
+  not found" -- even with `LongPathsEnabled` set, since the executable does
+  not opt in. The Win32 backend now adds the `\\?\` extended-length prefix
+  when a resolved path needs it, as Rust's standard library does. Shorter
+  paths reach Windows exactly as before, so device names such as `NUL` keep
+  their meaning.
+- **A final record found by sync recovery is no longer dropped when the
+  recording ends with the `0x0000` terminator** (all three implementations;
+  L2-SYN-028 amended). Every DDC recording ends that way, so when corruption
+  sat just before the last record, that record vanished -- though the same
+  file without the terminator kept it. Recovery now accepts the terminator
+  when it is the file's last word, which ends a candidate exactly where
+  end-of-file does. A zero word anywhere else still does not confirm a
+  recovery candidate, so the false-positive guard is unchanged.
+
 ## [3.0.0] — 2026-08-28
 
 ### Changed — BREAKING
