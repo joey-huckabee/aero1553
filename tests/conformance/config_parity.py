@@ -154,6 +154,10 @@ def check_config_parser_parity(
 
     ``input_mie`` is a materialized, valid single-record recording so an accepted
     config decodes to exit 0. Only the config differs between snippets.
+
+    Raises:
+        AssertionError: if the implementations diverge on any snippet, or
+            agree on a verdict other than the expected one.
     """
     failures: list[str] = []
     for name, toml, expect in CORPUS:

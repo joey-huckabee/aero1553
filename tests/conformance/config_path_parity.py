@@ -31,10 +31,10 @@ from __future__ import annotations
 
 import os
 import subprocess
+from collections.abc import Callable
 from pathlib import Path
 
 from differential import describe_divergence
-from typing import Callable
 
 #: A case yields ``(path to pass to --config, expected exit code, message
 #: substring both implementations must print)``, or ``None`` to skip itself on
@@ -144,6 +144,11 @@ def check_config_path_parity(
 
     ``input_mie`` is a materialized, valid single-record recording, so a usable
     config decodes to exit 0 and only the ``--config`` path differs between cases.
+
+    Raises:
+        AssertionError: if the implementations' exit codes diverge on any case,
+            agree on a code other than the expected one, or any stderr lacks
+            the case's expected message.
     """
     failures: list[str] = []
     skipped: list[str] = []

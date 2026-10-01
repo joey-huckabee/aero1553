@@ -337,18 +337,16 @@ def collect_rust_markers(source_roots: list[Path]) -> dict[str, list[str]]:
                     continue
                 if stripped.startswith("///") and "Requirements:" in stripped:
                     _, _, after = stripped.partition("Requirements:")
-                    for match in REQ_ID_PATTERN.finditer(after):
-                        pending_ids.append(
-                            f"L{match.group('level')}-{match.group('cat')}-{match.group('num')}"
-                        )
+                    pending_ids.extend(
+                        f"L{match.group('level')}-{match.group('cat')}-{match.group('num')}"
+                        for match in REQ_ID_PATTERN.finditer(after)
+                    )
                     continue
                 if stripped.startswith("#["):
                     if (
                         "test]" in stripped
                         or "::test]" in stripped
-                        or stripped.startswith("#[test")
-                        or stripped.startswith("#[tokio::test")
-                        or stripped.startswith("#[rstest")
+                        or stripped.startswith(("#[test", "#[tokio::test", "#[rstest"))
                     ):
                         saw_test_attr = True
                     attr_depth = stripped.count("[") - stripped.count("]")
@@ -676,13 +674,11 @@ def build_matrix() -> str:
     if orphan_l2s:
         lines.append("")
         lines.append("**Orphan L2s:**")
-        for l2 in orphan_l2s:
-            lines.append(f"* {l2} -> parent {l2_parent[l2]} not in L1-REQ.md")
+        lines.extend(f"* {l2} -> parent {l2_parent[l2]} not in L1-REQ.md" for l2 in orphan_l2s)
     if orphan_l3s:
         lines.append("")
         lines.append("**Orphan L3s:**")
-        for l3 in orphan_l3s:
-            lines.append(f"* {l3} -> parent {l3_parent[l3]} not in L2-REQ.md")
+        lines.extend(f"* {l3} -> parent {l3_parent[l3]} not in L2-REQ.md" for l3 in orphan_l3s)
     lines.append("")
 
     all_known = set(l1_ids) | set(l2_parent) | set(l3_parent)

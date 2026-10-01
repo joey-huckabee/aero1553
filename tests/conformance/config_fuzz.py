@@ -179,6 +179,10 @@ def check_config_parser_fuzz(
     ``invocations`` maps an implementation name to its CLI prefix, so a third
     parser joins the sweep without changing the comparison -- which is
     all-pairs: any two disagreeing is a finding, regardless of which is right.
+
+    Raises:
+        AssertionError: if any two implementations disagree on any generated
+            config (reporting up to the first ten divergences).
     """
     seed = int(os.environ.get("MIE_CONFIG_FUZZ_SEED", _DEFAULT_SEED))
     iters = int(os.environ.get("MIE_CONFIG_FUZZ_ITERS", _DEFAULT_ITERS))
