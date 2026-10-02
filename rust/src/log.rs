@@ -321,9 +321,9 @@ mod tests {
         );
 
         set_sink(previous);
-        assert!(captured_with("inside-first").is_empty());
-        assert!(captured_with("inside-nested").is_empty());
-        assert!(captured_with("inside-after-nested").is_empty());
+        assert_eq!(captured_with("inside-first"), Vec::<String>::new());
+        assert_eq!(captured_with("inside-nested"), Vec::<String>::new());
+        assert_eq!(captured_with("inside-after-nested"), Vec::<String>::new());
         assert_eq!(
             captured_with("outside-").len(),
             2,

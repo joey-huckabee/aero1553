@@ -2527,7 +2527,7 @@ mod tests {
         // the one that never passed the flag at all.
         let with = parse_decode(&mut args(&["--exclude-rts=", "rec.mie"])).unwrap();
         let without = parse_decode(&mut args(&["rec.mie"])).unwrap();
-        assert!(with.exclude_rts.is_empty());
+        assert_eq!(with.exclude_rts, Vec::<u8>::new());
         assert_eq!(format!("{with:?}"), format!("{without:?}"));
 
         // Rejected: the validator refuses this, not the cursor.
