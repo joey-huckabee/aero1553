@@ -610,7 +610,10 @@ mod tests {
     /// Requirements: L2-WRT-021
     #[test]
     fn empty_stream_yields_nothing() {
-        assert!(ordered(vec![], DEFAULT_MAX_SORT_GROUP).is_empty());
+        assert_eq!(
+            ordered(vec![], DEFAULT_MAX_SORT_GROUP),
+            Vec::<Option<(u8, u8, u8)>>::new()
+        );
     }
 
     /// A single record needs no permutation and is emitted unchanged.

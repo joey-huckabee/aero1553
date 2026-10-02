@@ -211,6 +211,12 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **Rust and Python: RT and subaddress filter values above 31 are now a
+  usage error (exit `4`)** (L2-CLI-010). `--include-rts`, `--exclude-rts`,
+  `--include-subaddresses` and `--exclude-subaddresses` accepted anything
+  that fit in a byte, so `--include-rts 40` decoded to an empty CSV and
+  exited `0`. The same value in a config file was already refused (exit
+  `5`), as was the flag in C++.
 - **A file whose first record is truncated now exits `2` in lenient mode,
   not `0`** (all three implementations; L2-RDR-004). Lenient is the
   default, so this changes the exit code of ordinary invocations: such a

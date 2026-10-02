@@ -771,9 +771,17 @@ fn parse_int_value(s: &str, name: &str) -> Result<usize, String> {
     parsed.map_err(|_| format!("{name} expected integer, got {s:?}"))
 }
 
-fn parse_u8_value(s: &str, name: &str) -> Result<u8, String> {
-    parse_int_value(s, name).and_then(|n| {
-        u8::try_from(n).map_err(|_| format!("{name} value out of range (0-255): {n}"))
+/// Parse a MIL-STD-1553 RT address or subaddress filter value: [0, 31].
+///
+/// Checking only that the value fit a `u8` let `--include-rts 40` through to
+/// a filter no record can match, so the decode exited `0` with an empty CSV.
+/// The config loader (`parse_int_rt_sa`) and the C++ CLI already rejected it.
+fn parse_rt_sa_value(s: &str, name: &str) -> Result<u8, String> {
+    parse_int_value(s, name).and_then(|n| match u8::try_from(n) {
+        Ok(v) if v <= 31 => Ok(v),
+        _ => Err(format!(
+            "{name} value out of MIL-STD-1553 range [0, 31]: {n}"
+        )),
     })
 }
 
@@ -937,12 +945,12 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             "--exclude-rts" => push_filter(
                 &a.value("--exclude-rts", iter)?,
                 &mut args.exclude_rts,
-                |v| parse_u8_value(v, "--exclude-rts").map_err(Into::into),
+                |v| parse_rt_sa_value(v, "--exclude-rts").map_err(Into::into),
             )?,
             "--include-rts" => push_filter(
                 &a.value("--include-rts", iter)?,
                 &mut args.include_rts,
-                |v| parse_u8_value(v, "--include-rts").map_err(Into::into),
+                |v| parse_rt_sa_value(v, "--include-rts").map_err(Into::into),
             )?,
             "--exclude-buses" => push_filter(
                 &a.value("--exclude-buses", iter)?,
@@ -957,12 +965,12 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             "--exclude-subaddresses" => push_filter(
                 &a.value("--exclude-subaddresses", iter)?,
                 &mut args.exclude_subaddresses,
-                |v| parse_u8_value(v, "--exclude-subaddresses").map_err(Into::into),
+                |v| parse_rt_sa_value(v, "--exclude-subaddresses").map_err(Into::into),
             )?,
             "--include-subaddresses" => push_filter(
                 &a.value("--include-subaddresses", iter)?,
                 &mut args.include_subaddresses,
-                |v| parse_u8_value(v, "--include-subaddresses").map_err(Into::into),
+                |v| parse_rt_sa_value(v, "--include-subaddresses").map_err(Into::into),
             )?,
             "-h" | "--help" if a.bare() => return Err(ParseError::HelpRequested),
             // `raw`, not `name`: the message quotes what was typed, so
@@ -2103,6 +2111,33 @@ mod tests {
         assert_eq!(parsed.include_rts, vec![15, 31]);
     }
 
+    /// RT and subaddress filter values are MIL-STD-1553 wire fields, so the
+    /// CLI holds them to [0, 31] like the config loader does. Anything that
+    /// fit a `u8` used to pass, and filtered every record out.
+    /// Requirements: L2-CLI-010
+    #[test]
+    fn rt_and_subaddress_filters_reject_values_above_31() {
+        for flag in [
+            "--include-rts",
+            "--exclude-rts",
+            "--include-subaddresses",
+            "--exclude-subaddresses",
+        ] {
+            assert!(parse_decode(&mut args(&[flag, "31", "f.mie"])).is_ok());
+            assert!(parse_decode(&mut args(&[flag, "0x1F", "f.mie"])).is_ok());
+            for bad in ["32", "255", "256", "0x20"] {
+                let err = parse_decode(&mut args(&[flag, bad, "f.mie"])).unwrap_err();
+                let ParseError::Other(msg) = err else {
+                    panic!("{flag} {bad}: expected a usage error");
+                };
+                assert!(
+                    msg.contains(flag) && msg.contains("[0, 31]"),
+                    "{flag} {bad}: got {msg:?}"
+                );
+            }
+        }
+    }
+
     /// `--flag=value` syntax with comma-separation.
     /// Help outranks a **deferred** diagnostic.
     ///
@@ -2492,7 +2527,7 @@ mod tests {
         // the one that never passed the flag at all.
         let with = parse_decode(&mut args(&["--exclude-rts=", "rec.mie"])).unwrap();
         let without = parse_decode(&mut args(&["rec.mie"])).unwrap();
-        assert!(with.exclude_rts.is_empty());
+        assert_eq!(with.exclude_rts, Vec::<u8>::new());
         assert_eq!(format!("{with:?}"), format!("{without:?}"));
 
         // Rejected: the validator refuses this, not the cursor.

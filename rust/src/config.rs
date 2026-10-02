@@ -1408,7 +1408,7 @@ format = "csv"
         assert!(cfg.filters.exclude_types.contains(&0x01));
         assert!(cfg.filters.exclude_rts.contains(&31));
         assert!(cfg.filters.exclude_buses.contains(&Bus::B));
-        assert!(cfg.filters.exclude_subaddresses.is_empty());
+        assert_eq!(cfg.filters.exclude_subaddresses, Vec::<u8>::new());
     }
 
     /// Requirements: L2-CFG-001
@@ -1720,7 +1720,7 @@ exclude_types = ["UNICORN"]
         let cfg = parse_into_config(text).expect("typo'd key should warn, not fail");
         // The misspelled key gets WARN'd; the correctly-spelled key
         // (had it been written) would not be filtered, so default empty.
-        assert!(cfg.filters.exclude_subaddresses.is_empty());
+        assert_eq!(cfg.filters.exclude_subaddresses, Vec::<u8>::new());
     }
 
     /// Requirements: L2-CFG-001
