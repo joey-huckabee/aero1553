@@ -548,6 +548,26 @@
       "expected_exit": 4
     },
     {
+      "name": "usage-error-include-rts-out-of-range",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--include-rts",
+        "32"
+      ],
+      "expected_exit": 4,
+      "expected_stderr_contains": "--include-rts"
+    },
+    {
+      "name": "usage-error-exclude-subaddresses-out-of-range",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--exclude-subaddresses",
+        "40"
+      ],
+      "expected_exit": 4,
+      "expected_stderr_contains": "--exclude-subaddresses"
+    },
+    {
       "name": "standard-mode-code-data",
       "input": "inputs/standard-mode-code-rx-data.hex",
       "expected": "expected/standard-mode-code-data.csv",
