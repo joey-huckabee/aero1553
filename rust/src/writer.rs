@@ -2152,6 +2152,54 @@ mod tests {
         let _ = std::fs::remove_file(&partial_path);
     }
 
+    /// Requirements: L2-MRG-004, L2-WRT-016
+    ///
+    /// Split mode treats a merge that left inputs out as a partial stop, as it
+    /// does a sync loss: both `.partial` files commit, with no sync-loss offset
+    /// or count, because none occurred. Any other error still fails the run.
+    #[test]
+    fn split_mode_commits_partial_when_merge_inputs_were_dropped() {
+        let dest = unique_path(".csv");
+        let opts = || WriteOptions {
+            input_path: None,
+            no_clobber: false,
+            allow_partial: true,
+            time_render: TimeRender::doy(),
+        };
+        let messages: Vec<MieResult<MieMessage>> = vec![
+            Ok(sample_msg()),
+            Ok(error_msg()),
+            Err(MieError::MergeInputsDropped {
+                left_out: 1,
+                truncated: 0,
+                total: 2,
+            }),
+        ];
+        let outcome = write_csv_split(messages, &dest, opts()).unwrap();
+        let partial = outcome.partial.expect("partial commit info");
+        assert_eq!((partial.offset, partial.sync_losses), (0, 0));
+        assert_eq!((outcome.normal_count, outcome.error_count), (1, 1));
+        assert!(partial.main_path.exists());
+        let errors_partial = partial.errors_path.expect("an errors .partial");
+        assert!(errors_partial.exists());
+        assert!(!dest.exists(), "destination should not exist on partial");
+        let _ = std::fs::remove_file(&partial.main_path);
+        let _ = std::fs::remove_file(&errors_partial);
+
+        let messages: Vec<MieResult<MieMessage>> = vec![
+            Ok(sample_msg()),
+            Err(MieError::PayloadError {
+                offset: 0x40,
+                detail: "not a partial stop".into(),
+            }),
+        ];
+        let Err(e) = write_csv_split(messages, &dest, opts()) else {
+            panic!("an error that is not a partial stop must fail the run");
+        };
+        assert_eq!(e.kind(), crate::error::MieErrorKind::PayloadError);
+        assert!(!partial_path_for(&dest).exists());
+    }
+
     /// Requirements: L2-WRT-016, L1-EXIT-004
     #[test]
     fn write_csv_with_allow_partial_commits_on_unrecoverable() {

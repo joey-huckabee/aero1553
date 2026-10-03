@@ -435,6 +435,62 @@ fn merge_allow_partial_open_failure_writes_dot_partial() {
     assert!(!stderr.contains("sync loss"), "{stderr}");
 }
 
+/// Requirements: L2-MRG-004
+///
+/// When every merge input fails, `--allow-partial` has nothing to keep: the run
+/// fails with the FIRST input's own error and writes nothing -- whether the
+/// inputs fail at open (missing, exit 1) or a missing input precedes one that
+/// opens but is not a recording (still exit 1, the first input's code).
+#[test]
+fn merge_allow_partial_every_input_failing_reports_the_first() {
+    let tmp = TempDir::new();
+    let junk = tmp.write("junk.mie", &vec![0xFFu8; 4096]);
+    let missing = tmp.path().join("missing.mie");
+    let output = tmp.path().join("merged.csv");
+    let partial = PathBuf::from(format!("{}.partial", output.display()));
+
+    for inputs in [[&missing, &missing], [&missing, &junk]] {
+        let out = run([
+            std::ffi::OsStr::new("decode"),
+            inputs[0].as_os_str(),
+            inputs[1].as_os_str(),
+            std::ffi::OsStr::new("-o"),
+            output.as_os_str(),
+            std::ffi::OsStr::new("--allow-partial"),
+        ]);
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        assert_eq!(exit_code(&out), 1, "{stderr}");
+        assert!(stderr.contains("MIE file not found"), "{stderr}");
+        assert!(!output.exists() && !partial.exists());
+    }
+}
+
+/// Requirements: L2-MRG-004
+///
+/// On stdout a partial merge cannot commit a `.partial`, so a left-out input
+/// fails the run with the sync-loss exit class -- naming what happened.
+#[test]
+fn merge_allow_partial_to_stdout_with_a_left_out_input_exits_3() {
+    let tmp = TempDir::new();
+    let mut good = one_valid_record();
+    good.extend(one_valid_record());
+    let g = tmp.write("good.mie", &good);
+    let missing = tmp.path().join("missing.mie");
+
+    let out = run([
+        std::ffi::OsStr::new("decode"),
+        missing.as_os_str(),
+        g.as_os_str(),
+        std::ffi::OsStr::new("--allow-partial"),
+    ]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(exit_code(&out), 3, "{stderr}");
+    assert!(
+        stderr.contains("Error: 1 of 2 merge inputs could not be read and was left out"),
+        "{stderr}"
+    );
+}
+
 /// Requirements: L2-WRT-014
 #[test]
 fn no_clobber_refuses_to_overwrite_existing_output() {

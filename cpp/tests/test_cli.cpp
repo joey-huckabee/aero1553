@@ -21,6 +21,7 @@
 #include "log_capture.hpp"
 #include "mie/log.hpp"
 #include "mie/merge.hpp"
+#include "mie/platform.hpp"
 #include "mie/text.hpp"
 #include "mie/writer.hpp"
 #include "record_fixtures.hpp"
@@ -785,6 +786,63 @@ TEST_CASE("more inputs than the cap is refused up front", "[cli][L3-CPP-024]") {
     REQUIRE(run_capturing(args("decode", "--manifest", manifest.str()), out, err) ==
             mie::cli::EXIT_USAGE);
     REQUIRE(err.find("too many input files") != std::string::npos);
+}
+
+TEST_CASE("a partial merge of inputs that all fail reports the first", "[cli][L2-MRG-004]") {
+    // --allow-partial keeps what could be decoded. When nothing could be, the
+    // run fails with the FIRST input's own error and writes nothing -- whether
+    // every input fails at open, or a missing input precedes one that opens but
+    // is not a recording (the first input's error, not the second's).
+    const TempPath missing("mie-cli-partial-missing.mie");
+    const TempFile junk("mie-cli-partial-junk.mie", std::vector<uint8_t>(4096, 0xFF));
+    TempPath output("mie-cli-partial-out.csv");
+    const std::string partial = output.sibling(".partial");
+
+    std::string out;
+    std::string err;
+    SECTION("every input missing") {
+        REQUIRE(run_capturing(args("decode", missing.str(), missing.str(), "-o", output.str(),
+                                   "--allow-partial"),
+                              out, err) == mie::cli::EXIT_RUNTIME);
+    }
+    SECTION("a missing input before one that is not a recording") {
+        REQUIRE(run_capturing(args("decode", missing.str(), junk.str(), "-o", output.str(),
+                                   "--allow-partial"),
+                              out, err) == mie::cli::EXIT_RUNTIME);
+    }
+    REQUIRE(err.find("MIE file not found") != std::string::npos);
+    REQUIRE_FALSE(mie::platform::path_exists(output.str()));
+    REQUIRE_FALSE(mie::platform::path_exists(partial));
+}
+
+TEST_CASE("a partial merge names the input it left out", "[cli][L2-MRG-004]") {
+    // A missing input beside a good one: the run commits a .partial, and the
+    // closing WARN says an input was left out rather than reporting a sync loss
+    // that never occurred. On stdout there is no .partial to commit, so the
+    // same run fails with the sync-loss exit class and the same words.
+    const TempPath missing("mie-cli-leftout-missing.mie");
+    const TempFile good("mie-cli-leftout-good.mie", valid_recording());
+    const std::string said = "1 of 2 merge inputs could not be read and was left out";
+
+    std::string out;
+    std::string err;
+    SECTION("to a file") {
+        TempPath output("mie-cli-leftout-out.csv");
+        const std::string partial = output.sibling(".partial");
+        const mie_test::LogCapture capture(mie::log::LEVEL_WARN);
+        REQUIRE(run_capturing(args("decode", missing.str(), good.str(), "-o", output.str(),
+                                   "--allow-partial", "--input-time-format", "irig"),
+                              out, err) == mie::cli::EXIT_OK);
+        REQUIRE(mie::platform::path_exists(partial));
+        REQUIRE(capture.count_containing(said) == 1u);
+        REQUIRE(capture.count_containing("sync loss") == 0u);
+    }
+    SECTION("to stdout") {
+        REQUIRE(run_capturing(args("decode", missing.str(), good.str(), "--allow-partial",
+                                   "--input-time-format", "irig"),
+                              out, err) == mie::cli::EXIT_SYNC_LOSS);
+        REQUIRE(err.find("Error: " + said) != std::string::npos);
+    }
 }
 
 TEST_CASE("exit codes classify the failure", "[cli][L3-CPP-016]") {
