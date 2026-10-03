@@ -431,22 +431,30 @@ void preflight_output(const std::string& output, bool split_errors, const WriteO
     }
 }
 
-/// Carries an `--allow-partial` sync loss out of the streaming loop.
+/// Carries an `--allow-partial` stop out of the streaming loop, with the
+/// reason its WARN gives.
+///
+/// A sync loss reports its offset and recovery count, exactly as before; a
+/// merge that left inputs out (KIND_MERGE_INPUTS_DROPPED, L2-MRG-004) reports
+/// that instead of a sync loss at offset 0 that never occurred. `offset` and
+/// `sync_losses` feed PartialCommit unchanged (both 0 for left-out inputs, as
+/// they always were).
 struct PartialStop {
     bool hit;
     uint64_t offset;
     uint64_t sync_losses;
+    std::string reason;
 
     PartialStop() : hit(false), offset(0), sync_losses(0) {}
 };
 
-/// Pull the next record, converting an allow-partial sync loss into a stop
-/// rather than a failure.
+/// Pull the next record, converting an allow-partial stop into a stop rather
+/// than a failure.
 ///
 /// Rethrows everything else: `--allow-partial` is specifically about an
-/// unrecoverable MID-FILE sync loss (L1-EXIT-004), not a general "ignore
-/// errors" switch, and widening it here would silently turn a rejected file
-/// into a short CSV.
+/// unrecoverable MID-FILE sync loss (L1-EXIT-004) and the merge inputs it left
+/// out (L2-MRG-004), not a general "ignore errors" switch, and widening it here
+/// would silently turn a rejected file into a short CSV.
 bool pull(MessageSource& messages, MieMessage& out, const WriteOptions& options,
           PartialStop& stop) {
     try {
@@ -456,6 +464,13 @@ bool pull(MessageSource& messages, MieMessage& out, const WriteOptions& options,
             stop.hit = true;
             stop.offset = error.offset().value_or(0);
             stop.sync_losses = error.sync_losses().value_or(0);
+            stop.reason = "unrecoverable sync loss at 0x" + text::hex_upper(stop.offset, 1) +
+                          " after " + text::decimal(stop.sync_losses) + " recovery attempt(s)";
+            return false;
+        }
+        if (options.allow_partial && error.kind() == KIND_MERGE_INPUTS_DROPPED) {
+            stop.hit = true;
+            stop.reason = error.message();
             return false;
         }
         throw;
@@ -515,9 +530,8 @@ WriteOutcome write_csv(MessageSource& messages, const Optional<std::string>& out
     }
 
     const std::string partial_path = sink.commit_partial();
-    MIE_LOG_WARN("unrecoverable sync loss at 0x" + text::hex_upper(stop.offset, 1) + " after " +
-                 text::decimal(stop.sync_losses) + " recovery attempt(s); wrote " +
-                 text::decimal(rows) + " rows to " + partial_path + " (--allow-partial)");
+    MIE_LOG_WARN(stop.reason + "; wrote " + text::decimal(rows) + " rows to " + partial_path +
+                 " (--allow-partial)");
 
     PartialCommit partial;
     partial.main_path = partial_path;
@@ -623,10 +637,9 @@ WriteOutcome write_csv_split(MessageSource& messages, const std::string& output,
     partial.sync_losses = stop.sync_losses;
     outcome.partial = partial;
 
-    MIE_LOG_WARN("unrecoverable sync loss at 0x" + text::hex_upper(stop.offset, 1) + " after " +
-                 text::decimal(stop.sync_losses) + " recovery attempt(s); wrote " +
-                 text::decimal(normal_rows) + " normal + " + text::decimal(error_rows) +
-                 " error rows as partial to " + partial.main_path + " (--allow-partial)");
+    MIE_LOG_WARN(stop.reason + "; wrote " + text::decimal(normal_rows) + " normal + " +
+                 text::decimal(error_rows) + " error rows as partial to " + partial.main_path +
+                 " (--allow-partial)");
     return outcome;
 }
 

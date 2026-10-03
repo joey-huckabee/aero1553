@@ -371,7 +371,7 @@ reference: `--allow-partial` never changes its open or non-MIE failure.
 | N1c | missing, non-MIE | exit 1 — the first input's error | `merge-allow-partial-missing-first` |
 | N1d | non-MIE, missing | exit 2 — the first input's error | `merge-allow-partial-unreadable-first` |
 | N1e | empty recording, missing | exit 0, header-only `.partial` (the empty recording succeeded) | `merge-allow-partial-empty-and-missing` |
-| N1f | missing, good | exit 0, `.partial` with the good file's rows | `merge-allow-partial-missing-and-good` |
+| N1f | missing, good | exit 0, `.partial` with the good file's rows; closing WARN "1 of 2 merge inputs could not be read and was left out" | `merge-allow-partial-missing-and-good` |
 
 Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
 2 in C++, and N1b–N1d exited 0 with an empty `.partial` in all three.
@@ -437,8 +437,11 @@ Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
 - **N2 — the final WARN of a partial merge misnames the cause** as
   "unrecoverable sync loss at 0x0 after 0 recovery attempt(s)" when an input
   was missing or unreadable, and the Python library raises
-  `MieUnrecoverableSyncLossError` at the end of such a merge. Being fixed
-  with decision 5.
+  `MieUnrecoverableSyncLossError` at the end of such a merge. **Resolved**
+  with decision 5: such a merge ends in `MergeInputsDropped` /
+  `MieMergeInputsDroppedError`, whose WARN counts the inputs left out (and any
+  truncated). A merge whose inputs were only truncated mid-file still ends in
+  the real sync loss.
 
 ### G. Other findings
 
@@ -501,7 +504,9 @@ tests in all three implementations.
    exactly as without the flag — with the first failing input's own error and
    exit code, and no output file (L2-MRG-004). A valid empty recording counts
    as a success. The alternative considered — always exit 2 with one message —
-   would report a mistyped path as "no records".
+   would report a mistyped path as "no records". The same change makes a
+   partial merge name what ended it (finding N2): a left-out input is
+   reported as left out, not as a sync loss at offset 0.
 6. **Documentation** follows the decisions. Done for decisions 1 and 2
    (`ERROR-CATALOG.md`, `MIE-FORMAT.md` §7.3 and §9, `DATA-SCENARIOS.md` §6 and
    §9, `VENDOR-CSV-DIFFS.md` §3d); decisions 3–5 will need their own.

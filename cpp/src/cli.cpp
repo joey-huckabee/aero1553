@@ -1017,39 +1017,6 @@ void check_merge_output_collision(const std::string& output, const std::vector<s
     }
 }
 
-/// Yields everything from `inner`, then raises a terminal failure.
-///
-/// An input dropped at OPEN time (L2-MRG-004) contributed no records at all, so
-/// there is no mid-stream failure for the writer to notice -- yet the run IS
-/// partial, and emitting a clean CSV would silently claim a recording that was
-/// never read. Appending the failure after the last good row is what makes the
-/// writer commit a `.partial` instead.
-///
-/// This sits AFTER the ordering stage deliberately: that stage buffers a run of
-/// equal-timestamp records, so placing the tail before it would hold those rows
-/// behind an error that has to stay last.
-class TerminalTailSource : public MessageSource {
-  public:
-    TerminalTailSource(MessageSource& inner, const MieError& error)
-        : inner_(&inner), error_(error), raised_(false) {}
-
-    bool next(MieMessage& out) override {
-        if (inner_->next(out)) {
-            return true;
-        }
-        if (!raised_) {
-            raised_ = true;
-            throw error_;
-        }
-        return false;
-    }
-
-  private:
-    MessageSource* inner_;
-    MieError error_;
-    bool raised_;
-};
-
 /// Adapts a RecordIter to the pipeline's MessageSource contract.
 ///
 /// Lives here rather than in `reader.hpp` because it is the CLI that knows both
@@ -1109,6 +1076,16 @@ int report_decode_failure(const Streams& streams, const MieError& error, uint64_
             "); pass --allow-partial to preserve the rows decoded so far");
         return EXIT_SYNC_LOSS;
     }
+    if (error.kind() == KIND_MERGE_INPUTS_DROPPED) {
+        // L2-MRG-004: a merge under --allow-partial left inputs out. With a
+        // file destination the writer commits a `.partial` and this is never
+        // reached; it is reached on stdout, which cannot hold one -- the same
+        // exit class a sync loss gets there.
+        MIE_LOG_INFO(
+            "decode exit class: partial-unrecoverable (merge inputs left out); "
+            "write to a file with -o to keep the rows as a .partial");
+        return EXIT_SYNC_LOSS;
+    }
     if (error.kind() == KIND_INCOMPATIBLE_MERGE_INPUTS) {
         MIE_LOG_INFO("decode exit class: merge-incompatible");
         return EXIT_MERGE_INCOMPATIBLE;
@@ -1137,7 +1114,9 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
     // -- one scope above the pipeline -- guarantees.
     std::vector<std::shared_ptr<MieFileReader>> owned;
     std::vector<MieFileReader*> readers;
-    bool open_dropped = false;
+    // L2-MRG-004: inputs left out because they could not be opened. The merge
+    // counts them into the summary it ends with.
+    std::size_t open_left_out = 0;
     // The first input that failed to open (under --allow-partial on a merge),
     // and the input-list positions of it and of the first input that opened:
     // when every input fails, the earlier of the two is reported (L2-MRG-004).
@@ -1158,7 +1137,7 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
                              " could not be opened; truncating it from the merge "
                              "(--allow-partial): " +
                              error.message());
-                open_dropped = true;
+                open_left_out += 1;
                 if (!first_open_failure) {
                     first_open_failure.reset(new CliError(exit_code_for(error), error.message()));
                     first_open_failure_at = i;
@@ -1233,6 +1212,7 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
     merge_options.collapse_window_us = config.collapse_window_us;
     merge_options.max_collapse_survivors = config.max_collapse_survivors;
     merge_options.delta_scope = config.delta_scope;
+    merge_options.inputs_left_out_at_open = open_left_out;
 
     // The pipeline, assembled. The only difference a merge makes is which source
     // sits at the HEAD of it: filter, canonical order and the writer downstream
@@ -1276,12 +1256,7 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
 
     FilteredSource filtered(*head, config.filters);
     OrderedSource ordered(filtered, config.max_sort_group);
-
-    // L2-MRG-004. Placed after the ordering stage so the buffered run is not
-    // held behind a failure that has to arrive last.
-    TerminalTailSource open_tail(ordered, MieError::unrecoverable_sync_loss(0, 0));
-    MessageSource* pipeline = open_dropped ? static_cast<MessageSource*>(&open_tail)
-                                           : static_cast<MessageSource*>(&ordered);
+    MessageSource* pipeline = &ordered;
 
     WriteOutcome outcome;
     try {

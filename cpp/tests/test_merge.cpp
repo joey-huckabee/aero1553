@@ -874,6 +874,90 @@ TEST_CASE("an empty recording counts as a successful input in a partial merge",
     options.allow_partial = true;
     mie::merge::MergedSource source(readers, options);
     mie::MieMessage message;
-    // No records, then the terminal marker that makes the writer commit .partial.
-    CHECK_THROWS_AS(source.next(message), mie::MieError);
+    // No records, then the terminal that makes the writer commit .partial.
+    bool threw = false;
+    try {
+        (void)source.next(message);
+    } catch (const mie::MieError& error) {
+        threw = true;
+        CHECK(error.kind() == mie::KIND_MERGE_INPUTS_DROPPED);
+    }
+    CHECK(threw);
+}
+
+namespace {
+
+/// Drain a merge and return the error it ended with; fails the test if it
+/// ended cleanly. `records` receives how many records came first.
+mie::MieError drain_to_terminal(const std::vector<mie::MieFileReader*>& readers,
+                                const mie::merge::MergeOptions& options, std::size_t& records) {
+    mie::merge::MergedSource source(readers, options);
+    mie::MieMessage message;
+    records = 0;
+    try {
+        while (source.next(message)) {
+            ++records;
+        }
+    } catch (const mie::MieError& error) {
+        // Surfaced once: the stream is over afterwards.
+        CHECK_FALSE(source.next(message));
+        return error;
+    }
+    FAIL("the merge ended without a terminal error");
+    return mie::MieError::payload_error(0, "unreachable");
+}
+
+/// Two good records, then more non-resyncing garbage than the scan window.
+std::vector<uint8_t> truncating_recording() {
+    std::vector<uint8_t> bytes = recording(200, 2);
+    bytes.resize(bytes.size() - 2);  // drop the terminator
+    bytes.insert(bytes.end(), 70000, 0xFF);
+    return bytes;
+}
+
+}  // namespace
+
+TEST_CASE("a partial merge ends with the error that happened", "[merge][L2-MRG-004]") {
+    // An input left out entirely ends the merge in merge_inputs_dropped,
+    // counting inputs left out (here, one at priming and one at open) and
+    // truncated; an input only truncated mid-file ends it in that input's own
+    // sync loss, as before. Both used to end in a sync loss at offset 0 after
+    // 0 attempts -- a sync loss that never occurred.
+    const TempFile bad("mie-terminal-bad.mie", std::vector<uint8_t>(4096, 0xFF));
+    const TempFile good("mie-terminal-good.mie", recording(100, 2));
+    const TempFile cut("mie-terminal-cut.mie", truncating_recording());
+    mie::MieFileReader reader_bad;
+    mie::MieFileReader reader_good;
+    mie::MieFileReader reader_cut;
+    reader_bad.open(bad.str(), irig_options());
+    reader_good.open(good.str(), irig_options());
+    reader_cut.open(cut.str(), irig_options());
+
+    mie::merge::MergeOptions options;
+    options.allow_partial = true;
+    options.inputs_left_out_at_open = 1;
+    std::size_t records = 0;
+    {
+        std::vector<mie::MieFileReader*> readers;
+        readers.push_back(&reader_bad);
+        readers.push_back(&reader_good);
+        readers.push_back(&reader_cut);
+        const mie::MieError error = drain_to_terminal(readers, options, records);
+        CHECK(error.kind() == mie::KIND_MERGE_INPUTS_DROPPED);
+        CHECK(error.message() ==
+              "2 of 4 merge inputs could not be read and were left out, and 1 was truncated "
+              "by an unrecoverable sync loss (see the per-input warnings above)");
+        CHECK(records == 4u);
+    }
+
+    options.inputs_left_out_at_open = 0;
+    {
+        std::vector<mie::MieFileReader*> readers;
+        readers.push_back(&reader_good);
+        readers.push_back(&reader_cut);
+        const mie::MieError error = drain_to_terminal(readers, options, records);
+        CHECK(error.kind() == mie::KIND_UNRECOVERABLE_SYNC_LOSS);
+        CHECK(error.sync_losses().value_or(0) > 0u);
+        CHECK(records == 4u);
+    }
 }

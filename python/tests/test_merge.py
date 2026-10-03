@@ -14,8 +14,10 @@ import pytest
 from aero1553.exceptions import (
     Aero1553Error,
     MieIncompatibleMergeInputsError,
+    MieMergeInputsDroppedError,
     MieNonMonotonicInputError,
     MieNoValidRecordsError,
+    MieUnrecoverableSyncLossError,
 )
 from aero1553.merge import (
     MAX_MERGE_FILES,
@@ -584,6 +586,45 @@ def test_merge_allow_partial_bad_input_then_good(tmp_path: Path) -> None:
     assert outcome.partial is not None
     assert outcome.normal_count == 2
     assert (tmp_path / "out.csv.partial").exists()
+
+
+@pytest.mark.requirement("L2-MRG-004")
+def test_merge_allow_partial_ends_with_the_error_that_happened(tmp_path: Path) -> None:
+    """L2-MRG-004: a partial merge ends with the error that actually happened.
+
+    An input left out entirely ends it in ``MieMergeInputsDroppedError``,
+    counting the inputs left out and truncated; one only truncated mid-file
+    ends it in that input's own ``MieUnrecoverableSyncLossError``, as before.
+    It used to end in a sync loss at offset 0 after 0 attempts either way --
+    a sync loss that never occurred."""
+    good = rt15_record_at(192, 15, 54, 50, 100) + rt15_record_at(192, 15, 54, 50, 300)
+    truncating = (
+        rt15_record_at(192, 15, 54, 50, 200)
+        + rt15_record_at(192, 15, 54, 50, 400)
+        + b"\xff" * 70_000  # >64 KB of non-resyncing garbage -> unrecoverable
+    )
+    fa = tmp_path / "a.mie"
+    fb = tmp_path / "b.mie"
+    fc = tmp_path / "c.mie"
+    fa.write_bytes(b"\xff" * 4096)  # left out: no valid first record
+    fb.write_bytes(good)
+    fc.write_bytes(truncating)
+
+    readers = [MieFileReader(fa), MieFileReader(fb), MieFileReader(fc)]
+    merged = merge_readers(readers, allow_partial=True)
+    with pytest.raises(MieMergeInputsDroppedError) as dropped:
+        list(merged)
+    assert (dropped.value.left_out, dropped.value.truncated, dropped.value.total) == (1, 1, 3)
+    assert str(dropped.value) == (
+        "1 of 3 merge inputs could not be read and was left out, and 1 was "
+        "truncated by an unrecoverable sync loss (see the per-input warnings above)"
+    )
+
+    readers = [MieFileReader(fb), MieFileReader(fc)]
+    merged = merge_readers(readers, allow_partial=True)
+    with pytest.raises(MieUnrecoverableSyncLossError) as lost:
+        list(merged)
+    assert lost.value.sync_losses > 0
 
 
 @pytest.mark.requirement("L2-MRG-001")

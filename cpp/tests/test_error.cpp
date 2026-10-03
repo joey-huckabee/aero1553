@@ -59,6 +59,7 @@ const Classification kContract[] = {
     {mie::KIND_PAYLOAD_ERROR, false, true},
     {mie::KIND_UNKNOWN_ERROR_CODE, false, true},
     {mie::KIND_UNRECOVERABLE_SYNC_LOSS, false, true},
+    {mie::KIND_MERGE_INPUTS_DROPPED, false, true},
 
     {mie::KIND_NO_VALID_RECORDS, false, false},
     {mie::KIND_HOMOGENEOUS_PAYLOAD, false, false},
@@ -87,6 +88,7 @@ std::vector<mie::MieError> every_error() {
     all.push_back(mie::MieError::payload_error(0x1234, "IRIG day out of range"));
     all.push_back(mie::MieError::unknown_error_code(0x1234, 0x0199));
     all.push_back(mie::MieError::unrecoverable_sync_loss(0x1234, 3));
+    all.push_back(mie::MieError::merge_inputs_dropped(1, 0, 3));
     all.push_back(mie::MieError::no_valid_records("/tmp/x.mie", 65536));
     all.push_back(mie::MieError::homogeneous_payload("/tmp/x.mie", 0x40, 4));
     all.push_back(mie::MieError::calendar_unavailable("no year was configured"));
@@ -360,6 +362,22 @@ TEST_CASE("the sync-loss message names the escape hatch", "[error][message]") {
           "Unrecoverable mid-file sync loss at offset 0x1234 after 3 recovery attempt(s); "
           "the decoder could not reacquire sync within the scan window. Pass --allow-partial "
           "to keep what was decoded as a .partial file.");
+}
+
+TEST_CASE("the merge-inputs-dropped message counts what was lost", "[error][message]") {
+    // L2-MRG-004. Identical to the Rust Display text: the conformance runner
+    // compares stderr across implementations. The truncation clause appears
+    // only when an input was also truncated, and each verb agrees with its
+    // own count.
+    CHECK(mie::MieError::merge_inputs_dropped(1, 0, 2).message() ==
+          "1 of 2 merge inputs could not be read and was left out "
+          "(see the per-input warnings above)");
+    CHECK(mie::MieError::merge_inputs_dropped(2, 1, 4).message() ==
+          "2 of 4 merge inputs could not be read and were left out, and 1 was truncated "
+          "by an unrecoverable sync loss (see the per-input warnings above)");
+    CHECK(mie::MieError::merge_inputs_dropped(1, 2, 4).message() ==
+          "1 of 4 merge inputs could not be read and was left out, and 2 were truncated "
+          "by an unrecoverable sync loss (see the per-input warnings above)");
 }
 
 TEST_CASE("the ambiguity message reports both scores", "[error][message]") {

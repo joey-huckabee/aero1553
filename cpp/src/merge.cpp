@@ -298,7 +298,8 @@ MergeOptions::MergeOptions()
       collapse_duplicates(false),
       collapse_window_us(0),
       max_collapse_survivors(DEFAULT_MAX_COLLAPSE_SURVIVORS),
-      delta_scope(DELTA_SCOPE_PER_FILE) {}
+      delta_scope(DELTA_SCOPE_PER_FILE),
+      inputs_left_out_at_open(0) {}
 
 DedupKey::DedupKey() = default;
 
@@ -413,6 +414,9 @@ MergedSource::MergedSource(const std::vector<MieFileReader*>& readers, const Mer
       options_(options),
       delta_tracker_(options.standard_tick_rate_hz),
       dedup_(options.collapse_window_us, options.max_collapse_survivors),
+      left_out_(options.inputs_left_out_at_open),
+      truncated_(0),
+      total_(readers.size() + options.inputs_left_out_at_open),
       collapsed_(0) {
     iters_.reserve(readers_.size());
     paths_.reserve(readers_.size());
@@ -437,14 +441,15 @@ MergedSource::MergedSource(const std::vector<MieFileReader*>& readers, const Mer
                 throw;
             }
             // L2-MRG-004: drop the input and keep going. The file contributed
-            // nothing (it failed at offset 0), and arming the terminal is what
-            // makes the writer commit a `.partial` rather than a clean CSV that
-            // silently omits an entire recording.
+            // nothing (it failed at offset 0), and counting it is what ends the
+            // merge in merge_inputs_dropped, which makes the writer commit a
+            // `.partial` rather than a clean CSV that silently omits an entire
+            // recording.
             MIE_LOG_WARN("merge: input #" + text::decimal(i) + " (" + paths_[i] +
                          ") could not be read; truncating it from the merge "
                          "(--allow-partial): " +
                          error.message());
-            pending_terminal_.reset(new MieError(MieError::unrecoverable_sync_loss(0, 0)));
+            left_out_ += 1;
             failed += 1;
             if (!first_failure) {
                 first_failure.reset(new MieError(error));
@@ -502,6 +507,7 @@ void MergedSource::advance(std::size_t file_index) {
             // Deferred until the heap drains, so every good record from every
             // input is written before the failure surfaces.
             pending_terminal_.reset(new MieError(error));
+            truncated_ += 1;
         } else {
             // Surfaced on the NEXT call, after the record already popped.
             pending_error_.reset(new MieError(error));
@@ -541,14 +547,29 @@ void MergedSource::advance(std::size_t file_index) {
     heap_.push(entry);
 }
 
+PendingError MergedSource::take_terminal() {
+    if (left_out_ > 0) {
+        pending_terminal_.reset();
+        PendingError summary(
+            new MieError(MieError::merge_inputs_dropped(left_out_, truncated_, total_)));
+        // Surface once: a second next() after the terminal returns false.
+        left_out_ = 0;
+        return summary;
+    }
+    PendingError terminal;
+    terminal.swap(pending_terminal_);
+    return terminal;
+}
+
 bool MergedSource::next(MieMessage& out) {
     for (;;) {
         if (pending_error_) {
             throw take(pending_error_);
         }
         if (heap_.empty()) {
-            if (pending_terminal_) {
-                throw take(pending_terminal_);
+            PendingError terminal = take_terminal();
+            if (terminal) {
+                throw take(terminal);
             }
             return false;
         }

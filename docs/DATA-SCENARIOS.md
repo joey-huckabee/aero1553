@@ -323,6 +323,13 @@ nothing to keep, so it does not turn an all-failed run into a success. A valid
 **empty** recording counts as an input that succeeded, so an empty recording
 beside a missing file still gives a (header-only) `.partial`, exit 0.
 
+The closing WARN says what happened. When an input was dropped at open or
+priming it counts them — `1 of 3 merge inputs could not be read and was left
+out (see the per-input warnings above); wrote N rows to out.csv.partial` — and
+adds how many were truncated mid-file, if any; the per-input WARNs above it
+name each file. When inputs were only truncated mid-file, it reports the sync
+loss itself, with its offset.
+
 Without `--allow-partial`, any of these fails the batch (the exit code matches the
 underlying failure). This uniform open/priming/mid-file handling is pinned by an
 oracle (`merge-allow-partial-priming`) so both implementations behave identically.

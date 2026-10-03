@@ -223,6 +223,20 @@ shared behavior) holds at any compatible version pair. See
   that succeeded. **Behaviour change:** a batch script that ran a merge of
   only bad inputs with `--allow-partial` now sees exit `1` or `2` instead of
   `0`.
+- **A partial merge names what ended it** (all three implementations;
+  L2-MRG-004 amended). When `--allow-partial` left out a merge input that
+  could not be opened or whose first record could not be read, the closing
+  WARN reported "unrecoverable sync loss at 0x0 after 0 recovery attempt(s)"
+  -- a sync loss that never occurred -- and the Python library raised
+  `MieUnrecoverableSyncLossError`. It now reports `1 of 2 merge inputs could
+  not be read and was left out (see the per-input warnings above)`, adding how
+  many inputs were truncated mid-file, through a new error:
+  `MieError::MergeInputsDropped` (Rust), `MieMergeInputsDroppedError`
+  (Python, a `MieRecordError` like the class it replaces here) and
+  `KIND_MERGE_INPUTS_DROPPED` (C++). Exit codes and the `.partial` output are
+  unchanged; a merge whose inputs were only truncated mid-file still ends in
+  the real sync loss. **API change:** the new `MieError` variant breaks an
+  exhaustive `match` on `MieError` or `MieErrorKind` in Rust.
 - **Filters and `--collapse-duplicates` treat an error and its `SPURIOUS_DATA`
   continuation as one unit** (all three implementations; new L2-FLT-003,
   L2-FLT-001 and L2-MRG-007 amended). A continuation has no RT or subaddress,

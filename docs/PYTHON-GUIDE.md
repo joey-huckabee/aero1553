@@ -1183,7 +1183,7 @@ Everything the package raises derives from `aero1553.exceptions.Aero1553Error`:
 | Class | Raised when |
 |---|---|
 | `MieFileError` | the input file is the problem: `MieFileNotFoundError`, `MieFileEmptyError`, `MieFileIoError`, `MieNoValidRecordsError`, `MieHomogeneousPayloadError`, `MieTimestampFormatMismatchError`, `MieIncompatibleMergeInputsError`, `MieClobberRefusedError`, `MieInputOutputCollisionError`, `MieCalendarUnavailableError` |
-| `MieRecordError` | one record is the problem (in `strict` mode, or beyond recovery): `MieInvalidTypeWordError`, `MieUnknownTypeWordError`, `MieRecordTruncatedError`, `MieFirstRecordTruncatedError`, `MiePayloadError`, `MieUnrecoverableSyncLossError` |
+| `MieRecordError` | one record is the problem (in `strict` mode, or beyond recovery): `MieInvalidTypeWordError`, `MieUnknownTypeWordError`, `MieRecordTruncatedError`, `MieFirstRecordTruncatedError`, `MiePayloadError`, `MieUnrecoverableSyncLossError`, `MieMergeInputsDroppedError` (a partial merge that left inputs out) |
 | `MieWriterError` | the output could not be written (a full disk, a directory in the way) |
 | `MieNonMonotonicInputError` | a merge input's time went backwards |
 

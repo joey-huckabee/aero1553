@@ -130,9 +130,12 @@ def merge_readers(
     matching the Rust reader. The returned iterator then yields ``MieMessage``s
     in global time order so the existing writer consumes them unchanged. With
     ``allow_partial`` a file that fails is skipped / truncated with a WARN and
-    the merge completes, deferring the terminal
-    :class:`MieUnrecoverableSyncLossError` so the writer commits a ``.partial``
-    (L2-MRG-004). The heap key ``(microseconds, file index, sequence)`` gives a
+    the merge completes, deferring a terminal error so the writer commits a
+    ``.partial`` (L2-MRG-004): :class:`MieMergeInputsDroppedError` when an
+    input was left out entirely, otherwise the
+    :class:`MieUnrecoverableSyncLossError` that truncated one. When **every**
+    input fails there is nothing to keep, and the first input's own error is
+    raised, as without the flag. The heap key ``(microseconds, file index, sequence)`` gives a
     deterministic total order (L2-MRG-002). A within-file backward timestamp
     step (L2-MRG-006) WARNs once per file in lenient mode and raises
     :class:`MieNonMonotonicInputError` in ``strict`` mode.
@@ -148,6 +151,8 @@ def merge_readers(
         MieUnrecoverableSyncLossError: from an input that loses sync. Under
             ``allow_partial`` this is deferred until the heap drains, so the
             writer still commits a ``.partial``.
+        MieMergeInputsDroppedError: under ``allow_partial`` only, once the heap
+            drains, when an input could not be read and was left out.
         Aero1553Error: any other decoder failure from an underlying reader,
             propagated unchanged.
     """

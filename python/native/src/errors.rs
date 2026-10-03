@@ -120,6 +120,14 @@ fn build(py: Python<'_>, err: MieError) -> PyResult<PyErr> {
             "MieUnrecoverableSyncLossError",
             (offset, sync_losses).into_pyobject(py)?,
         ),
+        MieError::MergeInputsDropped {
+            left_out,
+            truncated,
+            total,
+        } => (
+            "MieMergeInputsDroppedError",
+            (left_out, truncated, total).into_pyobject(py)?,
+        ),
         MieError::TimestampFormatMismatch {
             offset,
             irig_score,

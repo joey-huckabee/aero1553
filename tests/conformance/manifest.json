@@ -759,7 +759,7 @@
         "--allow-partial"
       ],
       "expected_partial": "expected/merge-allow-partial-missing-and-good.csv.partial",
-      "expected_stderr_contains": "could not be opened; truncating it from the merge"
+      "expected_stderr_contains": "1 of 2 merge inputs could not be read and was left out (see the per-input warnings above); wrote 2 rows to "
     },
     {
       "name": "config-exclude-types-int",

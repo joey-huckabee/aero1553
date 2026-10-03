@@ -426,6 +426,13 @@ fn merge_allow_partial_open_failure_writes_dot_partial() {
         "an open-failure merge must commit a .partial"
     );
     assert!(!output.exists());
+    // L2-MRG-004: the WARN names what happened -- not a sync loss at offset 0.
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("1 of 2 merge inputs could not be read and was left out"),
+        "{stderr}"
+    );
+    assert!(!stderr.contains("sync loss"), "{stderr}");
 }
 
 /// Requirements: L2-WRT-014

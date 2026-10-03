@@ -173,6 +173,7 @@ class TestExceptionHierarchy:
             "MiePayloadError",
             "MieUnknownErrorCodeError",
             "MieUnrecoverableSyncLossError",
+            "MieMergeInputsDroppedError",
         }
 
         bases = {"Aero1553Error", "MieFileError", "MieRecordError"}

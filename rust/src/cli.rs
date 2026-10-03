@@ -1434,20 +1434,22 @@ fn build_config_overrides(
     }
 }
 
-/// Open a reader per resolved input (L2-MRG-001). Under `--allow-partial` a
-/// *merge* tolerates a per-file open failure — it drops that input with a WARN
-/// and reports `open_dropped = true` so the batch commits a `.partial`
-/// (L2-MRG-004). A single-input decode propagates the open error. Returns the
-/// opened readers and whether any input was dropped.
 /// The inputs that opened, with their positions in the resolved input list,
-/// and -- under `--allow-partial` on a merge -- the first input that did not.
+/// and -- under `--allow-partial` on a merge -- the inputs that did not.
 struct OpenedInputs {
     readers: Vec<MieFileReader>,
     /// `positions[i]` is the input-list position of `readers[i]`.
     positions: Vec<usize>,
+    /// The first input that could not be opened, with its position.
     first_failure: Option<(usize, CliError)>,
+    /// How many inputs could not be opened.
+    left_out: usize,
 }
 
+/// Open a reader per resolved input (L2-MRG-001). Under `--allow-partial` a
+/// *merge* tolerates a per-file open failure -- it drops that input with a WARN
+/// and the merge, told how many were left out, commits a `.partial`
+/// (L2-MRG-004). A single-input decode propagates the open error.
 fn open_all_readers(
     input_paths: &[PathBuf],
     cfg: &DecoderConfig,
@@ -1457,6 +1459,7 @@ fn open_all_readers(
         readers: Vec::with_capacity(input_paths.len()),
         positions: Vec::with_capacity(input_paths.len()),
         first_failure: None,
+        left_out: 0,
     };
     for (i, p) in input_paths.iter().enumerate() {
         match open_reader(p, cfg) {
@@ -1471,6 +1474,7 @@ fn open_all_readers(
                     p.display(),
                     e.message
                 );
+                opened.left_out += 1;
                 opened.first_failure.get_or_insert((i, e));
             }
             Err(e) => return Err(e),
@@ -1498,7 +1502,6 @@ fn execute_decode_or_merge(
     merge_requested: bool,
 ) -> Result<crate::error::MieResult<crate::writer::WriteOutcome>, EarlyExit> {
     let readers = &opened.readers;
-    let open_dropped = opened.first_failure.is_some();
     if !merge_requested {
         // L2-WRT-021: canonical row order is the LAST stage before the writer, so
         // the guarantee holds over exactly the rows that reach the CSV.
@@ -1516,28 +1519,24 @@ fn execute_decode_or_merge(
         cfg.strict,
     ) {
         Ok(merged) => {
+            // Inputs dropped at open time are counted into the merge, which ends
+            // its stream with one terminal naming every input left out or
+            // truncated, so the writer commits a `.partial` (L2-MRG-004).
             let merged = merged
                 .collapse(cfg.collapse_duplicates, cfg.collapse_window_us)
                 .max_collapse_survivors(cfg.max_collapse_survivors)
-                .delta_scope(cfg.delta_scope);
+                .delta_scope(cfg.delta_scope)
+                .inputs_left_out_at_open(opened.left_out);
             // Clone the suppressed-duplicate counter before the writer consumes
             // the iterator, then report it after (L2-MRG-007).
             let collapsed = merged.collapsed_handle();
-            // An input dropped at open time surfaces a terminal after the good
-            // rows so the writer commits a `.partial` (L2-MRG-004).
-            let open_tail =
-                open_dropped.then_some(Err(crate::error::MieError::UnrecoverableSyncLoss {
-                    offset: 0,
-                    sync_losses: 0,
-                }));
-            // L2-WRT-021: order_rows sits after the merge and the filters, and
-            // before `open_tail` — the tail is a terminal error that must stay
-            // last, and the reorder stage would otherwise hold rows behind it.
+            // L2-WRT-021: order_rows sits after the merge and the filters. The
+            // merge's terminal error flushes the reorder stage's buffered run
+            // before it propagates, so no row is held behind it.
             let result = write_messages(
                 merged
                     .filter_messages(cfg.filters.clone())
-                    .order_rows(cfg.max_sort_group)
-                    .chain(open_tail),
+                    .order_rows(cfg.max_sort_group),
                 output,
                 cfg.error_mode,
                 write_opts,
@@ -1878,6 +1877,19 @@ fn classify_decode_exit(
             log_info!(
                 "decode exit class: partial-unrecoverable (sync_losses={sync_losses}); \
                  pass --allow-partial to preserve the rows decoded so far"
+            );
+            exit_code::SYNC_LOSS
+        }
+        Err(e @ MieError::MergeInputsDropped { .. }) => {
+            // L2-MRG-004: a merge under --allow-partial left inputs out. With a
+            // file destination the writer commits a `.partial` and this arm is
+            // never reached; it is reached on stdout, which cannot hold one --
+            // the same exit class a sync loss gets there.
+            log_error!("{e}");
+            eprintln!("Error: {e}");
+            log_info!(
+                "decode exit class: partial-unrecoverable (merge inputs left out); \
+                 write to a file with -o to keep the rows as a .partial"
             );
             exit_code::SYNC_LOSS
         }

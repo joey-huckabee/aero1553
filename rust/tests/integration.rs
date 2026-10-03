@@ -1691,7 +1691,73 @@ fn merge_allow_partial_counts_an_empty_recording_as_success() {
         .expect("one input succeeded (with no records), so the merge proceeds");
     let items: Vec<_> = merged.collect();
     assert_eq!(items.len(), 1, "only the terminal partial marker");
-    assert!(items[0].is_err());
+    let Err(e) = &items[0] else {
+        panic!("the terminal must be an error");
+    };
+    assert_eq!(
+        e.kind(),
+        aero1553::error::MieErrorKind::MergeInputsDropped,
+        "{e}"
+    );
+}
+
+/// L2-MRG-004: a partial merge ends with the error that actually happened. An
+/// input left out entirely (at open, counted by the caller, or at priming) ends
+/// it in `MergeInputsDropped` with the counts; an input only truncated mid-file
+/// ends it in that input's own `UnrecoverableSyncLoss`, as before. Both used to
+/// end in a sync loss at offset 0 after 0 attempts -- one that never occurred.
+/// Mirrors `test_merge_allow_partial_ends_with_the_error_that_happened` (Python)
+/// and "a partial merge ends with the error that happened" (C++).
+/// Requirements: L2-MRG-004
+#[test]
+fn merge_allow_partial_ends_with_the_error_that_happened() {
+    use aero1553::error::MieErrorKind;
+    use aero1553::merge::MergedRecordIter;
+
+    let good = [
+        rt15_record_at(192, 15, 54, 50, 100, false),
+        rt15_record_at(192, 15, 54, 50, 200, false),
+    ]
+    .concat();
+    let mut cut = [
+        rt15_record_at(192, 15, 54, 50, 200, false),
+        rt15_record_at(192, 15, 54, 50, 300, false),
+    ]
+    .concat();
+    cut.extend(vec![0xFFu8; 70_000]);
+    let f_bad = TempFile::new(&vec![0xFFu8; 4096]);
+    let f_good = TempFile::new(&good);
+    let f_cut = TempFile::new(&cut);
+    let bad = MieFileReader::new(f_bad.path()).unwrap();
+    let good = MieFileReader::new(f_good.path()).unwrap();
+    let cut = MieFileReader::new(f_cut.path()).unwrap();
+
+    let readers = [bad, good, cut];
+    let items: Vec<_> = MergedRecordIter::new(&readers, None, true, false)
+        .unwrap()
+        .inputs_left_out_at_open(1)
+        .collect();
+    assert_eq!(items.iter().filter(|r| r.is_ok()).count(), 4);
+    let Some(Err(e)) = items.last() else {
+        panic!("the merge must end in its terminal error");
+    };
+    assert_eq!(e.kind(), MieErrorKind::MergeInputsDropped);
+    assert_eq!(
+        e.to_string(),
+        "2 of 4 merge inputs could not be read and were left out, and 1 was truncated \
+         by an unrecoverable sync loss (see the per-input warnings above)"
+    );
+
+    let [_, good, cut] = readers;
+    let readers = [good, cut];
+    let items: Vec<_> = MergedRecordIter::new(&readers, None, true, false)
+        .unwrap()
+        .collect();
+    assert_eq!(items.iter().filter(|r| r.is_ok()).count(), 4);
+    let Some(Err(e)) = items.last() else {
+        panic!("the merge must end in its terminal error");
+    };
+    assert_eq!(e.kind(), MieErrorKind::UnrecoverableSyncLoss, "{e}");
 }
 
 /// L2-MRG-004: without `--allow-partial`, a priming-time failure fails the batch

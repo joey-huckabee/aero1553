@@ -789,18 +789,17 @@ where
             let (count, partial_info) = {
                 let mut writer = CsvWriter::new(&mut atomic, path.display().to_string())?
                     .with_time_render(opts.time_render);
-                let mut partial_info: Option<(u64, u64)> = None;
+                let mut partial_info: Option<PartialStop> = None;
                 for item in messages {
                     match item {
                         Ok(msg) => writer.write_message(&msg)?,
-                        Err(MieError::UnrecoverableSyncLoss {
-                            offset,
-                            sync_losses,
-                        }) if opts.allow_partial => {
-                            partial_info = Some((offset, sync_losses));
-                            break;
-                        }
-                        Err(e) => return Err(e),
+                        Err(e) => match PartialStop::of(&e) {
+                            Some(stop) if opts.allow_partial => {
+                                partial_info = Some(stop);
+                                break;
+                            }
+                            _ => return Err(e),
+                        },
                     }
                 }
                 let n = writer.finish()?;
@@ -817,16 +816,19 @@ where
                         partial: None,
                     })
                 }
-                Some((offset, sync_losses)) => {
+                Some(stop) => {
                     let partial_path = atomic.commit_partial()?;
                     log_warn!(
-                        "unrecoverable sync loss at 0x{:X} after {} recovery attempt(s); \
-                         wrote {} rows to {} (--allow-partial)",
-                        offset,
-                        sync_losses,
+                        "{}; wrote {} rows to {} (--allow-partial)",
+                        stop.reason,
                         count,
                         partial_path.display()
                     );
+                    let PartialStop {
+                        offset,
+                        sync_losses,
+                        ..
+                    } = stop;
                     Ok(WriteOutcome {
                         normal_count: count,
                         error_count: 0,
@@ -896,19 +898,18 @@ where
         // The error writer is created lazily on first error row so a
         // clean file doesn't leave an empty errors CSV behind.
         let mut error_writer: Option<CsvWriter<&mut AtomicCsvFile>> = None;
-        let mut partial_info: Option<(u64, u64)> = None;
+        let mut partial_info: Option<PartialStop> = None;
 
         for item in messages {
             let msg = match item {
                 Ok(m) => m,
-                Err(MieError::UnrecoverableSyncLoss {
-                    offset,
-                    sync_losses,
-                }) if opts.allow_partial => {
-                    partial_info = Some((offset, sync_losses));
-                    break;
-                }
-                Err(e) => return Err(e),
+                Err(e) => match PartialStop::of(&e) {
+                    Some(stop) if opts.allow_partial => {
+                        partial_info = Some(stop);
+                        break;
+                    }
+                    _ => return Err(e),
+                },
             };
             if msg.error_label().is_empty() {
                 main.write_message(&msg)?;
@@ -979,13 +980,50 @@ struct SplitCommit<'a> {
     error_count: u64,
 }
 
+/// What ended an `--allow-partial` write early, kept so the final WARN can say
+/// what happened. A mid-file [`MieError::UnrecoverableSyncLoss`] reports its
+/// offset and recovery count, exactly as before; a merge that left inputs out
+/// ([`MieError::MergeInputsDropped`], L2-MRG-004) reports that instead of a sync
+/// loss at offset 0 that never occurred. `offset` and `sync_losses` feed
+/// [`PartialCommit`] unchanged (both 0 for left-out inputs, as they always were).
+struct PartialStop {
+    offset: u64,
+    sync_losses: u64,
+    reason: String,
+}
+
+impl PartialStop {
+    /// The stop an `--allow-partial` run commits a `.partial` for, or `None`
+    /// for an error that fails the run outright.
+    fn of(e: &MieError) -> Option<Self> {
+        match e {
+            MieError::UnrecoverableSyncLoss {
+                offset,
+                sync_losses,
+            } => Some(Self {
+                offset: *offset,
+                sync_losses: *sync_losses,
+                reason: format!(
+                    "unrecoverable sync loss at 0x{offset:X} after {sync_losses} recovery attempt(s)"
+                ),
+            }),
+            MieError::MergeInputsDropped { .. } => Some(Self {
+                offset: 0,
+                sync_losses: 0,
+                reason: e.to_string(),
+            }),
+            _ => None,
+        }
+    }
+}
+
 /// Commit the split outputs. `partial_info = None` is the normal path (atomic
 /// rename over each destination, MAIN first per L2-WRT-019 so a failed errors
-/// commit never leaves an orphan errors file); `Some((offset, sync_losses))`
-/// is the `--allow-partial` path (rename each temp to its `.partial`).
+/// commit never leaves an orphan errors file); `Some(stop)` is the
+/// `--allow-partial` path (rename each temp to its `.partial`).
 fn commit_split_outputs(
     files: SplitCommit<'_>,
-    partial_info: Option<(u64, u64)>,
+    partial_info: Option<PartialStop>,
 ) -> MieResult<WriteOutcome> {
     let SplitCommit {
         main_atomic,
@@ -996,7 +1034,7 @@ fn commit_split_outputs(
         error_count,
     } = files;
 
-    let Some((offset, sync_losses)) = partial_info else {
+    let Some(stop) = partial_info else {
         // Normal path. The two commits are sequential (no cross-file
         // atomicity): MAIN first so that if the errors commit fails, the file
         // left behind is the primary artifact, never an orphan errors file. If
@@ -1041,10 +1079,8 @@ fn commit_split_outputs(
         None => None,
     };
     log_warn!(
-        "unrecoverable sync loss at 0x{:X} after {} recovery attempt(s); \
-         wrote {} normal + {} error rows as partial to {} (--allow-partial)",
-        offset,
-        sync_losses,
+        "{}; wrote {} normal + {} error rows as partial to {} (--allow-partial)",
+        stop.reason,
         normal_count,
         error_count,
         main_partial_path.display()
@@ -1056,8 +1092,8 @@ fn commit_split_outputs(
         partial: Some(PartialCommit {
             main_path: main_partial_path,
             errors_path: errors_partial_path,
-            offset,
-            sync_losses,
+            offset: stop.offset,
+            sync_losses: stop.sync_losses,
         }),
     })
 }

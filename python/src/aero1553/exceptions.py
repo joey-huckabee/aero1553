@@ -24,7 +24,8 @@ Exception hierarchy::
     │   ├── MieFirstRecordTruncatedError
     │   ├── MiePayloadError
     │   ├── MieUnknownErrorCodeError
-    │   └── MieUnrecoverableSyncLossError
+    │   ├── MieUnrecoverableSyncLossError
+    │   └── MieMergeInputsDroppedError
     ├── MieNonMonotonicInputError
     └── MieWriterError
 """
@@ -537,6 +538,46 @@ class MieUnrecoverableSyncLossError(MieRecordError):
             f"within the scan window. Pass --allow-partial to keep what "
             f"was decoded as a .partial file.",
         )
+
+
+class MieMergeInputsDroppedError(MieRecordError):
+    """Raised at the end of a merge run with ``allow_partial`` that left inputs out.
+
+    L2-MRG-004: inputs that could not be opened, or did not begin with a
+    readable record, are left out of a partial merge, and inputs that hit an
+    unrecoverable sync loss mid-file are truncated. When any input was left
+    out, the merged stream ends with this error -- the writer commits the rows
+    as a ``.partial`` -- naming what happened. (A merge whose only failure is a
+    mid-file sync loss ends with :class:`MieUnrecoverableSyncLossError`
+    instead.) It is record-class because it replaces the sync-loss error such a
+    merge used to end with, so a handler for :class:`MieRecordError` keeps
+    catching it; it has no single offset, so ``offset`` is ``0``.
+
+    Attributes:
+        left_out: Inputs that could not be read at all.
+        truncated: Inputs cut short by a mid-file unrecoverable sync loss.
+        total: Inputs the merge was asked for.
+    """
+
+    def __init__(self, left_out: int, truncated: int, total: int) -> None:
+        self.left_out = left_out
+        self.truncated = truncated
+        self.total = total
+
+        def verb(n: int) -> str:
+            return "was" if n == 1 else "were"
+
+        message = (
+            f"{left_out} of {total} merge inputs could not be read and {verb(left_out)} left out"
+        )
+        if truncated:
+            message += (
+                f", and {truncated} {verb(truncated)} truncated by an unrecoverable sync loss"
+            )
+        message += " (see the per-input warnings above)"
+        super().__init__(0, message)
+        # The record-error prefix names an offset; this error has none.
+        self.args = (message,)
 
 
 class MieUnknownErrorCodeError(MieRecordError):
