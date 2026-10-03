@@ -417,13 +417,15 @@ TEST_CASE("the ERROR column distinguishes errored from spurious", "[models][mess
         CHECK(std::string(m.error_label()) == "SPURIOUS");
     }
 
-    SECTION("the error bit wins over spurious classification") {
-        // An errored SPURIOUS record is reported as ERROR: the bus fault is
-        // the more actionable fact, and it is what the other implementations
-        // report.
+    SECTION("the message type wins over the error bit") {
+        // A SPURIOUS_DATA record with bit 14 set is decoded, coded
+        // (0x2000/0x2001) and timed as spurious, and an ERROR row promises a
+        // DDC code read from an Error Word, which it does not carry -- so it
+        // reads SPURIOUS (docs/DATAFLOW.md row S7). The raw bit stays visible.
         m.message_format = mie::FORMAT_SPURIOUS_DATA;
         m.type_word.error = true;
-        CHECK(std::string(m.error_label()) == "ERROR");
+        CHECK(m.is_error());
+        CHECK(std::string(m.error_label()) == "SPURIOUS");
     }
 }
 

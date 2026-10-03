@@ -561,8 +561,8 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-ERR-010
 
 **Parent**: L1-OUT-001
-**Statement**: CSV `ERROR` SHALL be empty, `ERROR`, or `SPURIOUS` as appropriate; `ERROR_CODE` SHALL contain the corresponding uppercase hexadecimal code.
-**Rationale**: Empty / `ERROR` / `SPURIOUS` is the DDC vendor convention; the hex code follows the same `0x` prefix policy as other 16-bit values in the CSV (see L2-WRT-003).
+**Statement**: CSV `ERROR` SHALL be `SPURIOUS` for a SPURIOUS_DATA record, whatever its Type Word bit 14 says; `ERROR` for any other record with bit 14 set; and empty otherwise. `ERROR_CODE` SHALL contain the corresponding uppercase hexadecimal code.
+**Rationale**: Empty / `ERROR` / `SPURIOUS` is the DDC vendor convention; the hex code follows the same `0x` prefix policy as other 16-bit values in the CSV (see L2-WRT-003). The message type decides before bit 14 because it decides everything else about the record: a SPURIOUS_DATA record is decoded as spurious, coded `0x2000`/`0x2001` (L2-ERR-005, L2-ERR-006) and timed accordingly, and an `ERROR` row promises a DDC hardware code read from an Error Word, which it does not carry. Labelling one `ERROR` produced a row whose two columns contradicted each other. The raw bit remains visible to the library (`is_error`) and in `dump` (`docs/DATAFLOW.md`, finding G1).
 **Verification Method**: Test (T)
 
 #### L2-ERR-011

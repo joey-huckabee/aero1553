@@ -231,6 +231,17 @@ void write_annotation(std::FILE* out, const std::vector<uint8_t>& data, const Ty
     emit_line(out,
               std::string("  Format: ") + (classified ? format_label(format) : "(unclassifiable)"));
     emit_line(out, "  Time:   " + timestamp.format() + (timestamp.freerun ? "  [FREERUN]" : ""));
+    // A SPURIOUS_DATA record has no Command Word and no Error Word, whatever
+    // bit 14 says: everything after its timestamp is leftover bus words. Reading
+    // the first as a Command Word (and, with bit 14 set, the last as an Error
+    // Word) printed an RT, a subaddress and a "DDC error" that were not there.
+    // 3 = IRIG timestamp words, as above.
+    if (type_word.message_type == MESSAGE_TYPE_SPURIOUS_DATA) {
+        const int words = static_cast<int>(type_word.word_count) - 1 - 3;
+        emit_line(out, "  Data:   " + text::decimal(static_cast<uint64_t>(words > 0 ? words : 0)) +
+                           " leftover word(s); SPURIOUS_DATA carries no Command Word");
+        return;
+    }
     emit_line(out, "  Cmd:    0x" + text::hex_upper(command.raw, 4) + "  ->  RT" +
                        text::decimal(command.rt) + " SA" + text::decimal(command.subaddress) + " " +
                        (command.direction == DIRECTION_TRANSMIT ? "T" : "R") +

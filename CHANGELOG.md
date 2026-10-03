@@ -224,6 +224,19 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **A `SPURIOUS_DATA` record with Type Word bit 14 set is labelled
+  `SPURIOUS`, not `ERROR`** (all three implementations; L2-ERR-010
+  amended). Such a record was already decoded, coded (`2000`/`2001`) and
+  timed as spurious, but the `ERROR` column tested bit 14 first, so the row
+  read `ERROR` beside a decoder-assigned code -- where an `ERROR` row
+  promises a DDC hardware code. The message type now decides the label. The
+  raw bit is still reported by the library's `is_error` and by `dump`.
+- **`dump` no longer decodes a `SPURIOUS_DATA` record's leftover words as a
+  Command Word and an Error Word** (all three implementations). It printed
+  `Cmd: 0xAAAA -> RT21 SA21 ...` for every spurious record -- an RT and
+  subaddress that were not there -- and, with bit 14 set, an `Error:` line
+  reading the last leftover word as an unknown DDC code. A spurious record
+  now gets `Data: N leftover word(s); SPURIOUS_DATA carries no Command Word`.
 - **A merge in which every input fails no longer reports success under
   `--allow-partial`** (all three implementations; L2-MRG-004 amended).
   `--allow-partial` keeps what a merge could decode; when every input failed

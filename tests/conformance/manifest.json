@@ -21,6 +21,11 @@
       "expected": "expected/errors-inline.csv"
     },
     {
+      "name": "spurious-bit14",
+      "input": "inputs/spurious-bit14.hex",
+      "expected": "expected/spurious-bit14.csv"
+    },
+    {
       "name": "exclude-subaddress",
       "input": "inputs/basic-multi-record.hex",
       "expected": "expected/exclude-subaddress.csv",
@@ -967,6 +972,12 @@
       "mode": "dump",
       "input": "inputs/errors-inline.hex",
       "expected": "expected/dump-records-errored.txt"
+    },
+    {
+      "name": "dump-records-spurious-bit14",
+      "mode": "dump",
+      "input": "inputs/spurious-bit14.hex",
+      "expected": "expected/dump-records-spurious-bit14.txt"
     },
     {
       "name": "dump-truncated-record",

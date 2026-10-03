@@ -186,6 +186,26 @@ TEST_CASE("an errored record shows the Error Word and its meaning", "[dump][L3-C
     REQUIRE(report.find("Manchester") != std::string::npos);
 }
 
+TEST_CASE("a spurious record shows no Command Word or Error Word", "[dump][L3-CPP-025]") {
+    // Everything after a SPURIOUS_DATA record's timestamp is leftover bus
+    // words, bit 14 or not. Reading the first as a Command Word printed an RT
+    // and subaddress that were not there, and with bit 14 set the last was
+    // read as a "DDC error".
+    std::vector<uint16_t> words;
+    words.push_back(mie_test::type_word(mie::MESSAGE_TYPE_SPURIOUS_DATA, 6, /*error=*/true));
+    mie_test::push_irig(words, 100);
+    words.push_back(0xAAAA);
+    words.push_back(0xBBBB);
+    const TempFile input("mie-dump-spurious.mie", mie_test::finish(words));
+
+    const std::string report = capture_records(input.str(), mie::Optional<uint64_t>(), 0);
+    REQUIRE(report.find("error flag (bit 14): SET") != std::string::npos);
+    REQUIRE(report.find("Data:   2 leftover word(s); SPURIOUS_DATA carries no Command Word") !=
+            std::string::npos);
+    REQUIRE(report.find("Cmd:") == std::string::npos);
+    REQUIRE(report.find("Error:") == std::string::npos);
+}
+
 TEST_CASE("a scan stop is written inline AND logged", "[dump][L3-CPP-026]") {
     // L2-CLI-013. Both, deliberately: the report may be piped somewhere the log
     // is not, and the log may be watched by someone who never sees the report.

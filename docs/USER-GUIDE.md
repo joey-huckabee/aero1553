@@ -140,7 +140,7 @@ aero1553 dump suspect.mie --records 10
 aero1553 dump suspect.mie --raw --offset 0 --length 256
 ```
 
-Record-aware mode is the default and what you want most of the time — it annotates each record with its Type Word, timestamp, Command Word, RT/SA/direction, and word count, then dumps the record's bytes. Raw mode is for the cases where validation rejects everything and you want to look at the literal bytes.
+Record-aware mode is the default and what you want most of the time — it annotates each record with its Type Word, timestamp, Command Word, RT/SA/direction, and word count (an errored record also gets its Error Word; a `SPURIOUS_DATA` record, which has no Command Word, gets a count of its leftover words instead), then dumps the record's bytes. Raw mode is for the cases where validation rejects everything and you want to look at the literal bytes.
 
 ---
 

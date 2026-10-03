@@ -1,4 +1,4 @@
-File: dump-records-errored-in0.mie (98 bytes)
+File: dump-records-spurious-bit14-in0.mie (110 bytes)
 Record dump starting at offset 0x00000000
 
 ------------------------------------------------------------------------
@@ -12,11 +12,11 @@ Record dump starting at offset 0x00000000
 
 ------------------------------------------------------------------------
   Record #1  @  0x0000000E  (12 bytes, 6 words)
-  Type:   0x0620  ->  Spurious Data  Bus A  error flag (bit 14): clear
+  Type:   0x4620  ->  Spurious Data  Bus A  error flag (bit 14): SET
   Format: SPURIOUS_DATA
   Time:   192:15:54:50.456504
   Data:   2 leftover word(s); SPURIOUS_DATA carries no Command Word
-    0000000E  20 06 0F 18 26 DB 38 F7 AA AA BB BB               | ...&.8.....|
+    0000000E  20 46 0F 18 26 DB 38 F7 AA AA BB BB               | F..&.8.....|
 
 ------------------------------------------------------------------------
   Record #2  @  0x0000001A  (72 bytes, 36 words)
@@ -31,4 +31,12 @@ Record dump starting at offset 0x00000000
     0000005A  00 00 00 00 00 00 00 00                           |........|
 
 ------------------------------------------------------------------------
-3 records dumped.
+  Record #3  @  0x00000062  (12 bytes, 6 words)
+  Type:   0x4620  ->  Spurious Data  Bus A  error flag (bit 14): SET
+  Format: SPURIOUS_DATA
+  Time:   192:15:54:50.457443
+  Data:   2 leftover word(s); SPURIOUS_DATA carries no Command Word
+    00000062  20 46 0F 18 26 DB E3 FA CC CC DD DD               | F..&.......|
+
+------------------------------------------------------------------------
+4 records dumped.
