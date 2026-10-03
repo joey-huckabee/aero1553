@@ -211,6 +211,15 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **A `--glob` with a wildcard in its directory part is now a usage error
+  (exit `4`) with a message that says so** (all three implementations;
+  L2-MRG-001). Wildcards have only ever applied to the filename, so
+  `captures/**/*.ch10` read `**` as a literal directory name and failed with
+  "No such file or directory" (exit `1`) -- a missing folder, when the
+  mistake is the pattern. It now reports `wildcards are only supported in
+  the filename, not in the directory part (no recursive **)` before touching
+  the filesystem. The Python library's `expand_glob` raises `ValueError` for
+  it. For a set spread over several directories, use `--manifest`.
 - **Rust and Python: `--glob` now expands as L2-MRG-001 specifies, as C++
   already did.** A `*` in the pattern failed to match a filename containing
   a literal `*` at that position, so on POSIX `--glob 'dir/*'` silently left

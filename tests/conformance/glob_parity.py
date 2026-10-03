@@ -179,17 +179,46 @@ def _star_matches_a_literal_star(temp: Path, recording: bytes) -> CaseResult | N
 
 
 def _trailing_separator(temp: Path, recording: bytes) -> CaseResult:
-    """The split is textual: ``*.mie/`` names a directory called ``*.mie``.
+    """The split is textual: ``a.mie/`` names a directory called ``a.mie``.
 
     The Rust divergence: ``Path::parent`` normalised the trailing separator away
-    and expanded ``*.mie``, while C++ split where L2-MRG-001 says to. No such
-    directory exists, so expanding it is an I/O failure (exit ``1``) -- not a
-    decode of the files beside it.
+    and matched the file ``a.mie``, while C++ split where L2-MRG-001 says to.
+    ``a.mie`` is a file, so enumerating it as a directory is an I/O failure
+    (exit ``1``) -- not a decode of it. No wildcard, so the directory-part check
+    does not pre-empt the split.
     """
     d = temp / "glob-trailing"
     d.mkdir(exist_ok=True)
     (d / "a.mie").write_bytes(recording)
-    return (temp, _at(d, "*.mie" + os.sep), "exit 1")
+    return (temp, _at(d, "a.mie" + os.sep), "exit 1")
+
+
+def _recursive_double_star(temp: Path, recording: bytes) -> CaseResult:
+    """``captures/**/*.mie`` is a usage error: there is no recursive ``**``.
+
+    Read literally, ``**`` is a directory name, and every implementation failed
+    to open it as "No such file or directory" (exit ``1``) -- a missing folder,
+    when the mistake is the pattern. A recording sits one level down, where a
+    recursive reading would find it, so a silent recursion would show as rows.
+    """
+    base = temp / "glob-double-star"
+    d = base / "captures" / "day1"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    return (base, "captures/**/*.mie", "exit 4")
+
+
+def _wildcard_in_directory(temp: Path, recording: bytes) -> CaseResult:
+    """``capt*/a.mie`` is a usage error: wildcards apply to the filename only.
+
+    A directory the wildcard would match exists, so the refusal is shown not to
+    depend on the filesystem.
+    """
+    base = temp / "glob-dir-wildcard"
+    d = base / "captures"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    return (base, "capt*/a.mie", "exit 4")
 
 
 def _relative_pattern(temp: Path, recording: bytes) -> CaseResult:
@@ -274,6 +303,8 @@ CASES: list[Case] = [
     ("forward-slashes-on-windows", _forward_slashes_on_windows),
     ("mixed-separators-on-windows", _mixed_separators_on_windows),
     ("drive-relative-on-windows", _drive_relative_on_windows),
+    ("recursive-double-star", _recursive_double_star),
+    ("wildcard-in-directory", _wildcard_in_directory),
 ]
 
 

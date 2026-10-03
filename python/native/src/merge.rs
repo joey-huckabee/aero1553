@@ -94,7 +94,15 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
 /// The regular files a `--glob` pattern names, sorted (L2-MRG-001).
 #[pyfunction]
 pub fn expand_glob(pattern: &str) -> PyResult<Vec<PathBuf>> {
-    Ok(core::expand_glob(pattern)?)
+    core::expand_glob(pattern).map_err(|e| {
+        // A wildcard in the directory part is a malformed pattern, not an OS
+        // failure: PyO3 would raise a bare `OSError` for `InvalidInput`.
+        if e.kind() == std::io::ErrorKind::InvalidInput {
+            PyValueError::new_err(e.to_string())
+        } else {
+            e.into()
+        }
+    })
 }
 
 /// The packed per-RT/MSG DELTA key.

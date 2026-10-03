@@ -238,6 +238,21 @@ def test_expand_glob_does_not_treat_a_backslash_as_a_separator_on_posix(
 
 
 @pytest.mark.requirement("L2-MRG-001")
+@pytest.mark.parametrize("directory_part", ["captures/**", "capt*", "capture?"])
+def test_expand_glob_refuses_a_wildcard_in_the_directory_part(
+    tmp_path: Path, directory_part: str
+) -> None:
+    """Wildcards apply to the filename only, so a pattern with one in its
+    directory part is a ``ValueError`` -- not the ``FileNotFoundError`` that
+    reading ``**`` as a literal directory name produced, which pointed at a
+    missing folder when the mistake was the pattern."""
+    (tmp_path / "captures").mkdir()
+    (tmp_path / "captures" / "a.mie").write_bytes(b"\x00\x00")
+    with pytest.raises(ValueError, match="directory part"):
+        expand_glob(f"{tmp_path}/{directory_part}/*.mie")
+
+
+@pytest.mark.requirement("L2-MRG-001")
 @pytest.mark.requirement("L3-PY-014")
 def test_glob_match_wildcards() -> None:
     assert glob_match("*.mie", "rec1.mie")

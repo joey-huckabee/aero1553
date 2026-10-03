@@ -942,6 +942,11 @@ std::vector<std::string> resolve_inputs(const DecodeArgs& args) {
         }
     } else if (args.glob.has_value()) {
         if (!merge::expand_glob(args.glob.value(), paths, err)) {
+            // A wildcard in the directory part is a malformed pattern, refused
+            // before any I/O: the command line is wrong, so exit 4, not 1.
+            if (err.code == merge::GLOB_INVALID_PATTERN) {
+                throw usage_error("--glob \"" + args.glob.value() + "\": " + err.message);
+            }
             throw runtime_error_("failed to expand --glob \"" + args.glob.value() +
                                  "\": " + err.message);
         }

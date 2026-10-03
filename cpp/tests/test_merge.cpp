@@ -413,6 +413,41 @@ TEST_CASE("expand_glob does not treat a backslash as a separator on POSIX",
 }
 #endif
 
+TEST_CASE("expand_glob refuses a wildcard in the directory part", "[merge][L2-MRG-001]") {
+    // Wildcards apply to the filename only. Read literally, `captures/**` is a
+    // directory named `**`, and the failure to open it reported "No such file or
+    // directory" -- a missing folder, when the mistake is the pattern. The
+    // refusal comes before any I/O, so none of these directories need exist.
+    const std::string root = mie_test::temp_root();
+    const char* const patterns[] = {"captures/**/*.mie", "capt*/a.mie", "capture?/*.mie",
+                                    "**/*.mie"};
+    for (std::size_t i = 0; i < sizeof(patterns) / sizeof(patterns[0]); ++i) {
+        const std::string pattern = mie::platform::path_join(root, patterns[i]);
+        INFO(pattern);
+        std::vector<std::string> found;
+        mie::platform::OsError err;
+        CHECK_FALSE(mie::merge::expand_glob(pattern, found, err));
+        CHECK(err.code == mie::merge::GLOB_INVALID_PATTERN);
+        CHECK(err.message.find("directory part") != std::string::npos);
+    }
+
+    SECTION("a wildcard in the filename part is the supported case") {
+        std::vector<std::string> found;
+        mie::platform::OsError err;
+        CHECK(mie::merge::expand_glob(mie::platform::path_join(root, "*.nope"), found, err));
+        CHECK(err.ok());
+    }
+
+#if defined(_WIN32)
+    SECTION("the ? of the extended-length prefix is not a wildcard") {
+        std::vector<std::string> found;
+        mie::platform::OsError err;
+        static_cast<void>(mie::merge::expand_glob("\\\\?\\" + root + "\\*.nope", found, err));
+        CHECK(err.code != mie::merge::GLOB_INVALID_PATTERN);
+    }
+#endif
+}
+
 TEST_CASE("the merge interleaves inputs by timestamp", "[merge][L3-CPP-020]") {
     const TempFile a("mie-merge-a.mie", recording(100, 3));
     const TempFile b("mie-merge-b.mie", recording(150, 3));

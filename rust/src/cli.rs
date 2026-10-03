@@ -1636,8 +1636,15 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
             ))
         })?
     } else if let Some(pattern) = &args.glob {
-        crate::merge::expand_glob(pattern)
-            .map_err(|e| CliError::runtime(format!("failed to expand --glob {pattern:?}: {e}")))?
+        crate::merge::expand_glob(pattern).map_err(|e| {
+            // A wildcard in the directory part is a malformed pattern, refused
+            // before any I/O: the command line is wrong, so exit 4, not 1.
+            if e.kind() == std::io::ErrorKind::InvalidInput {
+                CliError::usage(format!("--glob {pattern:?}: {e}"))
+            } else {
+                CliError::runtime(format!("failed to expand --glob {pattern:?}: {e}"))
+            }
+        })?
     } else {
         args.inputs.clone()
     };
@@ -2992,6 +2999,35 @@ mod tests {
             }
             Ok(_) => panic!("expected over-cap usage error"),
         }
+    }
+
+    /// A `--glob` wildcard in the directory part is a malformed pattern, so a
+    /// usage error (exit 4); a directory that cannot be read stays a runtime
+    /// error (exit 1). Both arms of the mapping, since the conformance cases
+    /// reach them only through a subprocess.
+    /// Requirements: L2-MRG-001, L2-CLI-011
+    #[test]
+    fn resolve_inputs_maps_a_directory_wildcard_to_usage_and_io_to_runtime() {
+        let glob = |pattern: &str| DecodeArgs {
+            glob: Some(pattern.to_string()),
+            ..Default::default()
+        };
+
+        let Err(e) = resolve_inputs(&glob("captures/**/*.mie")) else {
+            panic!("expected a usage error");
+        };
+        assert_eq!(e.code, exit_code::USAGE);
+        assert!(e.message.contains("directory part"), "got: {}", e.message);
+
+        let Err(e) = resolve_inputs(&glob("no-such-dir-for-this-test/*.mie")) else {
+            panic!("expected a runtime error");
+        };
+        assert_eq!(e.code, exit_code::RUNTIME);
+        assert!(
+            e.message.contains("failed to expand --glob"),
+            "got: {}",
+            e.message
+        );
     }
 
     /// Requirements: L2-CLI-014

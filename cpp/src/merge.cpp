@@ -47,6 +47,19 @@ std::size_t next_char(const std::string& text, std::size_t at) {
     return stepped > text.size() ? text.size() : stepped;
 }
 
+/// Whether the directory part of a glob holds a `*` or `?`.
+///
+/// On Windows the extended-length prefix `\\?\` is skipped: its `?` is syntax,
+/// not a wildcard, and refusing it would refuse every long-path pattern.
+bool directory_has_wildcard(const std::string& directory) {
+#if defined(_WIN32)
+    const std::size_t from = directory.compare(0, 4, "\\\\?\\") == 0 ? 4 : 0;
+#else
+    const std::size_t from = 0;
+#endif
+    return directory.find_first_of("*?", from) != std::string::npos;
+}
+
 /// The microsecond value a message merges on.
 ///
 /// Every input is validated as calendar-locked IRIG before any of this runs, so
@@ -223,6 +236,18 @@ bool expand_glob(const std::string& pattern, std::vector<std::string>& out,
             // Rooted at the separator itself, e.g. "/recordings.mie".
             directory = pattern.substr(0, 1);
         }
+    }
+
+    // Wildcards apply to the filename only (L2-MRG-001 clause 2). Read
+    // literally, `captures/**` is a directory named `**`, and the failure to
+    // open it reported "No such file or directory" -- a missing folder, when
+    // the mistake is the pattern.
+    if (directory_has_wildcard(prefix)) {
+        err.code = GLOB_INVALID_PATTERN;
+        err.message =
+            "wildcards are only supported in the filename, not in the directory part "
+            "(no recursive **)";
+        return false;
     }
 
     std::vector<std::string> names;

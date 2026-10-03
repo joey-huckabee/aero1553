@@ -102,6 +102,11 @@ def expand_glob(pattern: str) -> list[Path]:
         deterministic across implementations (L2-MRG-001). An **empty list is
         not an error**: a pattern that matches nothing returns ``[]``, leaving
         "matched no files" distinguishable from "could not read the directory".
+
+    Raises:
+        ValueError: the directory part holds a wildcard (``captures/**/*.mie``,
+            ``capt*/a.mie``); refused before the filesystem is touched.
+        OSError: the directory could not be enumerated.
     """
     return list(_native.expand_glob(pattern))
 
