@@ -21,6 +21,7 @@
 #include "mie/config.hpp"
 #include "mie/error.hpp"
 #include "mie/reader.hpp"
+#include "mie/text.hpp"
 #include "record_fixtures.hpp"
 #include "temp_path.hpp"
 
@@ -736,4 +737,88 @@ TEST_CASE("an empty input contributes nothing rather than failing", "[merge][L3-
 
     const mie::merge::MergeOptions options;
     CHECK(merged_order(readers, options).size() == 3u);
+}
+
+// ---------------------------------------------------------------------------
+// L2-MRG-007: a 0x2000 continuation is collapsed exactly when its parent is
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// One recorder's error + continuation: an errored BC-to-RT record for `rt` at
+/// `micros`, then a SPURIOUS_DATA continuation stamped 10 us later holding
+/// `leftover` (the reader reports it at the error's time, L2-ERR-005).
+std::vector<uint8_t> error_and_continuation(uint8_t rt, uint16_t leftover, uint32_t micros) {
+    std::vector<uint16_t> words;
+    words.push_back(mie_test::type_word(mie::MESSAGE_TYPE_BC_TO_RT, 8, /*error=*/true));
+    mie_test::push_irig(words, micros);
+    words.push_back(mie_test::command_word(rt, mie::DIRECTION_RECEIVE, 11, 4));
+    words.push_back(0x0000);
+    words.push_back(0x0000);
+    words.push_back(mie::ERROR_MANCHESTER_PARITY);
+    words.push_back(mie_test::type_word(mie::MESSAGE_TYPE_SPURIOUS_DATA, 5));
+    mie_test::push_irig(words, micros + 10);
+    words.push_back(leftover);
+    return mie_test::finish(words);
+}
+
+/// Collapse-merge recorder A's pair with recorder B's; describe what survives
+/// as "RT<n>" / "cont:<word>" in order, with the suppressed count.
+std::string collapse_pair(const std::vector<uint8_t>& a, const std::vector<uint8_t>& b,
+                          uint64_t& collapsed) {
+    const TempFile fa("mie-collapse-a.mie", a);
+    const TempFile fb("mie-collapse-b.mie", b);
+    mie::MieFileReader reader_a;
+    mie::MieFileReader reader_b;
+    reader_a.open(fa.str(), irig_options());
+    reader_b.open(fb.str(), irig_options());
+    std::vector<mie::MieFileReader*> readers;
+    readers.push_back(&reader_a);
+    readers.push_back(&reader_b);
+
+    mie::merge::MergeOptions options;
+    options.collapse_duplicates = true;
+    mie::merge::MergedSource source(readers, options);
+    std::string out;
+    mie::MieMessage message;
+    while (source.next(message)) {
+        if (!out.empty()) {
+            out += ",";
+        }
+        out += message.command_word.has_value()
+                   ? "RT" + mie::text::decimal(message.command_word.value().rt)
+                   : "cont:" + mie::text::hex_upper(message.data_words[0], 4);
+    }
+    collapsed = source.collapsed();
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("collapsing a parent also collapses its continuation", "[merge][L2-MRG-007]") {
+    // First example: B's error copies A's, but B's continuation holds different
+    // words. B's error collapses and its continuation goes with it -- A's
+    // continuation (word 0000) is the one that survives.
+    uint64_t collapsed = 0;
+    CHECK(collapse_pair(error_and_continuation(15, 0x0000, 500),
+                        error_and_continuation(15, 0x2222, 500), collapsed) == "RT15,cont:0000");
+    CHECK(collapsed == 2u);
+}
+
+TEST_CASE("a continuation is not collapsed while its parent survives", "[merge][L2-MRG-007]") {
+    // Second example: B's error differs (RT16), but B's continuation copies A's.
+    // Judged on content alone it would collapse and strand B's error; it shares
+    // its parent's fate instead, and B's parent survives.
+    uint64_t collapsed = 0;
+    CHECK(collapse_pair(error_and_continuation(15, 0x0000, 500),
+                        error_and_continuation(16, 0x0000, 500),
+                        collapsed) == "RT15,cont:0000,RT16,cont:0000");
+    CHECK(collapsed == 0u);
+}
+
+TEST_CASE("a copied pair collapses as a pair", "[merge][L2-MRG-007]") {
+    uint64_t collapsed = 0;
+    CHECK(collapse_pair(error_and_continuation(15, 0x0000, 500),
+                        error_and_continuation(15, 0x0000, 500), collapsed) == "RT15,cont:0000");
+    CHECK(collapsed == 2u);
 }

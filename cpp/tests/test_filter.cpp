@@ -429,3 +429,133 @@ TEST_CASE("a dropped record with no Command Word renders its RT as a dash",
     CHECK(survivors(input, f) == 0);
     CHECK(capture.contains("RT- SA-"));
 }
+
+// ---------------------------------------------------------------------------
+// L2-FLT-003: a 0x2000 continuation shares its parent's fate
+// ---------------------------------------------------------------------------
+
+namespace {
+
+/// The conformance fixture's three records (filter-continuation.hex): an errored
+/// RT15 SA11 BC_TO_RT on bus A, its continuation, and a clean record differing
+/// in every filtered field -- RT3 SA22 RT_TO_BC on bus B.
+std::vector<mie::MieMessage> pair_and_other() {
+    mie::MieMessage parent = record(15, 11, mie::BUS_A, mie::MESSAGE_TYPE_BC_TO_RT);
+    parent.type_word.error = true;
+    parent.error_word = static_cast<uint16_t>(0x011E);
+    mie::MieMessage continuation = spurious(mie::BUS_A);
+    continuation.error_word = mie::ERROR_SPURIOUS_CONTINUATION;
+    std::vector<mie::MieMessage> records;
+    records.push_back(parent);
+    records.push_back(continuation);
+    records.push_back(record(3, 22, mie::BUS_B, mie::MESSAGE_TYPE_RT_TO_BC));
+    return records;
+}
+
+/// Labels of the records that survive `filters`, in order.
+std::string kept(const std::vector<mie::MieMessage>& input, const mie::FilterConfig& filters) {
+    VectorSource source(input);
+    mie::FilteredSource filtered(source, filters);
+    std::string out;
+    mie::MieMessage message;
+    while (filtered.next(message)) {
+        if (!out.empty()) {
+            out += ",";
+        }
+        if (message.is_continuation()) {
+            out += "continuation";
+        } else if (message.is_spurious()) {
+            out += "standalone";
+        } else if (message.command_word.value().rt == 15) {
+            out += "parent";
+        } else {
+            out += "other";
+        }
+    }
+    return out;
+}
+
+}  // namespace
+
+TEST_CASE("a continuation shares its parent's filter fate", "[filter][L2-FLT-003][L2-FLT-001]") {
+    // One section per filter case -- the same table the conformance cases pin.
+    const std::vector<mie::MieMessage> input = pair_and_other();
+    mie::FilterConfig f;
+
+    SECTION("exclude-rts naming the parent removes both") {
+        f.exclude_rts.push_back(15);
+        CHECK(kept(input, f) == "other");
+    }
+    SECTION("exclude-rts naming the other record keeps the pair") {
+        f.exclude_rts.push_back(3);
+        CHECK(kept(input, f) == "parent,continuation");
+    }
+    SECTION("include-rts naming the parent keeps both") {
+        f.include_rts.push_back(15);
+        CHECK(kept(input, f) == "parent,continuation");
+    }
+    SECTION("include-rts naming the other record removes the pair") {
+        f.include_rts.push_back(3);
+        CHECK(kept(input, f) == "other");
+    }
+    SECTION("exclude-subaddresses naming the parent removes both") {
+        f.exclude_subaddresses.push_back(11);
+        CHECK(kept(input, f) == "other");
+    }
+    SECTION("include-subaddresses naming the parent keeps both") {
+        f.include_subaddresses.push_back(11);
+        CHECK(kept(input, f) == "parent,continuation");
+    }
+    SECTION("exclude-buses naming the parent's bus removes both") {
+        f.exclude_buses.push_back(mie::BUS_A);
+        CHECK(kept(input, f) == "other");
+    }
+    SECTION("include-buses naming the parent's bus keeps both") {
+        f.include_buses.push_back(mie::BUS_A);
+        CHECK(kept(input, f) == "parent,continuation");
+    }
+    SECTION("exclude-types naming the parent's type removes both") {
+        f.exclude_types.push_back(mie::MESSAGE_TYPE_BC_TO_RT);
+        CHECK(kept(input, f) == "other");
+    }
+    SECTION("exclude-types SPURIOUS_DATA removes only the continuation") {
+        f.exclude_types.push_back(mie::MESSAGE_TYPE_SPURIOUS_DATA);
+        CHECK(kept(input, f) == "parent,other");
+    }
+    SECTION("include-types SPURIOUS_DATA keeps the continuation it asked for") {
+        f.include_types.push_back(mie::MESSAGE_TYPE_SPURIOUS_DATA);
+        CHECK(kept(input, f) == "continuation");
+    }
+    SECTION("include-types naming the parent's type keeps only the parent") {
+        f.include_types.push_back(mie::MESSAGE_TYPE_BC_TO_RT);
+        CHECK(kept(input, f) == "parent");
+    }
+}
+
+TEST_CASE("a standalone spurious record is still judged on its own", "[filter][L2-FLT-003]") {
+    std::vector<mie::MieMessage> input;
+    input.push_back(record(15, 11, mie::BUS_A, mie::MESSAGE_TYPE_BC_TO_RT));
+    input.push_back(spurious(mie::BUS_A));
+    mie::FilterConfig include;
+    include.include_rts.push_back(15);
+    CHECK(kept(input, include) == "parent");
+    mie::FilterConfig exclude;
+    exclude.exclude_rts.push_back(15);
+    CHECK(kept(input, exclude) == "standalone");
+}
+
+TEST_CASE("a continuation with no errored record before it is judged on its own",
+          "[filter][L2-FLT-003]") {
+    // Safety net: the parent's verdict reaches only the record directly after it.
+    mie::MieMessage parent = record(15, 11, mie::BUS_A, mie::MESSAGE_TYPE_BC_TO_RT);
+    parent.type_word.error = true;
+    mie::MieMessage continuation = spurious(mie::BUS_A);
+    continuation.error_word = mie::ERROR_SPURIOUS_CONTINUATION;
+    std::vector<mie::MieMessage> input;
+    input.push_back(parent);
+    input.push_back(record(3, 22, mie::BUS_B, mie::MESSAGE_TYPE_RT_TO_BC));
+    input.push_back(continuation);
+    mie::FilterConfig f;
+    f.exclude_rts.push_back(15);
+    CHECK(kept(input, f) == "other,continuation");
+}

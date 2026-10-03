@@ -928,6 +928,18 @@ impl MieMessage {
         self.message_format == MessageFormat::SpuriousData
     }
 
+    /// A `SPURIOUS_DATA` record that continues the errored record decoded
+    /// immediately before it (decoder code `0x2000`, L2-ERR-005).
+    ///
+    /// Such a record is the second half of its parent's transaction, so the
+    /// stages that remove records -- filtering (L2-FLT-001) and duplicate
+    /// collapse (L2-MRG-007) -- decide its fate through its parent rather than
+    /// on its own.
+    #[must_use]
+    pub fn is_continuation(&self) -> bool {
+        self.is_spurious() && self.error_word == Some(ERROR_SPURIOUS_CONTINUATION)
+    }
+
     /// CSV-column error label: `""`, `"ERROR"`, or `"SPURIOUS"`.
     #[must_use]
     pub fn error_label(&self) -> &'static str {

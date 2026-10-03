@@ -177,8 +177,46 @@ FILTERS: list[tuple[str, FilterConfig, list[str]]] = [
 ]
 
 
+_SPURIOUS = 0x20
+_CONTINUATION = 0x2000
+
+
+def _expected_survivors(
+    config: FilterConfig, records: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """An independent model of the filter stage over ``to_dict`` rows.
+
+    Every record is judged on its own by ``should_exclude``, except a ``0x2000``
+    continuation that directly follows its errored parent (L2-FLT-003): it is
+    kept exactly when the parent passes the RT, subaddress, bus and
+    type-exclusion filters -- the type *selection* left out -- and its own type
+    passes the type filters.
+    """
+    parent_side = dataclasses.replace(config, include_types=set())
+
+    def drops(cfg: FilterConfig, d: dict[str, Any]) -> bool:
+        return cfg.should_exclude(d["message_type"], d["rt"], Bus(d["bus"]), d["subaddress"])
+
+    kept: list[dict[str, Any]] = []
+    parent_kept: bool | None = None
+    for d in records:
+        spurious = d["message_type"] == _SPURIOUS
+        if spurious and d["error_word"] == _CONTINUATION and parent_kept is not None:
+            own_type_dropped = _SPURIOUS in config.exclude_types or (
+                bool(config.include_types) and _SPURIOUS not in config.include_types
+            )
+            drop = not parent_kept or own_type_dropped
+        else:
+            drop = drops(config, d)
+        parent_kept = not drops(parent_side, d) if d["error"] and not spurious else None
+        if not drop:
+            kept.append(d)
+    return kept
+
+
 @pytest.mark.requirement("L2-FLT-001")
 @pytest.mark.requirement("L2-FLT-002")
+@pytest.mark.requirement("L2-FLT-003")
 @pytest.mark.parametrize(("label", "config", "flags"), FILTERS, ids=[f[0] for f in FILTERS])
 def test_every_filter_matches_the_cli_and_its_own_predicate(
     tmp_path: Path, rec: dict[str, Path], label: str, config: FilterConfig, flags: list[str]
@@ -189,11 +227,7 @@ def test_every_filter_matches_the_cli_and_its_own_predicate(
 
     kept = columns(apply_filters(MieFileReader(rec["a-small"]), config))
     everything = [m.to_dict() for m in MieFileReader(rec["a-small"])]
-    expected = [
-        d
-        for d in everything
-        if not config.should_exclude(d["message_type"], d["rt"], Bus(d["bus"]), d["subaddress"])
-    ]
+    expected = _expected_survivors(config, everything)
     assert 0 < len(kept["rt"]) < len(everything), f"{label} selects a proper subset"
     assert sorted(kept["file_offset"].tolist()) == sorted(d["file_offset"] for d in expected)
 

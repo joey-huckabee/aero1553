@@ -461,6 +461,83 @@ class TestApplyFilters:
         assert result[0].bus == Bus.A
 
 
+def _pair_and_other() -> list[MieMessage]:
+    """The conformance fixture's three records (filter-continuation.hex): an
+    errored RT15 SA11 BC_TO_RT on bus A, its 0x2000 continuation, and a clean
+    record differing in every filtered field -- RT3 SA22 RT_TO_BC on bus B."""
+    parent = MieMessage(
+        timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
+        type_word=TypeWord(0x02, Bus.A, 7, True, 0x4702),
+        message_format=MessageFormat.RECEIVE,
+        command_word=CommandWord(15, Direction.RECEIVE, 11, 30, 0x797E),
+        command_word_2=None,
+        status_word=None,
+        status_word_2=None,
+        data_words=(0x0400,),
+        error_word=0x011E,
+        delta=0.0,
+        file_offset=0,
+    )
+    continuation = MieMessage(
+        timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
+        type_word=TypeWord(0x20, Bus.A, 6, False, 0x0620),
+        message_format=MessageFormat.SPURIOUS_DATA,
+        command_word=None,
+        command_word_2=None,
+        status_word=None,
+        status_word_2=None,
+        data_words=(0xAAAA, 0xBBBB),
+        error_word=0x2000,
+        delta=None,
+        file_offset=14,
+    )
+    other = _make_msg(msg_type=0x04, bus=Bus.B, rt=3, sa=22, direction=Direction.TRANSMIT)
+    return [parent, continuation, other]
+
+
+def _labels(messages: list[MieMessage]) -> list[str]:
+    def label(m: MieMessage) -> str:
+        if m.error_word == 0x2000:
+            return "continuation"
+        return "parent" if m.rt == 15 else "other"
+
+    return [label(m) for m in messages]
+
+
+#: One row per filter case -- the same table the conformance cases pin.
+_PAIRING_CASES = [
+    ("exclude-rts-parent", FilterConfig(exclude_rts={15}), ["other"]),
+    ("exclude-rts-other", FilterConfig(exclude_rts={3}), ["parent", "continuation"]),
+    ("include-rts-parent", FilterConfig(include_rts={15}), ["parent", "continuation"]),
+    ("include-rts-other", FilterConfig(include_rts={3}), ["other"]),
+    ("exclude-subaddresses-parent", FilterConfig(exclude_subaddresses={11}), ["other"]),
+    (
+        "include-subaddresses-parent",
+        FilterConfig(include_subaddresses={11}),
+        ["parent", "continuation"],
+    ),
+    ("exclude-buses-parent", FilterConfig(exclude_buses={Bus.A}), ["other"]),
+    ("include-buses-parent", FilterConfig(include_buses={Bus.A}), ["parent", "continuation"]),
+    ("exclude-types-parent", FilterConfig(exclude_types={0x02}), ["other"]),
+    ("exclude-types-spurious", FilterConfig(exclude_types={0x20}), ["parent", "other"]),
+    ("include-types-spurious", FilterConfig(include_types={0x20}), ["continuation"]),
+    ("include-types-parent", FilterConfig(include_types={0x02}), ["parent"]),
+]
+
+
+class TestContinuationPairing:
+    """L2-FLT-003: a 0x2000 continuation shares its errored parent's fate."""
+
+    @pytest.mark.requirement("L2-FLT-003", "L2-FLT-001")
+    @pytest.mark.parametrize(
+        ("label", "config", "want"), _PAIRING_CASES, ids=[c[0] for c in _PAIRING_CASES]
+    )
+    def test_continuation_shares_its_parents_filter_fate(
+        self, label: str, config: FilterConfig, want: list[str]
+    ) -> None:
+        assert _labels(list(apply_filters(_pair_and_other(), config))) == want, label
+
+
 class TestCliFilters:
     """CLI integration tests for filtering."""
 

@@ -124,6 +124,10 @@ class FilterConfig:
             filter, and is always dropped when an RT/subaddress include
             filter is active (SPURIOUS_DATA has no RT/SA). Mirrors the
             Rust ``FilterConfig::should_exclude`` behavior.
+
+            This judges one record on its own fields. In a stream,
+            :func:`~aero1553.filters.apply_filters` decides a ``0x2000``
+            continuation through its errored parent instead (L2-FLT-003).
         """
         # Negative filters take precedence over positive ones.
         return self._matches_exclude(message_type, rt, bus, subaddress) or self._fails_include(

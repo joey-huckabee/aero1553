@@ -290,6 +290,10 @@ class MergedSource : public MessageSource {
     /// mirroring the single-file non-monotonic-DELTA WARN. Repeating it per
     /// record would bury the message in its own output.
     std::vector<bool> warned_backward_;
+    /// Whether the previous record pulled from each input was collapsed as a
+    /// duplicate. A 0x2000 continuation is the next record of its file after
+    /// its parent, so this is its parent's fate, which it shares (L2-MRG-007).
+    std::vector<bool> last_collapsed_;
     std::vector<std::string> paths_;
 
     MergeOptions options_;

@@ -271,6 +271,19 @@ output to matching records (`L3-PY-013` / `L3-RS-010`).
 | `--include-buses VAL` | `A` / `B` | Include only these buses. CLI-only. |
 | `--include-subaddresses VAL` | subaddresses | Include only these subaddresses. CLI-only. |
 
+**Records with no Command Word** (`SPURIOUS_DATA`, `L2-FLT-003`) have no RT or
+subaddress:
+
+- A **standalone** one (`ERROR_CODE` `2001`) is never matched by an RT or
+  subaddress exclusion, is dropped by an RT or subaddress inclusion, and is
+  filtered by type and bus like any record.
+- A **continuation** (`ERROR_CODE` `2000`) shares its errored parent's fate: the
+  RT, subaddress and bus filters, and a type exclusion naming the parent's type,
+  keep or remove the two rows together. So `--exclude-rts 15` removes RT15's
+  errors *and* their continuations, and `--include-rts 15` keeps both. Type
+  filters judge the continuation on its own type: `--exclude-types SPURIOUS_DATA`
+  removes it, and `--include-types SPURIOUS_DATA` keeps it (without its parent).
+
 ### Merge (multi-file)
 
 Passing more than one input (positionals, `--manifest`, or `--glob`) merges the

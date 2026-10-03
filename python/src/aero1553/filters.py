@@ -39,7 +39,10 @@ def apply_filters(
     Yields only the messages that match no active ``exclude_*`` set and that
     every active ``include_*`` set admits (see
     :meth:`~aero1553.config.FilterConfig.should_exclude`). With no filter
-    active every message passes.
+    active every message passes. A ``0x2000`` continuation shares its errored
+    parent's fate instead of being judged on its own (L2-FLT-003): the RT,
+    subaddress and bus filters, and a type exclusion naming the parent's type,
+    keep or drop the two together; type filters judge it on its own type.
 
     Given the iterator of a reader or of another stage, filtering runs entirely
     in the compiled decoder; any other iterable of

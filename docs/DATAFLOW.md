@@ -18,8 +18,9 @@ continuation losing its pin). Observed behaviour is as of `main` at `721eeb8`.
 [Section 6](#6-findings) lists the conflicts and gaps found; each is **open**
 until its decision in [section 7](#7-decisions) is taken and the
 requirements amended. When that happens, update this page in the same change.
-Decisions 1 (M3) and 2 (keeping a continuation with its parent) are taken
-and implemented; the rest are open.
+Decisions 1 (M3), 2 (keeping a continuation with its parent) and 3 (a
+continuation sharing its parent's filter and collapse fate) are taken and
+implemented; the rest are open.
 
 ---
 
@@ -124,11 +125,16 @@ timestamp (section 2.1), and a file's records at one timestamp leave the heap
 back to back, so nothing can come between them (rows M1, M2, M6). The `0x2000`
 code was fixed in the reader and is not revisited.
 
-**What collapse does to adjacency.** Collapse decides per record. A parent can
-be suppressed while its continuation survives, or the reverse (row M4). The
-dedup key includes the record's `error_word`, which for a spurious record holds
-the **decoder-assigned** `0x2000`/`0x2001` — not wire content
-([finding D4](#d-duplicate-collapse)).
+**What collapse does to adjacency.** Collapse decides per record, with one
+exception (decision 3, L2-MRG-007): a `0x2000` continuation is never judged on
+its own content. It is collapsed exactly when its parent — the previous record
+from the same input — was, and it is never added to the survivor set. So an
+error and its continuation are kept or collapsed as one unit (row M4; the
+conformance cases `merge-collapse-parent-copy`,
+`merge-collapse-continuation-copy`, `merge-collapse-pair-copy`). Before
+decision 3, a parent could be suppressed while its continuation survived, or the
+reverse. The dedup key still includes `error_word`, which for a standalone
+record holds the decoder-assigned `0x2001` ([finding D4](#d-duplicate-collapse)).
 
 ### 2.3 Filter
 
@@ -137,17 +143,25 @@ other messages **unchanged**" (L2-FLT-001); OR across exclusions (L2-FLT-002);
 a record passes an include set only if it is in **every** active include set
 (L3-RS-010, L3-PY-013).
 
-**Records without a Command Word** — defined by tests and code only; **no
-requirement states it** ([finding F2](#f-filters)):
+**Records without a Command Word** (L2-FLT-003, decision 3):
 
-| Filter | Effect on a spurious record |
-|---|---|
-| `--exclude-rts`, `--exclude-subaddresses` | never matches it → **kept** |
-| `--include-rts`, `--include-subaddresses` | cannot satisfy it → **dropped** |
-| `--exclude-types` / `--include-types`, `--exclude-buses` / `--include-buses` | applied normally (type `0x20`, bus from the Type Word) |
+| Filter | Standalone `0x2001` | `0x2000` continuation |
+|---|---|---|
+| `--exclude-rts`, `--exclude-subaddresses` | never matches it → **kept** | follows its parent |
+| `--include-rts`, `--include-subaddresses` | cannot satisfy it → **dropped** | follows its parent |
+| `--exclude-buses` / `--include-buses` | by its own bus | follows its parent |
+| `--exclude-types` naming the parent's type | — | follows its parent (removed) |
+| `--exclude-types SPURIOUS_DATA` | removed | removed (its own type) |
+| `--include-types` | by its own type | by its own type — `SPURIOUS_DATA` keeps it, any other selection drops it |
 
-Because filtering runs **after** the reader, removing a parent leaves its
-continuation still coded `0x2000` (rows F1, F5).
+The filter remembers one verdict: whether the errored record just before passed
+the parent-side filters (RT, subaddress, bus, type exclusion). A continuation
+always arrives directly after its parent — the reader emits them back to back,
+decision 2 gives them one timestamp so a merge cannot separate them, and
+collapse keeps or drops them together — so that verdict is its parent's. A
+continuation with no errored record before it is judged on its own.
+`FilterConfig::should_exclude` is still the per-record predicate; the pairing
+lives in the `Filtered` adapter (`FilteredSource` in C++).
 
 ### 2.4 Order
 
@@ -213,15 +227,16 @@ each could separate the pair while the two carried different timestamps:
 |---|---|---|---|
 | Order | the parent's equal-timestamp run is sorted; a continuation at a later timestamp starts the next run | **cannot** — the continuation shares its parent's time (decision 2), so it is in the parent's run and the pin keeps it there | S3 |
 | Merge heap | another input's record falls between the two timestamps | **cannot** — the pair has one timestamp, and a file's records at one timestamp leave the heap back to back | M1, M2, M6 |
-| Duplicate collapse | the parent or the continuation is suppressed on its own | **can** — open, decision 3 | M4 |
-| Filter | the parent is removed, the continuation (no RT) is kept | **can** — open, decision 3 | F1, F4, F5 |
+| Duplicate collapse | the parent or the continuation is suppressed on its own | **cannot** — a continuation is collapsed exactly when its parent is (decision 3) | M4 |
+| Filter | the parent is removed, the continuation (no RT) is kept | **cannot**, except by request — a continuation follows its parent through RT, subaddress, bus and type-exclusion filters (decision 3); only `--include-types SPURIOUS_DATA` keeps it without its parent, because that asks for spurious rows by type | F1, F5; F4 |
 | Writer (split) | does not separate; restores a pair when the record between them is clean | — | E1, M8 |
 | Order cap | does not separate; a capped run keeps arrival order | — | C1, C2 |
 
 The CSV promise this supports, stated in `ERROR-CATALOG.md`: the row
 immediately above a `0x2000` row **is** the error it continues — in a single
-recording and in a multi-file merge — unless a filter or duplicate collapse
-removed that error.
+recording and in a multi-file merge, under any filter and with duplicate
+collapse — unless `--include-types SPURIOUS_DATA` was asked to show spurious
+rows without their errors.
 
 **Why the continuation's own timestamp mattered.** Each spurious record carries
 its own timestamp. The one fixture shaped like a real error capture
@@ -322,11 +337,11 @@ reported at. **Verdict** is against the current requirement text:
 
 | Row | Input | Options | Output | Agree | Verdict | Pinned by |
 |---|---|---|---|---|---|---|
-| F1 | as S2 | `--exclude-rts 15` | **cont 2000 @500 alone** | yes | **UNSPECIFIED** — orphaned `0x2000` (decision 3) | none (Python golden equality test only) |
-| F2 | as S2 | `--include-rts 15` | err; RT15 (continuation dropped) | yes | OK per code; UNSPECIFIED in requirements | none |
+| F1 | as S2 | `--exclude-rts 15` | RT15 @1000 only — error **and** its continuation removed | yes | OK (was an orphaned `0x2000` before decision 3) | `filter-continuation-exclude-rts-parent` |
+| F2 | as S2 | `--include-rts 15` | err @500; cont 2000 @500; RT15 @1000 | yes | OK — the continuation is kept with its error (was dropped before decision 3) | `filter-continuation-include-rts-parent` |
 | F3 | as S2 | `--exclude-types SPURIOUS_DATA` | err; RT15 | yes | OK | none |
-| F4 | as S2 | `--include-types SPURIOUS_DATA` | cont 2000 @500 alone | yes | **UNSPECIFIED** — orphaned `0x2000` (decision 3) | none |
-| F5 | as S1 | `--exclude-rts 15` | **cont 2000 @500; RT3 @500** | yes | **UNSPECIFIED** — orphan leads the run (decision 3) | none |
+| F4 | as S2 | `--include-types SPURIOUS_DATA` | cont 2000 @500 alone | yes | OK — explicitly requested by type (decision 3) | `filter-continuation-include-types-spurious` |
+| F5 | as S1 | `--exclude-rts 15` | RT3 @500 only | yes | OK (was an orphan leading the run before decision 3) | `filter-continuation-exclude-rts-parent` (same rule) |
 
 ### Merge
 
@@ -338,7 +353,7 @@ File A = err RT15 stamped @500, cont stamped @510. The other file varies.
 | M2 | B = clean RT3 @510, A | — | err @500; cont 2000 @500; RT3 @510 | yes | OK (was separated before decision 2) | none |
 | M3 | A, B = clean RT3 @510 | — | err @500; cont 2000 @500; RT3 @510 | yes | OK | none |
 | M3b | A, B = clean RT3 @500 (tie at the parent) | — | RT3; err RT15; cont 2000 — all @500 | yes | OK (decision 1 alone had separated it in a merge) | `merge-continuation-tie-at-parent` |
-| M4 | A, B = duplicate err @500 + cont @510 with a different word | `--collapse-duplicates` | err @500; cont 2000 @500; **cont 2000 @500** (B's, parent collapsed) | yes | **UNSPECIFIED** — B's continuation has no parent of its own in the output (decision 3) | none |
+| M4 | A, B = duplicate err @500 + cont @510 with a different word | `--collapse-duplicates` | err @500; cont 2000 @500 (A's) | yes | OK — B's continuation collapsed with B's error (decision 3) | `merge-collapse-parent-copy` |
 | M5 | A, B = exact duplicate pair | `--collapse-duplicates` | err @500; cont 2000 @500 | yes | OK | golden (hash only) |
 | M6 | as M4 | — | A's err; A's cont; B's err; B's cont — all @500 | yes | OK — **both** pairs adjacent | none |
 | M7 | as M1 | `--delta-scope global` | as M1; cont DELTA empty | yes | OK | none |
@@ -381,17 +396,22 @@ File A = err RT15 stamped @500, cont stamped @510. The other file varies.
 
 ### D. Duplicate collapse
 
-- **D4 — collapse ignores the parent → continuation pair** (row M4), and its key
-  includes the decoder-assigned `0x2000`/`0x2001`, which L2-MRG-007 calls "wire
-  content" but is not on the wire. The same spurious words seen as a
-  continuation by one recorder and as standalone by another never collapse.
+- **D4 — collapse ignored the parent → continuation pair** (row M4).
+  **Resolved** by decision 3: a continuation is collapsed exactly when its
+  parent is and is never matched on its own, so its decoder-assigned
+  `0x2000` no longer matters to the key. The key still includes a standalone
+  record's decoder-assigned `0x2001`, which L2-MRG-007 calls "wire content";
+  harmless, since every standalone record carries the same value.
 
 ### F. Filters
 
-- **F1 — removing a parent leaves an orphaned `0x2000`** (rows F1, F4, F5).
-  L2-FLT-001's "yield all other messages unchanged" keeps the code as it was.
-- **F2 — how filters treat records without a Command Word is in no
-  requirement** (section 2.3 table). It is pinned only by unit tests.
+- **F1 — removing a parent left an orphaned `0x2000`** (rows F1, F5).
+  **Resolved** by decision 3 (L2-FLT-003). The one remaining way to see a
+  continuation without its parent is to request it: `--include-types
+  SPURIOUS_DATA` (row F4).
+- **F2 — how filters treat records without a Command Word was in no
+  requirement.** **Resolved**: L2-FLT-003 states it, for standalone records
+  and continuations.
 
 ### E. Split output
 
@@ -445,10 +465,19 @@ tests in all three implementations.
    (`VENDOR-CSV-DIFFS.md` §3d). Alternatives considered are in
    [section 4](#4-requirements-in-tension). Golden pins unchanged: the generator
    already gives a continuation its parent's time.
-3. **F1 / D4 — orphaned continuations**: leave the `0x2000` code as decoded, or
-   re-code a continuation whose parent did not survive the filter or collapse
-   (which would make filtering change a field, against L2-FLT-001's
-   "unchanged").
+3. **F1 / D4 — orphaned continuations** — **decided 2026-10-03**: a
+   continuation shares its errored parent's fate. Filters: the RT, subaddress
+   and bus filters (include and exclude) and a type exclusion naming the
+   parent's type keep or remove both; type filters judge the continuation on
+   its own type, so `--exclude-types SPURIOUS_DATA` removes it and
+   `--include-types SPURIOUS_DATA` keeps it (L2-FLT-003). Collapse: a
+   continuation is collapsed exactly when its parent is (L2-MRG-007). The
+   alternative considered — re-coding an orphaned continuation as `0x2001` —
+   would have made filtering change a field and still left the row in place.
+   One visible change: `--include-rts` / `--include-subaddresses` /
+   `--include-buses` now keep the continuations of the errors they keep. Golden
+   pins unchanged; the PYTHON-GUIDE `include_rts={15}` example's count rose by
+   exactly the 23 continuations of RT 15's bus-A errors (489 → 512).
 4. **M4 — the cap**: what happens to records after a cap flush (stay in arrival
    order for the rest of the run?), and one WARN per run regardless of cap.
 5. **N1 — every merge input unreadable under `--allow-partial`**: exit 2 (as
@@ -461,8 +490,12 @@ tests in all three implementations.
 
 ## 8. Coverage gaps
 
-No conformance case combines a `0x2000` continuation with a filter, duplicate
-collapse, the sort-group cap or global DELTA scope. Now pinned: a later-stamped
+No conformance case combines a `0x2000` continuation with the sort-group cap
+or global DELTA scope. Filters and collapse are pinned case by case for
+decision 3: twelve `filter-continuation-*` cases (one per filter, on
+`filter-continuation.hex`, whose third record differs from the parent in
+every filtered field) and three `merge-collapse-*` cases (parent copied,
+continuation copied, whole pair copied). Now pinned: a later-stamped
 continuation next to a tie (`tie-pin-later-timestamp`,
 `tie-pin-later-timestamp-tail-last`), a later-stamped standalone record
 (`tie-standalone-later-timestamp`), and a continuation in a merge with another

@@ -744,6 +744,46 @@ def test_merge_collapse_cross_recorder_duplicate(tmp_path: Path) -> None:
     assert len(msgs) == 1, "the second recorder's duplicate is collapsed"
 
 
+#: Recorder A's errored RT15 record @ .000500 and its continuation (word 0000):
+#: the bytes of tests/conformance/inputs/merge-continuation-a.hex.
+_A_PAIR = bytes.fromhex("02480F1820DBF4017E79000000001E01") + bytes.fromhex("20050F1820DBFE010000")
+
+
+def _collapse_pair(tmp_path: Path, b: bytes) -> list[tuple[str, int]]:
+    """Collapse-merge recorder A's pair with recorder B's bytes; describe what
+    survives as ``(rt or "cont", first data word)``."""
+    fa, fb = tmp_path / "a.mie", tmp_path / "b.mie"
+    fa.write_bytes(_A_PAIR)
+    fb.write_bytes(b)
+    merged = merge_readers([MieFileReader(fa), MieFileReader(fb)], collapse_duplicates=True)
+    return [("cont" if m.rt is None else str(m.rt), m.data_words[0]) for m in merged]
+
+
+@pytest.mark.requirement("L2-MRG-007", "L2-ERR-005")
+def test_collapsing_a_parent_also_collapses_its_continuation(tmp_path: Path) -> None:
+    """First example: B's error copies A's, B's continuation holds other words.
+    B's error collapses and its continuation goes with it; A's (word 0000)
+    survives."""
+    b = bytes.fromhex("02480F1820DBF4017E79000000001E01") + bytes.fromhex("20050F1820DBFE012222")
+    rows = _collapse_pair(tmp_path, b)
+    assert rows == [("15", 0x0000), ("cont", 0x0000)]
+
+
+@pytest.mark.requirement("L2-MRG-007", "L2-ERR-005")
+def test_a_continuation_is_not_collapsed_while_its_parent_survives(tmp_path: Path) -> None:
+    """Second example: B's error differs (RT16), B's continuation copies A's. It
+    shares its parent's fate instead of collapsing on content, so B keeps both."""
+    b = bytes.fromhex("02480F1820DBF4017E81000000001E01") + bytes.fromhex("20050F1820DBFE010000")
+    rows = _collapse_pair(tmp_path, b)
+    assert rows == [("15", 0x0000), ("cont", 0x0000), ("16", 0x0000), ("cont", 0x0000)]
+
+
+@pytest.mark.requirement("L2-MRG-007")
+def test_a_copied_pair_collapses_as_a_pair(tmp_path: Path) -> None:
+    rows = _collapse_pair(tmp_path, _A_PAIR)
+    assert rows == [("15", 0x0000), ("cont", 0x0000)]
+
+
 @pytest.mark.requirement("L2-MRG-007")
 def test_merge_collapse_keeps_different_time(tmp_path: Path) -> None:
     # Identical content at different timestamps (beyond the window) is real

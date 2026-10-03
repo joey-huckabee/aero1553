@@ -411,6 +411,10 @@ pub struct MergedRecordIter<'a> {
     /// capture order. `None` until a file's first record is seen. Used to
     /// detect a within-file backward step (L2-MRG-006).
     prev_us: Vec<Option<u64>>,
+    /// Whether the previous record pulled from each input file was collapsed as
+    /// a duplicate. A `0x2000` continuation is the next record of its file after
+    /// its parent, so this is its parent's fate, which it shares (L2-MRG-007).
+    last_collapsed: Vec<bool>,
     /// One-time-per-file guard so a non-monotonic input WARNs at most once
     /// (lenient mode), mirroring the single-file non-monotonic-DELTA WARN.
     warned_backward: Vec<bool>,
@@ -567,6 +571,7 @@ impl<'a> MergedRecordIter<'a> {
             allow_partial,
             strict,
             prev_us,
+            last_collapsed: vec![false; paths.len()],
             warned_backward,
             paths,
             delta_tracker: DeltaTracker::new(tick),
@@ -730,12 +735,26 @@ impl Iterator for MergedRecordIter<'_> {
             // Collapse cross-recorder duplicates *before* the global-DELTA stage
             // (L2-MRG-007): a suppressed duplicate must not advance the per-key
             // DELTA tracker, so DELTA is measured across the deduped timeline.
-            if let Some(dedup) = self.dedup.as_mut()
-                && dedup.is_duplicate(entry.us, file_index, &entry.msg)
-            {
-                self.collapsed.fetch_add(1, AtomicOrdering::Relaxed);
-                self.advance(file_index);
-                continue;
+            //
+            // A `0x2000` continuation is never judged on its own content: it is
+            // the second half of its parent's transaction, so it is collapsed
+            // exactly when its parent was. Judging it separately could suppress
+            // one half of a pair and keep the other -- leaving a continuation
+            // under another recorder's row, or an error without its leftover
+            // words. It is not added to the survivor set either, so nothing is
+            // ever collapsed against it.
+            if let Some(dedup) = self.dedup.as_mut() {
+                let collapse = if entry.msg.is_continuation() {
+                    self.last_collapsed[file_index]
+                } else {
+                    dedup.is_duplicate(entry.us, file_index, &entry.msg)
+                };
+                self.last_collapsed[file_index] = collapse;
+                if collapse {
+                    self.collapsed.fetch_add(1, AtomicOrdering::Relaxed);
+                    self.advance(file_index);
+                    continue;
+                }
             }
             let msg = self.apply_global_delta(entry.msg);
             self.advance(file_index);

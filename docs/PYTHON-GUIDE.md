@@ -247,6 +247,9 @@ None 0.001435
 `apply_filters` keeps or drops records by type, RT, bus or subaddress. Each
 `exclude_*` set drops what it names; each non-empty `include_*` set keeps only
 what it names. These are the CLI's `--exclude-*` / `--include-*` flags.
+A spurious continuation (`error_word == 0x2000`) goes wherever its error goes,
+so the first count below includes the continuations of RT 15's errors; only a
+type filter judges it by its own type.
 
 ```python
 from aero1553 import MieFileReader
@@ -262,7 +265,7 @@ print(sum(1 for _ in apply_filters(MieFileReader("flight.mie"), no_spurious_or_m
 ```
 
 ```text
-489
+512
 586
 ```
 
@@ -824,8 +827,12 @@ print(len(frame), sorted(frame["rt"].unique().tolist()))
 ```
 
 ```text
-566 [15]
+589 [-1, 15]
 ```
+
+The `-1` rows are the spurious continuations of RT 15's errors: an `include_rts`
+filter keeps a continuation with the error it continues, and a record with no
+Command Word has no RT, which `columns()` writes as `-1`.
 
 And the CSV route, for when you want the file anyway. Read every column as
 text -- several are legitimately empty, and pandas would otherwise turn the hex

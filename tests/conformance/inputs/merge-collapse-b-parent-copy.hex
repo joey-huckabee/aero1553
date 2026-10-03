@@ -1,0 +1,11 @@
+# Recorder B for the L2-MRG-007 pairing cases: its errored record is an exact
+# copy of recorder A's (merge-continuation-a.hex), but its continuation holds a
+# different word -- the two cards captured different leftovers. Under
+# --collapse-duplicates B's error collapses into A's, and B's continuation goes
+# with it: a continuation is never kept without its own parent.
+
+# RT15 SA11 Receive, ERRORED -- identical to recorder A's @ .000500
+0248 0F18 20DB F401 7E79 0000 0000 1E01
+
+# SPURIOUS_DATA continuation -> 0x2000, stamped @ .000510, word 2222 (A has 0000)
+2005 0F18 20DB FE01 2222

@@ -409,6 +409,7 @@ MergedSource::MergedSource(const std::vector<MieFileReader*>& readers, const Mer
       prev_us_(readers.size(), 0),
       has_prev_(readers.size(), false),
       warned_backward_(readers.size(), false),
+      last_collapsed_(readers.size(), false),
       options_(options),
       delta_tracker_(options.standard_tick_rate_hz),
       dedup_(options.collapse_window_us, options.max_collapse_survivors),
@@ -546,11 +547,22 @@ bool MergedSource::next(MieMessage& out) {
         // Collapse BEFORE the global-DELTA stage (L2-MRG-007). A suppressed
         // duplicate must not advance the per-key DELTA cursor, or DELTA would
         // be measured across a timeline that includes rows nobody can see.
-        if (options_.collapse_duplicates &&
-            dedup_.is_duplicate(entry.us, file_index, entry.message)) {
-            collapsed_ += 1;
-            advance(file_index);
-            continue;
+        //
+        // A 0x2000 continuation is never judged on its own content: it is the
+        // second half of its parent's transaction, so it is collapsed exactly
+        // when its parent was. Judging it separately could suppress one half of
+        // a pair and keep the other. It is not added to the survivor set
+        // either, so nothing is ever collapsed against it.
+        if (options_.collapse_duplicates) {
+            const bool collapse = entry.message.is_continuation()
+                                      ? last_collapsed_[file_index]
+                                      : dedup_.is_duplicate(entry.us, file_index, entry.message);
+            last_collapsed_[file_index] = collapse;
+            if (collapse) {
+                collapsed_ += 1;
+                advance(file_index);
+                continue;
+            }
         }
 
         out = entry.message;
