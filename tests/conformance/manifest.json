@@ -618,6 +618,21 @@
       "expected": "expected/tie-spurious-pinned.csv"
     },
     {
+      "name": "tie-pin-later-timestamp",
+      "input": "inputs/tie-pin-later-timestamp.hex",
+      "expected": "expected/tie-pin-later-timestamp.csv"
+    },
+    {
+      "name": "tie-pin-later-timestamp-tail-last",
+      "input": "inputs/tie-pin-later-timestamp-tail-last.hex",
+      "expected": "expected/tie-pin-later-timestamp-tail-last.csv"
+    },
+    {
+      "name": "tie-standalone-later-timestamp",
+      "input": "inputs/tie-standalone-later-timestamp.hex",
+      "expected": "expected/tie-standalone-later-timestamp.csv"
+    },
+    {
       "name": "tie-across-timestamps",
       "input": "inputs/tie-across-timestamps.hex",
       "expected": "expected/tie-across-timestamps.csv"

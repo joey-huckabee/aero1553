@@ -1,0 +1,19 @@
+# L1-OUT-003 / L2-WRT-021 (review finding M3): a SPURIOUS_DATA continuation
+# stamped LATER than its errored parent, while the parent sits in an
+# equal-timestamp run. The continuation opens the next run, so it follows
+# whatever the parent's run ends with. Sorting that run would put the clean
+# RT3 row last -- between the errored RT1 record and its continuation -- so
+# the run is emitted in arrival order instead: RT3, RT1, continuation.
+
+# RT3 SA11 Receive - clean @ .000500
+0224 0F18 20DB F401 7E19 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018
+
+# RT1 SA11 Receive, ERRORED (Type Word bit 14) @ .000500
+0248 0F18 20DB F401 7E09 0000 0000 1E01
+
+# SPURIOUS_DATA continuation -> 0x2000, one microsecond later @ .000501
+2005 0F18 20DB F501 0000

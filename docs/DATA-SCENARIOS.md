@@ -46,6 +46,7 @@ below calls out where the two differ.
 | DELTA differs from vendor on a merged decode | [§8](#8-multi-file-merge-scenarios) | Default is per-file (matches vendor); `--delta-scope global` for the merged timeline |
 | Two or more messages sharing one `TIME_STAMP` | [§9 Output modes](#row-order-l1-out-003) | Ordered by `RT`, then `MSG` (`R` before `T`) |
 | A spurious continuation sharing its parent's timestamp | [§9](#row-order-l1-out-003) | Stays pinned right after its error row |
+| A spurious continuation stamped later than its parent, whose parent is in a tie | [§9](#row-order-l1-out-003) | Still right after its error row; that tie keeps arrival order |
 | A corrupt file whose timestamps all decode alike | [§9](#row-order-l1-out-003) | Run cap hit: arrival order + one WARN, no rows lost, exit 0 |
 | A need for byte-exact vendor row order | [§9](#row-order-l1-out-003) | `--max-sort-group 1 --no-mux` |
 | A choice of output layout | [§9 Output modes](#9-output-mode-scenarios) | Inline (default), separate errors file (`--separate-errors`), or stdout |
@@ -365,6 +366,7 @@ precedes `11R`.
 | Two messages at the same `TIME_STAMP` | Ordered by `RT`, then subaddress, then `R` before `T`. Same result in both implementations and regardless of how the input was named or listed. |
 | Two messages at *different* timestamps | Never reordered. Only records sharing a timestamp are permuted, so a recorder whose own clock stepped backward keeps that anomaly visible where it happened (see §8). |
 | A `SPURIOUS_DATA` row (no `RT`/`MSG`) | Excluded from the sort and kept immediately after the record it followed — which is what makes `ERROR_CODE = 0x2000` ("continues the preceding error") meaningful. See §6. |
+| A `SPURIOUS_DATA` row stamped *later* than the record it followed, which sits in a tie | The spurious row starts the next timestamp group, so it follows whatever the tie ends with. If sorting the tie would move the record it followed away from the end, that tie is written in **arrival order** instead (logged at DEBUG), so the spurious row still sits right under its parent and timestamps still ascend. |
 | Two messages identical on timestamp, `RT`, *and* `MSG` | Input order is preserved (the sort is stable). Across a merge, that means the first-listed file's row wins — or use `--collapse-duplicates` to emit one row (§8). |
 | A corrupt recording whose timestamps all decode to one value | The `max_sort_group` cap (default 4096) is reached; that run is written in **arrival order** with one WARN, decoding continues, **no rows are dropped**, exit 0. (The de-duplication window has its own count cap for the same reason -- see §8.) |
 | You need byte-exact vendor row order | `--max-sort-group 1` disables reordering entirely (raw capture order). Pair with `--no-mux`; see [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) §3a. |

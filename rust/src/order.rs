@@ -22,11 +22,19 @@
 //!   continues.
 //!
 //! `SPURIOUS_DATA` records carry no Command Word, so they have no `RT`/`MSG` to
-//! sort on. They are **pinned**: excluded from the permutation and re-emitted at
-//! their original offset within the run. That preserves the adjacency the
+//! sort on. They are **pinned**: they travel with the record they followed on
+//! input, so they stay immediately after it. That preserves the adjacency the
 //! `0x2000` "continuation of a preceding error" code is defined in terms of
 //! (L2-ERR-005) — separating a spurious record from its parent error would leave
 //! that code describing nothing.
+//!
+//! A pin protects its predecessor only within one run, and a spurious record
+//! carries its own timestamp. When one arrives at a **different** timestamp it
+//! opens the next run and follows whatever the current run ends with — so if
+//! sorting would move the record it actually followed away from that end, the
+//! current run is emitted in arrival order instead (L2-WRT-021). Canonical tie
+//! order is given up for that one run, as the cap already does, so that
+//! timestamps still ascend and the pin still follows its predecessor.
 //!
 //! DELTA needs no recomputation downstream of this stage: it is tracked per
 //! `RT`/`MSG` key, and two records in one run that share a key also share a
@@ -101,25 +109,41 @@ fn same_group(a: &Timestamp, b: &Timestamp) -> bool {
 /// Pins arriving before any anchor (a run that opens with `SPURIOUS_DATA`) form a
 /// leading chunk keyed `None`, which sorts ahead of every `Some` — keeping them
 /// at the front of the run, where they arrived.
-fn sort_run(buf: Vec<MieMessage>) -> Vec<MieMessage> {
-    /// One anchor record plus the pinned records trailing it.
-    type Chunk = (Option<SortKey>, Vec<MieMessage>);
+///
+/// `keep_tail` is set when the run is being closed by a pinned record at a
+/// **different** timestamp (L2-WRT-021). That record will follow whatever this
+/// run ends with, so if sorting would move the chunk that arrived last away from
+/// the end, the run is returned in arrival order instead: canonical tie order is
+/// given up for this one run so that the pin still follows its predecessor and
+/// timestamps still ascend. The second value reports that fallback.
+fn sort_run(buf: Vec<MieMessage>, keep_tail: bool) -> (Vec<MieMessage>, bool) {
+    /// Arrival index, then one anchor record plus the pinned records trailing it.
+    type Chunk = (usize, Option<SortKey>, Vec<MieMessage>);
     let mut chunks: Vec<Chunk> = Vec::new();
     for msg in buf {
         match sort_key(&msg) {
-            Some(k) => chunks.push((Some(k), vec![msg])),
+            Some(k) => chunks.push((chunks.len(), Some(k), vec![msg])),
             None => match chunks.last_mut() {
-                Some((_, group)) => group.push(msg),
-                None => chunks.push((None, vec![msg])),
+                Some((_, _, group)) => group.push(msg),
+                None => chunks.push((0, None, vec![msg])),
             },
         }
     }
+    let mut fell_back = false;
     if chunks.len() > 1 {
+        let last_arrival = chunks.len() - 1;
         // `sort_by_key` is stable, so chunks with a fully equal key keep their
         // relative input order (L1-OUT-003). `None` (leading pins) sorts first.
-        chunks.sort_by_key(|(k, _)| *k);
+        chunks.sort_by_key(|(_, k, _)| *k);
+        if keep_tail && chunks.last().is_some_and(|(i, _, _)| *i != last_arrival) {
+            // Undo the sort: arrival indices are unique, so this restores input
+            // order exactly.
+            chunks.sort_by_key(|(i, _, _)| *i);
+            fell_back = true;
+        }
     }
-    chunks.into_iter().flat_map(|(_, group)| group).collect()
+    let run = chunks.into_iter().flat_map(|(_, _, group)| group).collect();
+    (run, fell_back)
 }
 
 /// Iterator adapter imposing canonical row order on a decoded message stream
@@ -148,11 +172,25 @@ pub struct Ordered<I, E> {
 
 impl<I, E> Ordered<I, E> {
     /// Move the buffered run into the emission queue, sorting it first.
-    fn flush(&mut self) {
+    ///
+    /// `keep_tail`: the run is being closed by a pinned record at a different
+    /// timestamp, so its last-arrived record must stay last (see `sort_run`).
+    fn flush(&mut self, keep_tail: bool) {
         if self.buf.is_empty() {
             return;
         }
-        let run = sort_run(std::mem::take(&mut self.buf));
+        let (run, fell_back) = sort_run(std::mem::take(&mut self.buf), keep_tail);
+        if fell_back {
+            // Every record of a run shares the timestamp, so the first serves.
+            crate::log_debug!(
+                "equal-timestamp run at {} emitted in arrival order: canonical order \
+                 would separate its last record from the following record that has no \
+                 Command Word",
+                run.first()
+                    .map(|m| m.timestamp.format())
+                    .unwrap_or_default()
+            );
+        }
         // Reversed so `Vec::pop` emits front-to-back.
         self.out.extend(run.into_iter().rev());
     }
@@ -170,7 +208,9 @@ impl<I, E> Ordered<I, E> {
             .first()
             .is_some_and(|head| !same_group(&head.timestamp, &msg.timestamp));
         if starts_new_run {
-            self.flush();
+            // A record with no Command Word is pinned to whatever this run ends
+            // with, so that end must be the record it actually followed.
+            self.flush(sort_key(&msg).is_none());
         }
         self.buf.push(msg);
         if self.buf.len() >= self.max_group {
@@ -216,13 +256,13 @@ where
             match self.inner.next() {
                 None => {
                     self.done = true;
-                    self.flush();
+                    self.flush(false);
                 }
                 Some(Err(e)) => {
                     // Flush first, then surface the error on the next call, so
                     // the buffered rows reach the writer ahead of the failure.
                     self.pending = Some(e);
-                    self.flush();
+                    self.flush(false);
                 }
                 Some(Ok(msg)) => self.accept(msg),
             }
@@ -482,6 +522,97 @@ mod tests {
                 Some((20, 5, 0)), // errored record
                 None,             // continuation still adjacent
             ]
+        );
+    }
+
+    /// Review finding M3. A continuation at a LATER timestamp opens the next run,
+    /// so it follows whatever this run ends with. Sorting would put the clean
+    /// RT 3 row last -- between the errored RT 1 record and its continuation --
+    /// so the run is emitted in arrival order instead.
+    /// Requirements: L1-OUT-003, L2-WRT-021, L2-ERR-005
+    #[test]
+    fn pin_at_a_later_timestamp_keeps_the_run_in_arrival_order() {
+        let got = ordered(
+            vec![
+                rec(10, 3, 11, Direction::Receive),
+                errored(10, 1, 11),
+                spurious(11),
+            ],
+            DEFAULT_MAX_SORT_GROUP,
+        );
+        assert_eq!(got, vec![Some((3, 11, 0)), Some((1, 11, 0)), None]);
+    }
+
+    /// The fallback is taken only when sorting would move the record that
+    /// arrived last. Here it stays last, so the rest of the run is still sorted.
+    /// Requirements: L1-OUT-003, L2-WRT-021
+    #[test]
+    fn pin_at_a_later_timestamp_keeps_canonical_order_when_the_tail_stays_last() {
+        let got = ordered(
+            vec![
+                rec(10, 20, 11, Direction::Receive),
+                rec(10, 3, 11, Direction::Receive),
+                errored(10, 25, 11),
+                spurious(11),
+            ],
+            DEFAULT_MAX_SORT_GROUP,
+        );
+        assert_eq!(
+            got,
+            vec![Some((3, 11, 0)), Some((20, 11, 0)), Some((25, 11, 0)), None]
+        );
+    }
+
+    /// Every record without a Command Word triggers it, not only a `0x2000`
+    /// continuation: L1-OUT-003 pins them all.
+    /// Requirements: L1-OUT-003, L2-WRT-021
+    #[test]
+    fn standalone_pin_at_a_later_timestamp_also_keeps_arrival_order() {
+        let got = ordered(
+            vec![
+                rec(10, 20, 11, Direction::Receive),
+                rec(10, 3, 11, Direction::Receive),
+                spurious(11),
+            ],
+            DEFAULT_MAX_SORT_GROUP,
+        );
+        assert_eq!(got, vec![Some((20, 11, 0)), Some((3, 11, 0)), None]);
+    }
+
+    /// A chain: the run ends with an errored record plus a pin at its own
+    /// timestamp, then another pin arrives later. The later pin follows the
+    /// earlier one, which must therefore stay at the end with its anchor.
+    /// Requirements: L1-OUT-003, L2-WRT-021
+    #[test]
+    fn later_pin_after_a_same_timestamp_pin_keeps_the_chain_together() {
+        let got = ordered(
+            vec![
+                rec(10, 20, 11, Direction::Receive),
+                errored(10, 3, 11),
+                spurious(10),
+                spurious(11),
+            ],
+            DEFAULT_MAX_SORT_GROUP,
+        );
+        assert_eq!(got, vec![Some((20, 11, 0)), Some((3, 11, 0)), None, None]);
+    }
+
+    /// A record WITH a Command Word at a later timestamp closes the run as
+    /// before: it is not pinned to anything, so the run is sorted.
+    /// Requirements: L1-OUT-003, L2-WRT-021
+    #[test]
+    fn keyed_record_at_a_later_timestamp_still_sorts_the_run() {
+        let got = ordered(
+            vec![
+                rec(10, 20, 11, Direction::Receive),
+                rec(10, 3, 11, Direction::Receive),
+                rec(11, 1, 11, Direction::Receive),
+            ],
+            DEFAULT_MAX_SORT_GROUP,
+        );
+        assert_eq!(
+            got,
+            vec![Some((3, 11, 0)), Some((20, 11, 0)), Some((1, 11, 0))]
         );
     }
 

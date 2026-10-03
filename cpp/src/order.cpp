@@ -51,9 +51,11 @@ struct SortKey {
 struct Chunk {
     bool has_key;
     SortKey key;
+    /// Position in arrival order, so a sort can be undone exactly.
+    std::size_t arrival;
     std::vector<MieMessage> records;
 
-    Chunk() : has_key(false) {}
+    Chunk() : has_key(false), arrival(0) {}
 
     bool operator<(const Chunk& other) const {
         if (has_key != other.has_key) {
@@ -97,9 +99,21 @@ bool same_group(const Timestamp& a, const Timestamp& b) {
     return false;
 }
 
+/// Orders chunks by arrival, to undo a sort.
+bool earlier_arrival(const Chunk& a, const Chunk& b) { return a.arrival < b.arrival; }
+
 /// Stable-sort one buffered run, keeping each Command-Word-less record attached
 /// to the record it followed on input.
-std::vector<MieMessage> sort_run(const std::vector<MieMessage>& run) {
+///
+/// `keep_tail` is set when the run is being closed by a pinned record at a
+/// DIFFERENT timestamp (L2-WRT-021). That record will follow whatever this run
+/// ends with, so if sorting would move the chunk that arrived last away from the
+/// end, the run is returned in arrival order instead: canonical tie order is
+/// given up for this one run so that the pin still follows its predecessor and
+/// timestamps still ascend. `fell_back` reports that.
+std::vector<MieMessage> sort_run(const std::vector<MieMessage>& run, bool keep_tail,
+                                 bool& fell_back) {
+    fell_back = false;
     std::vector<Chunk> chunks;
     for (std::size_t i = 0; i < run.size(); ++i) {
         SortKey key;
@@ -107,6 +121,7 @@ std::vector<MieMessage> sort_run(const std::vector<MieMessage>& run) {
             Chunk chunk;
             chunk.has_key = true;
             chunk.key = key;
+            chunk.arrival = chunks.size();
             chunk.records.push_back(run[i]);
             chunks.push_back(chunk);
         } else if (!chunks.empty()) {
@@ -124,9 +139,16 @@ std::vector<MieMessage> sort_run(const std::vector<MieMessage>& run) {
     }
 
     if (chunks.size() > 1) {
+        const std::size_t last_arrival = chunks.size() - 1;
         // stable_sort, not sort: chunks with a fully equal key must keep their
         // relative input order (L1-OUT-003).
         std::stable_sort(chunks.begin(), chunks.end());
+        if (keep_tail && chunks.back().arrival != last_arrival) {
+            // Undo the sort: arrival positions are unique, so this restores
+            // input order exactly.
+            std::sort(chunks.begin(), chunks.end(), earlier_arrival);
+            fell_back = true;
+        }
     }
 
     std::vector<MieMessage> out;
@@ -144,11 +166,17 @@ std::vector<MieMessage> sort_run(const std::vector<MieMessage>& run) {
 OrderedSource::OrderedSource(MessageSource& inner, std::size_t max_sort_group)
     : inner_(&inner), max_group_(max_sort_group > 0 ? max_sort_group : 1), done_(false) {}
 
-void OrderedSource::flush() {
+void OrderedSource::flush(bool keep_tail) {
     if (buffer_.empty()) {
         return;
     }
-    const std::vector<MieMessage> sorted = sort_run(buffer_);
+    bool fell_back = false;
+    const std::vector<MieMessage> sorted = sort_run(buffer_, keep_tail, fell_back);
+    if (fell_back) {
+        MIE_LOG_DEBUG("equal-timestamp run at " + buffer_.front().timestamp.format() +
+                      " emitted in arrival order: canonical order would separate its last "
+                      "record from the following record that has no Command Word");
+    }
     buffer_.clear();
     // Reversed, so emission pops the back rather than erasing the front.
     for (std::size_t i = sorted.size(); i > 0; --i) {
@@ -173,7 +201,9 @@ void OrderedSource::accept(const MieMessage& message) {
     const bool starts_new_run =
         !buffer_.empty() && !same_group(buffer_.front().timestamp, message.timestamp);
     if (starts_new_run) {
-        flush();
+        // A record with no Command Word is pinned to whatever this run ends
+        // with, so that end must be the record it actually followed.
+        flush(!message.command_word.has_value());
     }
     buffer_.push_back(message);
     if (buffer_.size() >= max_group_) {
@@ -211,13 +241,13 @@ bool OrderedSource::next(MieMessage& out) {
             // a whole equal-timestamp group from the operator's only record of
             // what was decoded.
             deferred_ = std::current_exception();
-            flush();
+            flush(false);
             continue;
         }
 
         if (!got) {
             done_ = true;
-            flush();
+            flush(false);
             continue;
         }
         accept(message);

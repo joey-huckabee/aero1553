@@ -292,6 +292,62 @@ TEST_CASE("a pin does not join a record from a different timestamp", "[order][L2
 // The cap (L2-WRT-022)
 // ---------------------------------------------------------------------------
 
+TEST_CASE("a pin at a later timestamp keeps the run in arrival order",
+          "[order][L1-OUT-003][L2-WRT-021][L2-ERR-005]") {
+    // Review finding M3. The pin opens the next run, so it follows whatever
+    // this run ends with. Sorting would put RT 3 last -- between RT 1 and the
+    // pin that continues it -- so the run is emitted as it arrived.
+    std::vector<mie::MieMessage> input;
+    input.push_back(at(100, 3, 1, false));  // 0
+    input.push_back(at(100, 1, 1, false));  // 1: the pin's predecessor
+    input.push_back(pin(101));              // 2: later timestamp
+    CHECK(order_of(input) == seq(0, 1, 2));
+}
+
+TEST_CASE("a pin at a later timestamp keeps canonical order when the tail stays last",
+          "[order][L1-OUT-003][L2-WRT-021]") {
+    // The fallback is taken only when sorting would move the record that
+    // arrived last; here it stays last, so the rest of the run is still sorted.
+    std::vector<mie::MieMessage> input;
+    input.push_back(at(100, 20, 1, false));  // 0
+    input.push_back(at(100, 3, 1, false));   // 1
+    input.push_back(at(100, 25, 1, false));  // 2: arrived last, sorts last
+    input.push_back(pin(101));               // 3
+    CHECK(order_of(input) == seq(1, 0, 2, 3));
+}
+
+TEST_CASE("a later pin after a same-timestamp pin keeps the chain together",
+          "[order][L1-OUT-003][L2-WRT-021]") {
+    std::vector<mie::MieMessage> input;
+    input.push_back(at(100, 20, 1, false));  // 0
+    input.push_back(at(100, 3, 1, false));   // 1
+    input.push_back(pin(100));               // 2: trails record 1 in its run
+    input.push_back(pin(101));               // 3: trails record 2
+    CHECK(order_of(input) == seq(0, 1, 2, 3));
+}
+
+TEST_CASE("a keyed record at a later timestamp still sorts the run", "[order][L2-WRT-021]") {
+    // Only a record with no Command Word is pinned to the run's end.
+    std::vector<mie::MieMessage> input;
+    input.push_back(at(100, 20, 1, false));  // 0
+    input.push_back(at(100, 3, 1, false));   // 1
+    input.push_back(at(101, 1, 1, false));   // 2
+    CHECK(order_of(input) == seq(1, 0, 2));
+}
+
+TEST_CASE("an arrival-order fallback is logged at DEBUG, not WARN", "[order][L2-WRT-021]") {
+    std::vector<mie::MieMessage> input;
+    input.push_back(at(100, 3, 1, false));
+    input.push_back(at(100, 1, 1, false));
+    input.push_back(pin(101));
+
+    const LogCapture capture(mie::log::LEVEL_DEBUG);
+    CHECK(order_of(input) == seq(0, 1, 2));
+    CHECK(capture.count_containing("DEBUG [aero1553::order] equal-timestamp run at") == 1);
+    CHECK(capture.count_containing("emitted in arrival order") == 1);
+    CHECK(capture.count_containing("WARN [") == 0);
+}
+
 TEST_CASE("a cap of one disables reordering", "[order][L2-WRT-022]") {
     // Restores raw DDC capture order, which is what an operator diffing
     // against the vendor tool's own ordering wants.

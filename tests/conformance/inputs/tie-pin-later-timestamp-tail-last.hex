@@ -1,0 +1,24 @@
+# L2-WRT-021: the arrival-order fallback is taken only when sorting would
+# move the record that arrived last. Here the errored RT25 record arrived last
+# AND sorts last, so its later-stamped continuation still follows it after the
+# run is sorted -- the run keeps canonical order: RT3, RT20, RT25, continuation.
+
+# RT20 SA11 Receive - clean @ .000500
+0224 0F18 20DB F401 7EA1 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018
+
+# RT3 SA11 Receive - clean @ .000500
+0224 0F18 20DB F401 7E19 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018
+
+# RT25 SA11 Receive, ERRORED (Type Word bit 14) @ .000500
+0248 0F18 20DB F401 7EC9 0000 0000 1E01
+
+# SPURIOUS_DATA continuation -> 0x2000 @ .000501
+2005 0F18 20DB F501 0000

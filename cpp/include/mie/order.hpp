@@ -28,6 +28,12 @@
 // equivalent and is not -- it leaves the pin trailing whichever record the sort
 // happened to move into that slot, which breaks exactly the adjacency the
 // `0x2000` code depends on.
+//
+// A pin protects its predecessor only within one run, and a SPURIOUS record
+// carries its own timestamp. One stamped LATER opens the next run and follows
+// whatever this run ends with -- so when sorting would move the record it
+// actually followed away from that end, the run is emitted in arrival order
+// instead (L2-WRT-021, review finding M3).
 
 #ifndef MIE_ORDER_HPP
 #define MIE_ORDER_HPP
@@ -66,7 +72,12 @@ class OrderedSource : public MessageSource {
 
   private:
     /// Move the buffered run into the emission queue, sorting it first.
-    void flush();
+    ///
+    /// `keep_tail`: the run is being closed by a record with no Command Word at
+    /// a different timestamp, which will follow whatever this run ends with. If
+    /// sorting would move the record that arrived last away from the end, the
+    /// run is emitted in arrival order instead (L2-WRT-021).
+    void flush(bool keep_tail);
     /// Emit a capped run in arrival order, with one WARN.
     void flush_capped();
     /// Add one record, flushing first if it opens a new run.

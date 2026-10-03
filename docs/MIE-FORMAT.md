@@ -473,7 +473,7 @@ Data rows are emitted in a canonical order (L1-OUT-003), independent of both imp
 2. `RT` ascending, among rows sharing a timestamp.
 3. `MSG` among rows sharing a timestamp and an `RT`: subaddress ascending **numerically** (so `2R` precedes `11R`, unlike a string sort of the `MSG` text), then Receive (`R`) before Transmit (`T`).
 
-Only records sharing a timestamp are reordered, and only relative to each other — records at different timestamps never move. `SPURIOUS_DATA` rows carry no `RT`/`MSG`, so they are pinned immediately after the record they followed, preserving the adjacency the `0x2000` continuation code depends on (§9). `--max-sort-group 1` disables reordering and restores the raw on-disk record order.
+Only records sharing a timestamp are reordered, and only relative to each other — records at different timestamps never move. `SPURIOUS_DATA` rows carry no `RT`/`MSG`, so they are pinned immediately after the record they followed, preserving the adjacency the `0x2000` continuation code depends on (§9). A spurious record carries its own timestamp; when it is stamped later than the record it followed and sorting that record's run would move it away from the run's end, the run is written in arrival order instead, so the pin still holds and timestamps still ascend (L2-WRT-021). `--max-sort-group 1` disables reordering and restores the raw on-disk record order.
 
 ### `TIME_STAMP`
 
