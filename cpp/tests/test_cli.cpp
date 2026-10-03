@@ -693,6 +693,12 @@ TEST_CASE("an input set that resolves to nothing names which method was empty",
     REQUIRE(run_capturing(args("decode", "--glob", anchor.str() + "-*.mie"), out, err) ==
             mie::cli::EXIT_USAGE);
     REQUIRE(err.find("matched no files") != std::string::npos);
+
+    // A wildcard in the directory part is a malformed pattern, not a missing
+    // folder: a usage error, refused before the filesystem is touched.
+    REQUIRE(run_capturing(args("decode", "--glob", "captures/**/*.mie"), out, err) ==
+            mie::cli::EXIT_USAGE);
+    REQUIRE(err.find("directory part") != std::string::npos);
 }
 
 TEST_CASE("a merge refuses to write over one of its own inputs", "[cli][L3-CPP-029]") {

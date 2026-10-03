@@ -3001,6 +3001,35 @@ mod tests {
         }
     }
 
+    /// A `--glob` wildcard in the directory part is a malformed pattern, so a
+    /// usage error (exit 4); a directory that cannot be read stays a runtime
+    /// error (exit 1). Both arms of the mapping, since the conformance cases
+    /// reach them only through a subprocess.
+    /// Requirements: L2-MRG-001, L2-CLI-011
+    #[test]
+    fn resolve_inputs_maps_a_directory_wildcard_to_usage_and_io_to_runtime() {
+        let glob = |pattern: &str| DecodeArgs {
+            glob: Some(pattern.to_string()),
+            ..Default::default()
+        };
+
+        let Err(e) = resolve_inputs(&glob("captures/**/*.mie")) else {
+            panic!("expected a usage error");
+        };
+        assert_eq!(e.code, exit_code::USAGE);
+        assert!(e.message.contains("directory part"), "got: {}", e.message);
+
+        let Err(e) = resolve_inputs(&glob("no-such-dir-for-this-test/*.mie")) else {
+            panic!("expected a runtime error");
+        };
+        assert_eq!(e.code, exit_code::RUNTIME);
+        assert!(
+            e.message.contains("failed to expand --glob"),
+            "got: {}",
+            e.message
+        );
+    }
+
     /// Requirements: L2-CLI-014
     ///
     /// The help banner is prose on a stream, and L2-CLI-014 binds prose to the
