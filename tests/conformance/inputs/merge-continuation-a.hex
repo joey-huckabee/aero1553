@@ -1,0 +1,10 @@
+# Recorder A for the L2-ERR-005 merge cases: an errored record and the
+# SPURIOUS_DATA continuation the card wrote after it, stamped 10 us later.
+# The continuation takes the error's time (.000500), not its own (.000510),
+# so a merge cannot interleave another recorder's record between the two.
+
+# RT15 SA11 Receive, ERRORED (Type Word bit 14) @ .000500
+0248 0F18 20DB F401 7E79 0000 0000 1E01
+
+# SPURIOUS_DATA continuation -> 0x2000, stamped @ .000510
+2005 0F18 20DB FE01 0000

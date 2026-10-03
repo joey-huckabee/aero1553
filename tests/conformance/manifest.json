@@ -435,6 +435,22 @@
       "expected": "expected/merge-ordered.csv"
     },
     {
+      "name": "merge-continuation-record-between",
+      "inputs": [
+        "inputs/merge-continuation-a.hex",
+        "inputs/merge-continuation-b-between.hex"
+      ],
+      "expected": "expected/merge-continuation-record-between.csv"
+    },
+    {
+      "name": "merge-continuation-tie-at-parent",
+      "inputs": [
+        "inputs/merge-continuation-a.hex",
+        "inputs/merge-continuation-b-tie.hex"
+      ],
+      "expected": "expected/merge-continuation-tie-at-parent.csv"
+    },
+    {
       "name": "merge-collapse-cross-recorder",
       "inputs": [
         "inputs/merge-a.hex",

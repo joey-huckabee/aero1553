@@ -591,7 +591,7 @@ impl MieFileReader {
             strict: self.strict,
             resolved_format,
             lookahead_records: self.lookahead_records,
-            prev_was_error: false,
+            prev_error_timestamp: None,
             delta_tracker: DeltaTracker::new(self.standard_tick_rate_hz),
             warned_irig_day: false,
             msg_count: 0,
@@ -647,7 +647,11 @@ pub struct RecordIter<'a> {
     /// the per-record `validate_record` call inside `next()` and by
     /// the `recover_sync` call on sync-loss recovery.
     lookahead_records: usize,
-    prev_was_error: bool,
+    /// The timestamp of the record just decoded, when that record was an
+    /// errored one (L2-ERR-005); `None` otherwise. One value carries both
+    /// facts a following `SPURIOUS_DATA` record needs: whether it is a
+    /// continuation (`0x2000`), and the time it takes on — its parent's.
+    prev_error_timestamp: Option<Timestamp>,
     /// Per-RT/MSG `DELTA` state (L2-RDR-009/010/017/018/019).
     ///
     /// Owned by `crate::delta`, which is also what `merge` uses for
@@ -849,7 +853,7 @@ impl RecordIter<'_> {
                 return Step::Yield(msg);
             }
             self.advance_after_yield(record_bytes);
-            self.prev_was_error = true;
+            self.prev_error_timestamp = Some(timestamp);
             return Step::Yield(msg);
         }
 
@@ -918,7 +922,7 @@ impl RecordIter<'_> {
                     self.offset
                 );
                 self.offset = hit.offset;
-                self.prev_was_error = false;
+                self.prev_error_timestamp = None;
                 Step::Continue
             }
             None => {
@@ -1079,16 +1083,23 @@ impl RecordIter<'_> {
             }
         }
 
-        let error_code = if self.prev_was_error {
-            ERROR_SPURIOUS_CONTINUATION
-        } else {
-            ERROR_SPURIOUS_STANDALONE
+        // A continuation takes its errored parent's timestamp, not the one the
+        // card stamped on it (L2-ERR-005). The leftover words belong to the
+        // parent's transaction, and sharing its time is what keeps the two rows
+        // adjacent through every later stage: the canonical-order stage only
+        // pins within one timestamp, and a merge interleaves by timestamp, so a
+        // later stamp let another record -- from this run's tie, or from another
+        // recorder -- land between them. The card's own value stays visible in
+        // `dump`, which reports the bytes on disk.
+        let (error_code, timestamp) = match self.prev_error_timestamp {
+            Some(parent) => (ERROR_SPURIOUS_CONTINUATION, parent),
+            None => (ERROR_SPURIOUS_STANDALONE, timestamp),
         };
         log_debug!(
             "SPURIOUS_DATA at 0x{:X}: {} raw words, {}",
             self.offset,
             raw_word_count.max(0),
-            if self.prev_was_error {
+            if error_code == ERROR_SPURIOUS_CONTINUATION {
                 "continuation"
             } else {
                 "standalone"
@@ -1110,7 +1121,7 @@ impl RecordIter<'_> {
             mux: self.mux.clone(),
         };
         self.advance_after_yield(record_bytes);
-        self.prev_was_error = false;
+        self.prev_error_timestamp = None;
         msg
     }
 
@@ -1134,7 +1145,7 @@ impl RecordIter<'_> {
                 tw.message_type
             );
             self.offset += record_bytes;
-            self.prev_was_error = false;
+            self.prev_error_timestamp = None;
             return Step::Continue;
         };
 
@@ -1163,7 +1174,7 @@ impl RecordIter<'_> {
                 v.detail
             );
             self.offset += record_bytes;
-            self.prev_was_error = false;
+            self.prev_error_timestamp = None;
             return Step::Continue;
         }
 
@@ -1192,7 +1203,7 @@ impl RecordIter<'_> {
                 v.detail
             );
             self.offset += record_bytes;
-            self.prev_was_error = false;
+            self.prev_error_timestamp = None;
             return Step::Continue;
         }
 
@@ -1218,7 +1229,7 @@ impl RecordIter<'_> {
             mux: self.mux.clone(),
         };
         self.advance_after_yield(record_bytes);
-        self.prev_was_error = false;
+        self.prev_error_timestamp = None;
 
         if self.msg_count > 0 && self.msg_count.is_multiple_of(100_000) {
             log_info!(

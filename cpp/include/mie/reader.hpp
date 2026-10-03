@@ -289,11 +289,13 @@ class RecordIter {
     bool strict_;
     TimestampFormat resolved_format_;
     std::size_t lookahead_records_;
-    /// Whether the immediately preceding decoded record carried the Type Word
-    /// error bit. This is the whole basis for the 0x2000-vs-0x2001 distinction
-    /// on a following SPURIOUS_DATA record, and it is why the reader is the
-    /// only place that classification can happen.
-    bool prev_was_error_;
+    /// The timestamp of the immediately preceding decoded record, present only
+    /// when that record carried the Type Word error bit. Presence is the whole
+    /// basis for the 0x2000-vs-0x2001 distinction on a following SPURIOUS_DATA
+    /// record -- which is why the reader is the only place that classification
+    /// can happen -- and the value is the time a continuation takes on
+    /// (L2-ERR-005). One member for both, so they cannot disagree.
+    Optional<Timestamp> prev_error_timestamp_;
 
     /// Per-RT/MSG `DELTA` state (L2-RDR-009/010/017/018/019).
     ///

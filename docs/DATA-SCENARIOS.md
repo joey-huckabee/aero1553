@@ -46,7 +46,8 @@ below calls out where the two differ.
 | DELTA differs from vendor on a merged decode | [§8](#8-multi-file-merge-scenarios) | Default is per-file (matches vendor); `--delta-scope global` for the merged timeline |
 | Two or more messages sharing one `TIME_STAMP` | [§9 Output modes](#row-order-l1-out-003) | Ordered by `RT`, then `MSG` (`R` before `T`) |
 | A spurious continuation sharing its parent's timestamp | [§9](#row-order-l1-out-003) | Stays pinned right after its error row |
-| A spurious continuation stamped later than its parent, whose parent is in a tie | [§9](#row-order-l1-out-003) | Still right after its error row; that tie keeps arrival order |
+| A spurious continuation stamped later than its parent | [§6](#spurious-data-orphan-words) | Written at its error row's time, so it stays right after it — in one file or a merge |
+| A standalone spurious row stamped later than a tie it follows | [§9](#row-order-l1-out-003) | Still right after the record it followed; that tie keeps arrival order |
 | A corrupt file whose timestamps all decode alike | [§9](#row-order-l1-out-003) | Run cap hit: arrival order + one WARN, no rows lost, exit 0 |
 | A need for byte-exact vendor row order | [§9](#row-order-l1-out-003) | `--max-sort-group 1 --no-mux` |
 | A choice of output layout | [§9 Output modes](#9-output-mode-scenarios) | Inline (default), separate errors file (`--separate-errors`), or stdout |
@@ -225,6 +226,11 @@ before it:
 | `0x2000` | **Continuation** — the spurious words follow a preceding *error* record |
 | `0x2001` | **Standalone** — no preceding error (genuine bus noise) |
 
+A continuation is written at its **error record's time**, even if the card
+stamped the leftover words a little later, so the pair always stays together —
+in one recording and in a multi-file merge. A standalone record keeps its own
+time. (`dump` shows the card's own stamp.)
+
 Spurious records are themselves *valid* records and never raise an error; they
 pass sync normally and don't change the exit code.
 
@@ -366,7 +372,7 @@ precedes `11R`.
 | Two messages at the same `TIME_STAMP` | Ordered by `RT`, then subaddress, then `R` before `T`. Same result in both implementations and regardless of how the input was named or listed. |
 | Two messages at *different* timestamps | Never reordered. Only records sharing a timestamp are permuted, so a recorder whose own clock stepped backward keeps that anomaly visible where it happened (see §8). |
 | A `SPURIOUS_DATA` row (no `RT`/`MSG`) | Excluded from the sort and kept immediately after the record it followed — which is what makes `ERROR_CODE = 0x2000` ("continues the preceding error") meaningful. See §6. |
-| A `SPURIOUS_DATA` row stamped *later* than the record it followed, which sits in a tie | The spurious row starts the next timestamp group, so it follows whatever the tie ends with. If sorting the tie would move the record it followed away from the end, that tie is written in **arrival order** instead (logged at DEBUG), so the spurious row still sits right under its parent and timestamps still ascend. |
+| A standalone `SPURIOUS_DATA` row (`0x2001`) stamped *later* than the record it followed, which sits in a tie | The spurious row starts the next timestamp group, so it follows whatever the tie ends with. If sorting the tie would move the record it followed away from the end, that tie is written in **arrival order** instead (logged at DEBUG), so the spurious row still sits right under that record and timestamps still ascend. (A `0x2000` continuation never reaches this case: it is written at its error row's time, so it is in the same group — §6.) |
 | Two messages identical on timestamp, `RT`, *and* `MSG` | Input order is preserved (the sort is stable). Across a merge, that means the first-listed file's row wins — or use `--collapse-duplicates` to emit one row (§8). |
 | A corrupt recording whose timestamps all decode to one value | The `max_sort_group` cap (default 4096) is reached; that run is written in **arrival order** with one WARN, decoding continues, **no rows are dropped**, exit 0. (The de-duplication window has its own count cap for the same reason -- see §8.) |
 | You need byte-exact vendor row order | `--max-sort-group 1` disables reordering entirely (raw capture order). Pair with `--no-mux`; see [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) §3a. |

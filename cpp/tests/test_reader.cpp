@@ -763,6 +763,76 @@ TEST_CASE("a spurious record after an errored one is a continuation",
     CHECK(sp.error_label() == std::string("SPURIOUS"));
 }
 
+TEST_CASE("a continuation takes its errored parent's timestamp", "[reader][L2-ERR-005]") {
+    // The card stamped the leftover words 300 us after the error. The
+    // continuation is part of the error's transaction, so it is reported at the
+    // error's time -- which is what keeps the two rows adjacent through the
+    // order stage and a merge. The record after it keeps its own time.
+    std::vector<uint16_t> words = errored(6, 2, 1, mie::ERROR_TOO_MANY_WORDS, 100);
+    words += spurious(3, 400);
+    words += bc_to_rt(6, 2, 2, 900);
+
+    const Walk walk = walk_words(words);
+    REQUIRE(walk.messages.size() == 3);
+    REQUIRE(walk.messages[1].error_word.has_value());
+    CHECK(walk.messages[1].error_word.value() == mie::ERROR_SPURIOUS_CONTINUATION);
+    CHECK(walk.messages[1].timestamp.irig.microsecond == 100);
+    CHECK(walk.messages[0].timestamp.irig.microsecond == 100);
+    CHECK(walk.messages[2].timestamp.irig.microsecond == 900);
+}
+
+TEST_CASE("a standalone spurious record keeps its own timestamp", "[reader][L2-ERR-006]") {
+    std::vector<uint16_t> words = bc_to_rt(6, 2, 2, 100);
+    words += spurious(2, 400);
+    words += bc_to_rt(6, 2, 2, 900);
+
+    const Walk walk = walk_words(words);
+    REQUIRE(walk.messages.size() == 3);
+    CHECK(walk.messages[1].error_word.value() == mie::ERROR_SPURIOUS_STANDALONE);
+    CHECK(walk.messages[1].timestamp.irig.microsecond == 400);
+}
+
+TEST_CASE("only the continuation is re-timed, not a second spurious record",
+          "[reader][L2-ERR-005][L2-ERR-006]") {
+    std::vector<uint16_t> words = errored(6, 2, 1, mie::ERROR_INVERTED_SYNC, 100);
+    words += spurious(2, 400);
+    words += spurious(2, 700);
+    words += bc_to_rt(6, 2, 2, 900);
+
+    const Walk walk = walk_words(words);
+    REQUIRE(walk.messages.size() == 4);
+    CHECK(walk.messages[1].timestamp.irig.microsecond == 100);  // continuation
+    CHECK(walk.messages[2].error_word.value() == mie::ERROR_SPURIOUS_STANDALONE);
+    CHECK(walk.messages[2].timestamp.irig.microsecond == 700);  // its own time
+}
+
+TEST_CASE("a continuation takes its parent's Standard timestamp too", "[reader][L2-ERR-005]") {
+    // Standard records carry a two-word counter instead of three IRIG words.
+    std::vector<uint16_t> words = bc_to_rt_standard(6, 4, 2, 1000);
+    // Errored: Type(bit 14), counter (2), Cmd, one payload word, Error Word = 6.
+    words.push_back(type_word(mie::MESSAGE_TYPE_BC_TO_RT, 6, /*error=*/true));
+    push_standard(words, 2000);
+    words.push_back(command_word(6, mie::DIRECTION_RECEIVE, 4, 4));
+    words.push_back(0xBB00);
+    words.push_back(mie::ERROR_TOO_MANY_WORDS);
+    // SPURIOUS_DATA: Type, counter (2), two leftover words = 5 -- stamped later.
+    words.push_back(type_word(mie::MESSAGE_TYPE_SPURIOUS_DATA, 5));
+    push_standard(words, 2500);
+    words.push_back(0xAA00);
+    words.push_back(0xAA01);
+    words += bc_to_rt_standard(6, 4, 2, 3000);
+
+    mie::ReaderOptions options;
+    options.input_time_format = mie::TIMESTAMP_STANDARD;
+    const Walk walk = walk_words(words, options);
+    REQUIRE(walk.messages.size() == 4);
+    REQUIRE(walk.messages[2].error_word.has_value());
+    CHECK(walk.messages[2].error_word.value() == mie::ERROR_SPURIOUS_CONTINUATION);
+    CHECK(walk.messages[2].timestamp.is_standard());
+    CHECK(walk.messages[2].timestamp.standard.raw_ticks() == 2000);
+    CHECK(walk.messages[3].timestamp.standard.raw_ticks() == 3000);
+}
+
 TEST_CASE("a spurious record with no errored predecessor is standalone", "[reader][L2-ERR-006]") {
     std::vector<uint16_t> words = bc_to_rt(6, 2, 2);
     words += spurious(2);

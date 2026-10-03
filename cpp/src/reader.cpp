@@ -469,7 +469,7 @@ RecordIter::RecordIter(MieFileReader& owner)
       strict_(owner.strict_),
       resolved_format_(TIMESTAMP_IRIG),
       lookahead_records_(owner.lookahead_records_),
-      prev_was_error_(false),
+      prev_error_timestamp_(),
       delta_tracker_(owner.standard_tick_rate_hz_),
       warned_irig_day_(false),
       calendar_year_(owner.calendar_year_),
@@ -489,7 +489,7 @@ RecordIter::RecordIter(RecordIter&& other) noexcept
       strict_(other.strict_),
       resolved_format_(other.resolved_format_),
       lookahead_records_(other.lookahead_records_),
-      prev_was_error_(other.prev_was_error_),
+      prev_error_timestamp_(other.prev_error_timestamp_),
       delta_tracker_(std::move(other.delta_tracker_)),
       warned_irig_day_(other.warned_irig_day_),
       calendar_year_(other.calendar_year_),
@@ -621,7 +621,7 @@ RecordIter::Step RecordIter::decode_one(MieMessage& out) {
         // raises.
         decode_error_record(tw, timestamp, cmd, cmd_byte_offset, ts_words, delta, out);
         advance_after_yield(record_bytes);
-        prev_was_error_ = true;
+        prev_error_timestamp_.set(timestamp);
         return STEP_YIELD;
     }
 
@@ -671,7 +671,7 @@ RecordIter::Step RecordIter::handle_sync_loss(sync::ValidationFailure failure, u
         MIE_LOG_INFO("sync recovered at " + hex(hit.offset) + " (skipped " + dec(hit.skipped) +
                      " bytes from " + hex(offset_) + ")");
         offset_ = hit.offset;
-        prev_was_error_ = false;
+        prev_error_timestamp_.reset();
         return STEP_CONTINUE;
     }
 
@@ -825,15 +825,27 @@ void RecordIter::spurious_message(const TypeWord& tw, const Timestamp& timestamp
     // operands to int, and handing that to Optional<uint16_t> is a narrowing
     // conversion. GCC is quiet about it here; MSVC compiles at /W4 /WX, where
     // C4244 makes it an error -- green on Linux, broken on the Windows build.
-    out.error_word = static_cast<uint16_t>(prev_was_error_ ? ERROR_SPURIOUS_CONTINUATION
-                                                           : ERROR_SPURIOUS_STANDALONE);
+    const bool continuation = prev_error_timestamp_.has_value();
+    out.error_word = static_cast<uint16_t>(continuation ? ERROR_SPURIOUS_CONTINUATION
+                                                        : ERROR_SPURIOUS_STANDALONE);
+
+    // A continuation takes its errored parent's timestamp, not the one the card
+    // stamped on it (L2-ERR-005). The leftover words belong to the parent's
+    // transaction, and sharing its time is what keeps the two rows adjacent
+    // through every later stage: the order stage pins only within one
+    // timestamp, and a merge interleaves by timestamp, so a later stamp let
+    // another record -- from this run's tie, or from another recorder -- land
+    // between them. The card's own value stays visible in `dump`.
+    if (continuation) {
+        out.timestamp = prev_error_timestamp_.value();
+    }
 
     MIE_LOG_DEBUG("SPURIOUS_DATA at " + hex(offset_) + ": " +
                   dec(raw_word_count > 0 ? static_cast<uint64_t>(raw_word_count) : 0) +
-                  " raw words, " + (prev_was_error_ ? "continuation" : "standalone"));
+                  " raw words, " + (continuation ? "continuation" : "standalone"));
 
     advance_after_yield(record_bytes);
-    prev_was_error_ = false;
+    prev_error_timestamp_.reset();
 }
 
 RecordIter::Step RecordIter::decode_normal_record(const TypeWord& tw, const CommandWord& cmd,
@@ -845,7 +857,7 @@ RecordIter::Step RecordIter::decode_normal_record(const TypeWord& tw, const Comm
         MIE_LOG_WARN("cannot classify record at " + hex(offset_) +
                      " (type=" + hexw(tw.message_type, 2) + "); skipping");
         offset_ += record_bytes;
-        prev_was_error_ = false;
+        prev_error_timestamp_.reset();
         return STEP_CONTINUE;
     }
 
@@ -863,7 +875,7 @@ RecordIter::Step RecordIter::decode_normal_record(const TypeWord& tw, const Comm
         MIE_LOG_WARN("L2-SYN structural invariant violation at " + hex(offset_) + ": " +
                      violation.detail + "; skipping record");
         offset_ += record_bytes;
-        prev_was_error_ = false;
+        prev_error_timestamp_.reset();
         return STEP_CONTINUE;
     }
 
@@ -894,7 +906,7 @@ RecordIter::Step RecordIter::decode_normal_record(const TypeWord& tw, const Comm
         MIE_LOG_WARN("L2-SYN structural invariant violation at " + hex(offset_) + ": " +
                      violation.detail + "; skipping record");
         offset_ += record_bytes;
-        prev_was_error_ = false;
+        prev_error_timestamp_.reset();
         return STEP_CONTINUE;
     }
 
@@ -924,7 +936,7 @@ RecordIter::Step RecordIter::decode_normal_record(const TypeWord& tw, const Comm
     out.mux = mux_;
 
     advance_after_yield(record_bytes);
-    prev_was_error_ = false;
+    prev_error_timestamp_.reset();
 
     if (msg_count_ > 0 && msg_count_ % 100000 == 0) {
         MIE_LOG_INFO("decoded " + dec(msg_count_) + " messages (" + hex(offset_) + " / " +
