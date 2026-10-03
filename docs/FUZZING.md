@@ -213,17 +213,28 @@ so the matcher's interesting branches are never reached; and the three
 languages' lossy decoders do not agree character-for-character on how many
 U+FFFD an ill-formed sequence produces, so the counters could diverge without
 the matchers disagreeing about anything. Patterns are instead drawn from a
-shared 15-entry alphabet weighted toward `*` and `?` — the first version drew
+shared 16-entry alphabet weighted toward `*` and `?` — the first version drew
 uniformly over patterns up to 95 characters and matched a probe **zero** times
 in 512 iterations. Two alphabet entries and two of the three probe names are
 non-ASCII, because Rust and Python match over scalar values while the C++
 matcher advances `?` by a whole UTF-8 character, and that agreement is either
 real or it is not.
 
-`expand_glob` is called for crash-safety only and its result is deliberately
-**not** counted: it reads the working directory, so what it returns depends on
-where the suite ran, and a summary field has to mean the same thing on every
-host.
+The sixteenth entry is `/`. Until it was added every generated pattern was a
+bare filename, so `expand_glob` never saw a directory part: neither the textual
+split at the last separator nor the directory-wildcard refusal (L2-MRG-001) was
+ever reached — the same "check what your generator reaches" lesson as the
+zero-match alphabet above, found again after both behaviours had shipped. It is
+`/` rather than `\` because a forward slash is a separator on every platform;
+a backslash is one only on Windows, and would split the same pattern
+differently on the two CI hosts.
+
+What `expand_glob` *returns* is called for crash-safety only and deliberately
+**not** counted: it reads the filesystem, so it depends on where the suite ran,
+and a summary field has to mean the same thing on every host. *Whether* it
+refuses a pattern as a directory wildcard is different — that is decided before
+any I/O, from the pattern's text alone — so it is counted, as `glob_refused`
+(about one pattern in six at the default 512 iterations).
 
 **This harness found four real divergences the day it started comparing
 counters**, all in `read_manifest` and all now pinned by a

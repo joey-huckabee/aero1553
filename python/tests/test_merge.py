@@ -675,6 +675,7 @@ def test_merge_input_resolution_tolerates_arbitrary_bytes(tmp_path: Path) -> Non
     manifest_errors = 0
     manifest_paths = 0
     glob_hits = [0, 0, 0]
+    glob_refused = 0
 
     manifest = tmp_path / "fuzz.txt"
     with fuzz_logging():
@@ -704,7 +705,18 @@ def test_merge_input_resolution_tolerates_arbitrary_bytes(tmp_path: Path) -> Non
             for index, probe in enumerate(GLOB_PROBES):
                 if glob_match(pattern, probe):
                     glob_hits[index] += 1
-            expand_glob(pattern)  # crash-safety only; see the docstring
+            # What it returns is crash-safety only (see the docstring), but
+            # WHETHER it refuses the pattern as a directory wildcard is decided
+            # before any I/O, from the pattern's text alone -- so that is
+            # comparable across implementations and hosts. An OSError is a
+            # directory that cannot be read, which the other two harnesses
+            # likewise discard.
+            try:
+                expand_glob(pattern)
+            except ValueError:
+                glob_refused += 1
+            except OSError:
+                pass
 
     fuzz_summary(
         "merge",
@@ -712,7 +724,7 @@ def test_merge_input_resolution_tolerates_arbitrary_bytes(tmp_path: Path) -> Non
         f"bytes={total_bytes} manifest_ok={manifest_ok} "
         f"manifest_errors={manifest_errors} manifest_paths={manifest_paths} "
         f"glob_ascii={glob_hits[0]} glob_latin1={glob_hits[1]} "
-        f"glob_cjk={glob_hits[2]} outcome=ok",
+        f"glob_cjk={glob_hits[2]} glob_refused={glob_refused} outcome=ok",
     )
 
 
