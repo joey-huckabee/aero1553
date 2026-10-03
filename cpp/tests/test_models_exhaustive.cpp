@@ -458,7 +458,7 @@ TEST_CASE("the ERROR label covers every error/spurious combination", "[models][e
             m.type_word.error = errored != 0;
             m.message_format = spurious != 0 ? mie::FORMAT_SPURIOUS_DATA : mie::FORMAT_RECEIVE;
 
-            const char* want = errored != 0 ? "ERROR" : (spurious != 0 ? "SPURIOUS" : "");
+            const char* want = spurious != 0 ? "SPURIOUS" : (errored != 0 ? "ERROR" : "");
             INFO("errored=" << errored << " spurious=" << spurious);
             CHECK(std::string(m.error_label()) == want);
         }

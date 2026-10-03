@@ -573,11 +573,15 @@ std::string MieMessage::delta_key() const {
 }
 
 const char* MieMessage::error_label() const {
-    if (type_word.error) {
-        return "ERROR";
-    }
+    // The message type decides first: a SPURIOUS_DATA record is SPURIOUS even
+    // with Type Word bit 14 set. It is decoded, coded (0x2000/0x2001) and timed
+    // as spurious, and an ERROR row promises a DDC code read from an Error
+    // Word, which it does not carry. The raw bit stays in type_word.error.
     if (is_spurious()) {
         return "SPURIOUS";
+    }
+    if (type_word.error) {
+        return "ERROR";
     }
     return "";
 }

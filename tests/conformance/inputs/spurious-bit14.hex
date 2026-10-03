@@ -1,0 +1,24 @@
+# SPURIOUS_DATA records with Type Word bit 14 (the error flag) set: labelled
+# SPURIOUS, not ERROR -- the message type decides the label, as it decides the
+# 0x2000/0x2001 code and the timing (docs/DATAFLOW.md row S7).
+
+# Errored RT15 SA11 Receive with one captured payload word and DDC error 0x011E.
+02470F1826DB21F6
+7E79 0004 1E01
+
+# SPURIOUS_DATA continuation (0x2000) with two raw words; Type Word 0x4620 has
+# bit 14 set.
+20460F1826DB38F7
+AAAA BBBB
+
+# Normal record clears the continuation flag.
+04240F1826DBE3F9
+DE7E 0078
+2010 8241 0000 0815 0000 0000 0000 0000
+00FE 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0300 0000 0000 0000 0000 0000
+0000 0020 0000 0000 0000 0000
+
+# Standalone SPURIOUS_DATA (0x2001), also with bit 14 set.
+20460F1826DBE3FA
+CCCC DDDD

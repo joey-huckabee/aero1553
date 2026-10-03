@@ -595,8 +595,8 @@ DELTA is the elapsed time between the current message and the most recent prior 
 | Value | Meaning |
 |-------|---------|
 | _(empty)_ | Normal message, no error detected. |
-| `ERROR` | DDC card detected an error mid-transaction. Type Word bit 14 is set. Payload is truncated and an Error Word is appended. `ERROR_CODE` contains the DDC hardware code. |
-| `SPURIOUS` | Spurious data record (Type Word message type = `0x20`). `ERROR_CODE` contains `2000` (continuation) or `2001` (standalone). |
+| `ERROR` | DDC card detected an error mid-transaction. Type Word bit 14 is set (on any record other than SPURIOUS_DATA). Payload is truncated and an Error Word is appended. `ERROR_CODE` contains the DDC hardware code. |
+| `SPURIOUS` | Spurious data record (Type Word message type = `0x20`), whether or not bit 14 is set. `ERROR_CODE` contains `2000` (continuation) or `2001` (standalone). |
 
 In **separate** error mode (`--separate-errors`; **inline** is the default), this column is always empty in the main CSV file — errored / spurious rows go to the `<output>_errors<suffix>` companion file. In **inline** mode, all three values appear in the single output CSV.
 

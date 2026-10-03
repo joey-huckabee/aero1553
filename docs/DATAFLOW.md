@@ -94,8 +94,9 @@ Rust and C++):
   unrecoverable validation error"; the implemented reset set is wider
   ([finding G4](#g-other-findings)).
 - The spurious check comes **before** the bit-14 check, so a type-`0x20` record
-  with bit 14 set takes the spurious path (gets `0x2000`/`0x2001`) but is
-  *labelled* `ERROR`, because the label tests bit 14 first (matrix row S7).
+  with bit 14 set takes the spurious path (gets `0x2000`/`0x2001`) and is
+  labelled `SPURIOUS` (L2-ERR-010; matrix row S7). It was labelled `ERROR`
+  until finding G1 was fixed, because the label tested bit 14 first.
 - **A continuation takes its parent's timestamp** (decision 2, L2-ERR-005). The
   flag is held as the errored record's timestamp itself (`prev_error_timestamp`
   in Rust, `prev_error_timestamp_` in C++), so "is this a continuation" and
@@ -314,7 +315,7 @@ reported at. **Verdict** is against the current requirement text:
 | S5 | err RT15 @500, cont @600, clean RT20 @600, clean RT3 @600 | — | err @500; cont 2000 **@500**; RT3 @600; RT20 @600 | yes | OK | none |
 | S6 | clean RT20 @500, spurious @500, clean RT3 @500 | — | RT3; RT20; spurious 2001 | yes | OK (pin follows RT20) | none |
 | S6b | clean RT20 @500, clean RT3 @500, spurious @501 | — | RT20 @500; RT3 @500; spurious 2001 @501 (arrival order) | yes | OK — decision 1 | `tie-standalone-later-timestamp` |
-| S7 | err RT15 @500, spurious **with bit 14** @600, spurious @700 | — | err @500; **ERROR** 2000 @500; SPURIOUS 2001 @700 | yes | **UNSPECIFIED** — labelled `ERROR`, coded and timed as a continuation | none |
+| S7 | err RT15 @500, spurious **with bit 14** @600, spurious @700 | — | err @500; SPURIOUS 2000 @500; SPURIOUS 2001 @700 | yes | OK — labelled by its type (L2-ERR-010; was `ERROR`, finding G1) | `spurious-bit14` |
 | S8 | err RT15 @500, spurious @600, spurious @700 | — | err @500; SPURIOUS 2000 @500; SPURIOUS 2001 @700 | yes | OK (only the first is a continuation, and only it is re-timed) | C++, Rust and Python reader tests |
 
 ### Order-stage cap
@@ -447,9 +448,10 @@ Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
 
 ### G. Other findings
 
-- **G1 — a spurious record with bit 14 set** is labelled `ERROR` but coded — and
-  now timed — as a continuation (row S7). Already on the review's low-severity
-  list.
+- **G1 — a spurious record with bit 14 set** was labelled `ERROR` but coded —
+  and timed — as a continuation (row S7). **Resolved**: the message type now
+  decides the label in all three implementations, and L2-ERR-010 states the
+  precedence it had left as "as appropriate".
 - **G2 — `ERROR-CATALOG.md` promised CSV adjacency unconditionally.**
   **Resolved**: it now states the guarantee as it holds (single files and merges)
   and names the remaining exception (a filter or collapse removing the parent).

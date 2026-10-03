@@ -347,6 +347,20 @@ fn write_record_annotation<W: Write>(
         ts.format(),
         if ts.freerun { "  [FREERUN]" } else { "" }
     )?;
+    // A SPURIOUS_DATA record has no Command Word and no Error Word, whatever
+    // bit 14 says: everything after its timestamp is leftover bus words. Reading
+    // the first as a Command Word (and, with bit 14 set, the last as an Error
+    // Word) printed an RT, a subaddress and a "DDC error" that were not there.
+    // `3` = IRIG timestamp words, as above.
+    if tw.message_type == MessageType::SpuriousData as u8 {
+        let words = i32::from(tw.word_count) - 1 - 3;
+        writeln!(
+            out,
+            "  Data:   {} leftover word(s); SPURIOUS_DATA carries no Command Word",
+            words.max(0)
+        )?;
+        return Ok(());
+    }
     writeln!(
         out,
         "  Cmd:    0x{:04X}  ->  RT{} SA{} {} WC={}",
@@ -532,6 +546,29 @@ mod tests {
             s.contains("No Status Response or Too Few Data Words"),
             "{s}"
         );
+    }
+
+    /// A `SPURIOUS_DATA` record has no Command Word and no Error Word, bit 14
+    /// or not: its words after the timestamp are leftover bus words, and are
+    /// reported as such rather than decoded as an RT/subaddress and a DDC code.
+    /// Requirements: L2-CLI-009
+    #[test]
+    fn record_dump_reports_spurious_words_as_leftovers() {
+        // Type 0x4620: SPURIOUS_DATA, bit 14 set, 6 words; two leftover words.
+        let buf = [
+            0x20, 0x46, 0x0F, 0x18, 0x26, 0xDB, 0x38, 0xF7, 0xAA, 0xAA, 0xBB, 0xBB,
+        ];
+        let f = TempFile::write(&buf);
+        let mut out = Vec::new();
+        hex_dump_records(f.path(), Some(1), 0, &mut out).unwrap();
+        let s = String::from_utf8(out).unwrap();
+        assert!(s.contains("error flag (bit 14): SET"), "{s}");
+        assert!(
+            s.contains("Data:   2 leftover word(s); SPURIOUS_DATA carries no Command Word"),
+            "{s}"
+        );
+        assert!(!s.contains("Cmd:"), "{s}");
+        assert!(!s.contains("Error:"), "{s}");
     }
 
     /// L2-CLI-013: a scan-stop anomaly emits a logger WARN in addition to the

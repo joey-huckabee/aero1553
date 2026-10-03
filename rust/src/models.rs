@@ -941,12 +941,18 @@ impl MieMessage {
     }
 
     /// CSV-column error label: `""`, `"ERROR"`, or `"SPURIOUS"`.
+    ///
+    /// The message type decides first. A `SPURIOUS_DATA` record is labelled
+    /// `SPURIOUS` even with Type Word bit 14 set: it is decoded as spurious,
+    /// coded `0x2000`/`0x2001` and timed accordingly, and an `ERROR` row
+    /// promises a DDC hardware code read from an Error Word, which it does not
+    /// carry. The raw bit stays visible in [`Self::is_error`] and in `dump`.
     #[must_use]
     pub fn error_label(&self) -> &'static str {
-        if self.type_word.error {
-            "ERROR"
-        } else if self.is_spurious() {
+        if self.is_spurious() {
             "SPURIOUS"
+        } else if self.type_word.error {
+            "ERROR"
         } else {
             ""
         }
@@ -1178,6 +1184,25 @@ mod tests {
 
         let msg = make_msg(15, Direction::Transmit, 22);
         assert_eq!(msg.msg_label(), "22T");
+    }
+
+    /// The message type decides the label: a `SPURIOUS_DATA` record with Type
+    /// Word bit 14 set reads `SPURIOUS`, not `ERROR` (docs/DATAFLOW.md row S7),
+    /// while `is_error` still reports the raw bit.
+    ///
+    /// Requirements: L2-ERR-001, L2-ERR-006
+    #[test]
+    fn error_label_lets_the_message_type_decide() {
+        let mut msg = make_msg(15, Direction::Receive, 11);
+        assert_eq!(msg.error_label(), "");
+        msg.type_word.error = true;
+        assert_eq!(msg.error_label(), "ERROR");
+        msg.message_format = MessageFormat::SpuriousData;
+        msg.command_word = None;
+        assert!(msg.is_error());
+        assert_eq!(msg.error_label(), "SPURIOUS");
+        msg.type_word.error = false;
+        assert_eq!(msg.error_label(), "SPURIOUS");
     }
 
     /// Requirements: L2-MSG-003

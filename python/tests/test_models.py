@@ -259,3 +259,25 @@ class TestErrorProperties:
         assert msg.subaddress is None
         assert msg.msg_label == ""
         assert msg.delta_key == ""
+
+    @pytest.mark.requirement("L2-ERR-001", "L2-ERR-006")
+    def test_spurious_with_error_bit_is_labelled_spurious(self) -> None:
+        # The message type decides the label: bit 14 on a SPURIOUS_DATA record
+        # does not make it an ERROR row (docs/DATAFLOW.md row S7). The raw bit
+        # stays visible through is_error.
+        msg = MieMessage(
+            timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
+            type_word=TypeWord(0x20, Bus.A, 6, True, 0x4620),  # bit 14 set
+            message_format=MessageFormat.SPURIOUS_DATA,
+            command_word=None,
+            command_word_2=None,
+            status_word=None,
+            status_word_2=None,
+            data_words=(0xAAAA, 0xBBBB),
+            error_word=0x2000,
+            delta=None,
+            file_offset=0,
+        )
+        assert msg.error_label == "SPURIOUS"
+        assert msg.is_error is True
+        assert msg.is_spurious is True
