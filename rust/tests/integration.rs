@@ -153,6 +153,50 @@ fn single_receive_record_decodes_to_expected_fields() {
     assert_eq!(m.error_label(), "");
 }
 
+/// The IRIG microsecond field of a record, for the timestamp assertions below.
+fn irig_micros(m: &aero1553::MieMessage) -> u32 {
+    match m.timestamp {
+        aero1553::models::Timestamp::Irig(t) => t.microsecond,
+        aero1553::models::Timestamp::Standard(_) => panic!("expected an IRIG timestamp"),
+    }
+}
+
+/// A `0x2000` continuation is reported at its errored parent's time, not the
+/// later one the card stamped on it; the next spurious record continues
+/// nothing, so it is `0x2001` and keeps its own time. The words are the
+/// conformance fixtures' encodings, varying only the microsecond word.
+/// Requirements: L2-ERR-005, L2-ERR-006
+#[test]
+fn continuation_takes_its_parents_timestamp() {
+    let bytes = [
+        // errored RT15 SA11 Receive @ .000500, DDC 0x011E
+        hex("02480F1820DBF4017E79000000001E01"),
+        // SPURIOUS_DATA stamped @ .000779 -> continuation
+        hex("20050F1820DB0B030000"),
+        // SPURIOUS_DATA stamped @ .000900 -> standalone
+        hex("20050F1820DB84031111"),
+        record_rt15_sa11_rcv(),
+    ]
+    .concat();
+    let f = TempFile::new(&bytes);
+    let reader = MieFileReader::new(f.path()).unwrap();
+    let msgs: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
+    assert_eq!(msgs.len(), 4);
+    assert_eq!(irig_micros(&msgs[0]), 500);
+    assert_eq!(msgs[1].error_word, Some(0x2000));
+    assert_eq!(
+        irig_micros(&msgs[1]),
+        500,
+        "a continuation takes its parent's time"
+    );
+    assert_eq!(msgs[2].error_word, Some(0x2001));
+    assert_eq!(
+        irig_micros(&msgs[2]),
+        900,
+        "a standalone record keeps its own time"
+    );
+}
+
 /// Requirements: L2-RDR-008
 #[test]
 fn single_transmit_record_layout() {

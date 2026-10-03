@@ -1,0 +1,11 @@
+# Recorder B: one clean record @ .000505 -- strictly between recorder A's
+# error (.000500) and the time the card stamped on its continuation (.000510).
+# Ordered by the stamped times, this record would separate the pair; with the
+# continuation at its parent's time it follows them both.
+
+# RT3 SA11 Receive - clean @ .000505
+0224 0F18 20DB F901 7E19 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018

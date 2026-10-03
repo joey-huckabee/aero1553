@@ -211,19 +211,24 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
-- **A `SPURIOUS_DATA` continuation stamped later than its parent now stays
-  directly under it** (all three implementations; L1-OUT-003 and L2-WRT-021
-  amended). Pinning protected a continuation only inside its own
-  equal-timestamp run, but each spurious record carries its own timestamp:
-  when the card stamped it later than its errored parent and the parent sat in
-  a tie that sorting reordered, the `0x2000` row ended up under an unrelated
-  record. That run is now written in arrival order, so the continuation still
-  follows its parent and timestamps still ascend; canonical tie order is given
-  up for that run only, and only when sorting would actually separate the
-  pair, as the `max_sort_group` cap already does. The same holds for a
-  standalone `0x2001` record. Logged at DEBUG. `docs/DATAFLOW.md` records the
-  analysis, and the related cases the fix does not cover yet (a merge or a
-  filter separating the pair).
+- **A `SPURIOUS_DATA` continuation now always sits directly under its error
+  row, in one recording and in a multi-file merge** (all three
+  implementations; L2-ERR-005, L1-OUT-003 and L2-WRT-021 amended). Each
+  spurious record carries its own timestamp, and the card can stamp the
+  leftover words later than the error. With that later stamp, two things put
+  another record between the pair and left the `0x2000` code pointing at the
+  wrong row: sorting an equal-timestamp tie the error sat in, and, in a merge,
+  any record another recorder logged in between. A continuation is now
+  reported at its **error's timestamp**, so the pair shares one time and every
+  stage keeps it together. **Visible change:** the `TIME_STAMP` cell of a
+  `0x2000` row can differ from the vendor CSV, which shows the card's stamp
+  (`docs/VENDOR-CSV-DIFFS.md` §3d); `dump` still shows it. A standalone
+  `0x2001` record keeps its own time; when one is stamped later than an
+  equal-timestamp run it follows, and sorting would move the record it
+  followed away from the run's end, that run is written in arrival order
+  (logged at DEBUG), as the `max_sort_group` cap already does.
+  `docs/DATAFLOW.md` records the analysis and the cases still open (a filter
+  or duplicate collapse removing the error row).
 - **A `--glob` with a wildcard in its directory part is now a usage error
   (exit `4`) with a message that says so** (all three implementations;
   L2-MRG-001). Wildcards have only ever applied to the filename, so

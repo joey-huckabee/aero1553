@@ -1687,6 +1687,31 @@ class TestDeltaAndErrorRecords:
         assert messages[3].delta is not None
         assert messages[3].delta == pytest.approx(0.06, abs=1e-6)
 
+    @pytest.mark.requirement("L2-ERR-005", "L2-ERR-006")
+    def test_continuation_takes_its_parents_timestamp(self, tmp_path: Path) -> None:
+        """L2-ERR-005: a 0x2000 continuation is reported at its errored
+        parent's time, not the later one the card stamped on it, so the two
+        rows stay adjacent through the order stage and a merge. A following
+        spurious record continues nothing (0x2001) and keeps its own time."""
+        from tests.conftest import (
+            errored_record_rt15_sa11_us,
+            normal_record_rt15_sa11_us,
+            spurious_record_us,
+        )
+
+        fpath = tmp_path / "continuation.mie"
+        fpath.write_bytes(
+            errored_record_rt15_sa11_us(500_000)
+            + spurious_record_us(550_000)
+            + spurious_record_us(600_000)
+            + normal_record_rt15_sa11_us(650_000)
+        )
+        messages = list(MieFileReader(fpath))
+        assert [m.error_word for m in messages[1:3]] == [0x2000, 0x2001]
+        assert messages[1].timestamp.format() == messages[0].timestamp.format()
+        assert messages[1].timestamp.format().endswith(".500000")
+        assert messages[2].timestamp.format().endswith(".600000")
+
     @pytest.mark.requirement("L2-SYN-017")
     def test_error_and_spurious_records_pass_validation(
         self,

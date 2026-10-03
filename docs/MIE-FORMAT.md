@@ -416,6 +416,8 @@ When a SPURIOUS_DATA record immediately follows an error record, Aero1553 assign
 
 "Immediately following" is defined relative to the immediately preceding **successfully decoded** record (L2-ERR-005). A classification failure or unrecoverable validation error between an error record and a SPURIOUS_DATA record resets the continuation flag — the corruption itself is a boundary, and the SPURIOUS_DATA falls through to the standalone code.
 
+A continuation (`0x2000`) is reported at its **errored parent's timestamp**, not the one the card recorded for it, which can be later. The leftover words belong to the parent's transaction, and sharing its time keeps the two rows adjacent through canonical row order and a multi-file merge (§9). `dump` still shows the recorded stamp; the CSV `TIME_STAMP` cell is the one documented difference from the vendor tool (`VENDOR-CSV-DIFFS.md` §3d). A standalone record (`0x2001`) keeps its own timestamp.
+
 | Code | Constant | Meaning |
 |------|----------|---------|
 | `0x2000` | `ERROR_SPURIOUS_CONTINUATION` | This SPURIOUS_DATA is the tail of a preceding errored transaction. |
@@ -473,7 +475,7 @@ Data rows are emitted in a canonical order (L1-OUT-003), independent of both imp
 2. `RT` ascending, among rows sharing a timestamp.
 3. `MSG` among rows sharing a timestamp and an `RT`: subaddress ascending **numerically** (so `2R` precedes `11R`, unlike a string sort of the `MSG` text), then Receive (`R`) before Transmit (`T`).
 
-Only records sharing a timestamp are reordered, and only relative to each other — records at different timestamps never move. `SPURIOUS_DATA` rows carry no `RT`/`MSG`, so they are pinned immediately after the record they followed, preserving the adjacency the `0x2000` continuation code depends on (§9). A spurious record carries its own timestamp; when it is stamped later than the record it followed and sorting that record's run would move it away from the run's end, the run is written in arrival order instead, so the pin still holds and timestamps still ascend (L2-WRT-021). `--max-sort-group 1` disables reordering and restores the raw on-disk record order.
+Only records sharing a timestamp are reordered, and only relative to each other — records at different timestamps never move. `SPURIOUS_DATA` rows carry no `RT`/`MSG`, so they are pinned immediately after the record they followed, preserving the adjacency the `0x2000` continuation code depends on (§9). A continuation (`0x2000`) is written at its parent's timestamp (§7.3), so it is always in its parent's run. A standalone record (`0x2001`) carries its own timestamp; when it is stamped later than the record it followed and sorting that record's run would move it away from the run's end, the run is written in arrival order instead, so the pin still holds and timestamps still ascend (L2-WRT-021). `--max-sort-group 1` disables reordering and restores the raw on-disk record order.
 
 ### `TIME_STAMP`
 

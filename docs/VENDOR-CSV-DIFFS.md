@@ -19,7 +19,8 @@ The short version: by spec (`L1-OUT-001`) Aero1553's first **44 columns are the 
 | Cell formatting (hex width, casing, decimal precision) | **Match** |
 | Line endings | **Match** (both produce LF; see §4) |
 | Per-row data content for clean records | **Match** |
-| Per-row data content for errored / SPURIOUS records | **Match** |
+| Per-row data content for errored / SPURIOUS records | **Match**, except the `TIME_STAMP` of a `0x2000` continuation row (next row) |
+| `TIME_STAMP` of a SPURIOUS continuation (`ERROR_CODE` `2000`) | **Deliberate difference** — we report its errored parent's time; the vendor reports the time the card stamped on it, which can be later (see §3d) |
 | Placeholder columns `TERM_NAME`, `IM_GAP`, `RCV_GAP`, `XMT_GAP` | **Empty** (see §3) |
 | `MUX` column | **Populated from the file name by default** (L2-WRT-020); empty with `--no-mux` for a vendor-exact diff (see §3) |
 | IRIG `TIME_STAMP` day-of-year field | **Firmware-dependent discrepancy** on some DDC card models (see §5) |
@@ -236,6 +237,33 @@ Two practical consequences:
   calendar date that reads as a fact. That is why the §5 advisory is emitted at
   **WARNING** rather than `INFO` whenever a calendar rendering is active
   (`L2-LOG-002`) — see §5a.
+
+---
+
+## 3d. `TIME_STAMP` of a SPURIOUS continuation (`ERROR_CODE` `2000`)
+
+When the card detects a bus error it writes the errored record, then a
+`SPURIOUS_DATA` record holding the transaction's leftover words, with **its own
+timestamp** — which can be later than the error's. Aero1553 reports that
+continuation row (`ERROR` = `SPURIOUS`, `ERROR_CODE` = `2000`) at its **errored
+parent's** time instead (L2-ERR-005). The vendor tool shows the card's stamp.
+
+So on a continuation row, and only there, the `TIME_STAMP` cell can differ. The
+row's position and every other cell match. Standalone spurious rows
+(`ERROR_CODE` = `2001`) keep their own time and match.
+
+**Why we differ.** The `2000` code means "this row continues the error directly
+above it", and every stage orders rows by time. With the card's later stamp, a
+tie sorted by `RT`/`MSG` — or, in a multi-file merge, any record another
+recorder logged in between — could land between the two rows and leave the code
+pointing at the wrong record. Sharing the parent's time keeps them together in
+every case, and the leftover words belong to the parent's transaction anyway.
+
+**Seeing the card's own stamp.** `aero1553 dump` reports the bytes on disk,
+including the continuation record's recorded timestamp.
+
+**In a diff,** treat a `TIME_STAMP` mismatch on a row whose `ERROR_CODE` is
+`2000` as this documented difference. There is no flag to turn it off.
 
 ---
 

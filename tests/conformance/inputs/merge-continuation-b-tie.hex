@@ -1,0 +1,11 @@
+# Recorder B: one clean record @ .000500 -- the same microsecond as recorder
+# A's error. Listed second, it leaves the merge after A's error; the
+# continuation shares that time and travels with the error through the
+# canonical sort, so the three rows read RT3, RT15 error, continuation.
+
+# RT3 SA11 Receive - clean @ .000500
+0224 0F18 20DB F401 7E19 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018
