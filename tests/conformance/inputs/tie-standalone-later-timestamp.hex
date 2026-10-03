@@ -1,0 +1,22 @@
+# L1-OUT-003 / L2-WRT-021: the rule covers EVERY record without a Command
+# Word, not only a 0x2000 continuation. A standalone SPURIOUS_DATA (0x2001)
+# stamped after an equal-timestamp run follows the record that arrived last;
+# sorting would move that record (RT3) away from the end, so the run is
+# emitted in arrival order: RT20, RT3, spurious.
+
+# RT20 SA11 Receive - clean @ .000500
+0224 0F18 20DB F401 7EA1 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018
+
+# RT3 SA11 Receive - clean @ .000500
+0224 0F18 20DB F401 7E19 0004 0000 0000
+2F00 22CA 2F00 22CA 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 71C7 0018
+
+# SPURIOUS_DATA, standalone (preceded by a clean record) -> 0x2001 @ .000501
+2005 0F18 20DB F501 0000

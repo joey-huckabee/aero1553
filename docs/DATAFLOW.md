@@ -15,10 +15,10 @@ stages.
 
 **Status.** Written 2026-10-02 to analyse review finding M3 (a `0x2000`
 continuation losing its pin). Observed behaviour is as of `main` at `721eeb8`.
-[Section 6](#6-findings) lists the conflicts and gaps found; they are
-**open** until the decisions in [section 7](#7-decisions-required) are taken
-and the requirements amended. When that happens, update this page in the same
-change.
+[Section 6](#6-findings) lists the conflicts and gaps found; each is **open**
+until its decision in [section 7](#7-decisions-required) is taken and the
+requirements amended. When that happens, update this page in the same change.
+Decision 1 (M3) is taken and implemented; the rest are open.
 
 ---
 
@@ -162,8 +162,16 @@ form a leading chunk that sorts first.
 **The consequence:** a pin is protected only **within one run**. A run ends
 where the timestamp changes, so a continuation whose timestamp differs from its
 parent's is never in its parent's run. It becomes the leading pin of the *next*
-run and follows whatever record the parent's run happened to end with
-(row S3 — finding M3).
+run and follows whatever record the parent's run ends with.
+
+**The rule that closes that gap** (decision 1, L1-OUT-003 / L2-WRT-021): when a
+run is closed by a record with no Command Word at a different timestamp, the
+stage checks whether sorting would move the run's last-arrived chunk away from
+the end. If it would, the run is emitted in arrival order and a DEBUG line is
+logged; if not, the run is sorted as usual (rows S3 and S4). A run closed by a
+record that has a Command Word, by end of stream or by an error is always
+sorted. The check is made when the closing record arrives, so no extra record is
+buffered.
 
 ### 2.5 Writer
 
@@ -195,7 +203,7 @@ The one relationship between records that the CSV is expected to show is
 | Merge heap | another input's record falls between the two timestamps | M1, M2 |
 | Duplicate collapse | the parent or the continuation is suppressed on its own | M4 |
 | Filter | the parent is removed, the continuation (no RT) is kept | F1, F5 |
-| Order | the parent's equal-timestamp run is sorted and the continuation, at a different timestamp, starts the next run | S3 |
+| Order | the parent's equal-timestamp run is sorted and the continuation, at a different timestamp, starts the next run — **fixed by decision 1**: that run keeps arrival order | S3 |
 | Writer (split) | does not separate; restores the pair when the interloper is clean | E1, M8 |
 | Order cap | does not separate; a capped run keeps arrival order | C1, C2 |
 
@@ -236,8 +244,15 @@ L1-OUT-003 makes three promises about row order:
 For an input like row S3 — `clean RT3 @500`, `errored RT1 @500`,
 `continuation @501` — the only output satisfying (b) and (c) is
 `RT1, continuation@501, RT3@500`, which breaks (a). **No ordering satisfies all
-three.** Any resolution chooses which promise gives way for that input; see
-[section 7](#7-decisions-required).
+three.** Any resolution chooses which promise gives way for that input.
+
+**Resolved (decision 1):** (b) gives way, for that one run only and only when
+the sort would actually separate the pair — the run is emitted in arrival order,
+as the `max_sort_group` cap already does. (a) and (c) hold. The alternatives
+were letting the continuation join its parent's run (breaks (a), and with it
+L1-MRG-001's global time order) and narrowing (c) to a shared timestamp in the
+requirement text (no code change, but the parent of a `0x2000` row could no
+longer always be identified from the CSV).
 
 ---
 
@@ -257,10 +272,11 @@ or **UNSPECIFIED** = no requirement decides it.
 |---|---|---|---|---|---|---|
 | S1 | err RT15 @500, cont @500, clean RT3 @500 | — | RT3 @500; err RT15 @500; cont 2000 @500 | yes | OK | `tie-spurious-pinned` |
 | S2 | err RT15 @500, cont @779, clean RT15 @1000 | — | err @500; cont 2000 @779; RT15 @1000 | yes | OK | `errors-inline` |
-| S3 | clean RT3 @500, err RT1 @500, cont @501 | — | err RT1 @500; **RT3 @500**; cont 2000 @501 | yes | **BREAKS (c)** — M3 | none |
-| S4 | clean RT3 @500, err RT15 @500, cont @501 | — | RT3 @500; err RT15 @500; cont 2000 @501 | yes | OK (by luck of the key) | none |
+| S3 | clean RT3 @500, err RT1 @500, cont @501 | — | RT3 @500; err RT1 @500; cont 2000 @501 (arrival order) | yes | OK — was **BREAKS (c)** before decision 1 (err RT1; RT3; cont) | `tie-pin-later-timestamp` |
+| S4 | clean RT3 @500, err RT15 @500, cont @501 | — | RT3 @500; err RT15 @500; cont 2000 @501 | yes | OK (the tail already sorts last; the run stays sorted) | `tie-pin-later-timestamp-tail-last` (four-record variant) |
 | S5 | err RT15 @500, cont @600, clean RT20 @600, clean RT3 @600 | — | err @500; cont 2000 @600; RT3 @600; RT20 @600 | yes | OK (leading pin keeps its slot) | none |
 | S6 | clean RT20 @500, spurious @500, clean RT3 @500 | — | RT3; RT20; spurious 2001 | yes | OK (pin follows RT20) | none |
+| S6b | clean RT20 @500, clean RT3 @500, spurious @501 | — | RT20; RT3; spurious 2001 (arrival order) | yes | OK — decision 1 applies to `0x2001` too | `tie-standalone-later-timestamp` |
 | S7 | err RT15 @500, spurious **with bit 14** @600, spurious @700 | — | err @500; **ERROR** 2000 @600; SPURIOUS 2001 @700 | yes | **UNSPECIFIED** — labelled `ERROR`, coded as a continuation | none |
 | S8 | err RT15 @500, spurious @600, spurious @700 | — | err; SPURIOUS 2000; SPURIOUS 2001 | yes | OK (only the first is a continuation) | C++ unit test only |
 
@@ -320,11 +336,12 @@ File A = err RT15 @500, cont @510. The other file varies.
 
 - **M3 — a continuation loses its pin across a timestamp change** (row S3). The
   three L1-OUT-003 promises conflict for this input ([section 4](#4-requirements-in-tension)).
-- **M3b — L2-WRT-021 gives two locators for a pin**: "re-emitted at its original
+  **Resolved** by decision 1.
+- **M3b — L2-WRT-021 gave two locators for a pin**: "re-emitted at its original
   offset within the run" *and* "immediately after whichever record preceded it
-  on input". Once the predecessor moves these differ. The code implements the
-  second and calls the first "the original bug"; the requirement text still
-  carries both (and so does the `order.rs` module doc).
+  on input". Once the predecessor moves these differ. The code implemented the
+  second and calls the first "the original bug". **Resolved**: the requirement
+  and the `order.rs` module doc now state only the second.
 - **M4 — the cap's WARN is per flush, not per run** (rows C1, C4). L2-WRT-022
   requires exactly one per capped run; `--max-sort-group 1`, documented as
   "off", warns once per record. Records after a cap flush start a fresh buffer
@@ -387,13 +404,17 @@ File A = err RT15 @500, cont @510. The other file varies.
 These are not decided here. Each needs a choice, then an amendment to the
 requirement text, then code and tests in all three implementations.
 
-1. **M3 — which L1-OUT-003 promise gives way** when a continuation's timestamp
-   differs from its parent's and the parent's run is sorted:
-   - keep that run in **arrival order** (gives up (b) for that run only, as the
-     cap already does);
-   - let the continuation **join its parent's run** (gives up (a));
-   - **scope the pin** to a shared timestamp in the requirement text (keeps
-     current behaviour, gives up (c) whenever timestamps differ).
+1. **M3 — which L1-OUT-003 promise gives way** — **decided 2026-10-02**: keep
+   that run in **arrival order**, only when the sort would separate the pair,
+   for every record without a Command Word (`0x2000` and `0x2001` alike),
+   logged at DEBUG. See [section 4](#4-requirements-in-tension) for the
+   alternatives considered. The large golden recordings contain this shape —
+   143 runs across `a-large` and `b-large` (147 in their merge), every one
+   closed by a later-stamped **standalone** `0x2001` record, since the
+   generator keeps a `0x2000` on its parent's timestamp — so their CSV pins
+   were re-pinned with the fix, after confirming each changed run was exactly
+   that shape and that Rust, Python and C++ all produce the new CSVs. The small
+   recordings were unaffected.
 2. **C1 — what "on input" means in a merge**: the file (then M1 is a defect, and
    fixing it means the merge must keep a pair together, against global time
    order) or the merged stream (then M1 is correct and the requirement says so).
@@ -413,8 +434,10 @@ requirement text, then code and tests in all three implementations.
 ## 8. Coverage gaps
 
 No conformance case combines a `0x2000` continuation with a merge, a filter,
-duplicate collapse, the sort-group cap or global DELTA scope, and none has a
-continuation whose timestamp differs from its parent's inside a tie. Every row
+duplicate collapse, the sort-group cap or global DELTA scope. A continuation
+stamped later than its parent next to a tie is now pinned by
+`tie-pin-later-timestamp`, `tie-pin-later-timestamp-tail-last` and
+`tie-standalone-later-timestamp` (decision 1). Every row
 above marked "none" in its **Pinned by** column should become a conformance
 case once its expected outcome is decided; the rows marked OK can be added
 before then, since they pin current, intended behaviour.

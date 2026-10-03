@@ -211,6 +211,19 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **A `SPURIOUS_DATA` continuation stamped later than its parent now stays
+  directly under it** (all three implementations; L1-OUT-003 and L2-WRT-021
+  amended). Pinning protected a continuation only inside its own
+  equal-timestamp run, but each spurious record carries its own timestamp:
+  when the card stamped it later than its errored parent and the parent sat in
+  a tie that sorting reordered, the `0x2000` row ended up under an unrelated
+  record. That run is now written in arrival order, so the continuation still
+  follows its parent and timestamps still ascend; canonical tie order is given
+  up for that run only, and only when sorting would actually separate the
+  pair, as the `max_sort_group` cap already does. The same holds for a
+  standalone `0x2001` record. Logged at DEBUG. `docs/DATAFLOW.md` records the
+  analysis, and the related cases the fix does not cover yet (a merge or a
+  filter separating the pair).
 - **A `--glob` with a wildcard in its directory part is now a usage error
   (exit `4`) with a message that says so** (all three implementations;
   L2-MRG-001). Wildcards have only ever applied to the filename, so

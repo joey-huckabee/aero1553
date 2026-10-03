@@ -193,6 +193,30 @@ class TestPinning:
         got = ordered([spurious(10), spurious(10)])
         assert keys(got) == [None, None]
 
+    @pytest.mark.requirement("L1-OUT-003", "L2-WRT-021", "L2-ERR-005")
+    def test_pin_at_a_later_timestamp_keeps_the_run_in_arrival_order(self) -> None:
+        """Review finding M3: a continuation at a later timestamp opens the next
+        run and follows whatever this one ends with. Sorting would put RT 3
+        last, between RT 1 and its continuation, so the run keeps arrival
+        order."""
+        got = ordered([rec(10, 3, 11), errored(10, 1, 11), spurious(11)])
+        assert keys(got) == [(3, 11, 0), (1, 11, 0), None]
+
+    @pytest.mark.requirement("L1-OUT-003", "L2-WRT-021")
+    def test_pin_at_a_later_timestamp_keeps_order_when_the_tail_stays_last(self) -> None:
+        got = ordered([rec(10, 20, 11), rec(10, 3, 11), errored(10, 25, 11), spurious(11)])
+        assert keys(got) == [(3, 11, 0), (20, 11, 0), (25, 11, 0), None]
+
+    @pytest.mark.requirement("L1-OUT-003", "L2-WRT-021")
+    def test_standalone_pin_at_a_later_timestamp_keeps_arrival_order(self) -> None:
+        got = ordered([rec(10, 20, 11), rec(10, 3, 11), spurious(11)])
+        assert keys(got) == [(20, 11, 0), (3, 11, 0), None]
+
+    @pytest.mark.requirement("L2-WRT-021")
+    def test_keyed_record_at_a_later_timestamp_still_sorts_the_run(self) -> None:
+        got = ordered([rec(10, 20, 11), rec(10, 3, 11), rec(11, 1, 11)])
+        assert keys(got) == [(3, 11, 0), (20, 11, 0), (1, 11, 0)]
+
 
 # ── the L2-WRT-022 cap ──────────────────────────────────────────────────────
 

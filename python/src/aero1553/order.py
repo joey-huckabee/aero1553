@@ -24,7 +24,10 @@ to sort on. They are **pinned**: excluded from the permutation and kept
 immediately after the record they followed on input. That preserves the
 adjacency the ``0x2000`` "continuation of a preceding error" code is defined in
 terms of (L2-ERR-005) — separating a spurious record from its parent error would
-leave that code describing nothing.
+leave that code describing nothing. A spurious record stamped *later* than the
+record it followed opens the next run, so when sorting the current run would
+move that record away from its end, the run is emitted in arrival order instead
+(L2-WRT-021).
 
 DELTA needs no recomputation downstream of this stage: it is tracked per
 ``RT``/``MSG`` key, and two records in one run that share a key also share a
