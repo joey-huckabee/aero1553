@@ -61,6 +61,7 @@ const char* error_kind_name(MieErrorKind kind) {
         case KIND_INPUT_OUTPUT_COLLISION: return "InputOutputCollision";
         case KIND_CLOBBER_REFUSED: return "ClobberRefused";
         case KIND_UNRECOVERABLE_SYNC_LOSS: return "UnrecoverableSyncLoss";
+        case KIND_MERGE_INPUTS_DROPPED: return "MergeInputsDropped";
         case KIND_TIMESTAMP_FORMAT_MISMATCH: return "TimestampFormatMismatch";
         case KIND_CALENDAR_UNAVAILABLE: return "CalendarUnavailable";
         case KIND_INCOMPATIBLE_MERGE_INPUTS: return "IncompatibleMergeInputs";
@@ -203,6 +204,18 @@ MieError MieError::unrecoverable_sync_loss(uint64_t offset, uint64_t sync_losses
     return e;
 }
 
+MieError MieError::merge_inputs_dropped(uint64_t left_out, uint64_t truncated, uint64_t total) {
+    std::string summary = text::decimal(left_out) + " of " + text::decimal(total) +
+                          " merge inputs could not be read and " +
+                          (left_out == 1 ? "was" : "were") + " left out";
+    if (truncated > 0) {
+        summary += ", and " + text::decimal(truncated) + " " + (truncated == 1 ? "was" : "were") +
+                   " truncated by an unrecoverable sync loss";
+    }
+    summary += " (see the per-input warnings above)";
+    return MieError(KIND_MERGE_INPUTS_DROPPED, summary);
+}
+
 // --- Output ---------------------------------------------------------------
 
 MieError MieError::writer_error(const std::string& destination, const std::string& os_message,
@@ -269,7 +282,8 @@ bool MieError::is_record_error() const {
         case KIND_FIRST_RECORD_TRUNCATED:
         case KIND_PAYLOAD_ERROR:
         case KIND_UNKNOWN_ERROR_CODE:
-        case KIND_UNRECOVERABLE_SYNC_LOSS: return true;
+        case KIND_UNRECOVERABLE_SYNC_LOSS:
+        case KIND_MERGE_INPUTS_DROPPED: return true;
         default: return false;
     }
 }

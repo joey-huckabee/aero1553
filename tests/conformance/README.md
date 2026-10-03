@@ -144,7 +144,8 @@ array of case objects. Each case object accepts the following fields:
 | Field | Type | Required | Meaning |
 |-------|------|----------|---------|
 | `name` | string | yes | Unique case identifier used for temp files and log output. |
-| `input` | string | yes | Path (relative to `tests/conformance/`) to the hex-text input fixture. |
+| `input` | string | yes, or `inputs` | Path (relative to `tests/conformance/`) to the hex-text input fixture. |
+| `inputs` | array of string | instead of `input` | Several fixtures, passed as positionals in order: two or more is a multi-file merge. An entry of `"<missing>"` gives that input a path but writes no file, to pin how an implementation treats an input it cannot open (`L2-MRG-004`); the runner also asserts nothing was created there. |
 | `expected` | string | when `expected_exit == 0` | Path to the checked-in oracle. For `mode == "decode"` (default) this is the expected CSV; for `mode == "count"` this is a text file containing the expected integer count plus a trailing newline. |
 | `expected_errors` | string | no | Path to the expected `<stem>_errors.csv` oracle for split-error-mode (`mode == "decode"` only). |
 | `config` | string | no | Optional path to a shared TOML config applied to both implementations. |

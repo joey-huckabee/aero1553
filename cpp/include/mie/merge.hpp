@@ -133,6 +133,11 @@ struct MergeOptions {
     std::size_t max_collapse_survivors;
     /// L2-MRG-005.
     DeltaScope delta_scope;
+    /// L2-MRG-004: inputs the caller left out of this merge because they could
+    /// not be opened. They were never handed to the merge, but they belong in
+    /// the count it reports when it ends: "1 of 3 merge inputs could not be
+    /// read", not "0 of 2".
+    std::size_t inputs_left_out_at_open;
 
     MergeOptions();
 };
@@ -308,6 +313,18 @@ class MergedSource : public MessageSource {
     /// loss. Deferring it is what lets every good record reach the writer first
     /// so it can commit a `.partial`.
     PendingError pending_terminal_;
+
+    /// L2-MRG-004 tallies for the summary an `--allow-partial` merge ends with
+    /// when an input was left out (at open or while priming): inputs left out,
+    /// inputs truncated mid-file, and every input including those left out.
+    uint64_t left_out_;
+    uint64_t truncated_;
+    uint64_t total_;
+
+    /// The error that ends the merged stream once the heap drains, if any: a
+    /// merge_inputs_dropped summary when an input was left out, otherwise the
+    /// deferred mid-file error itself.
+    PendingError take_terminal();
 
     uint64_t collapsed_;
 };

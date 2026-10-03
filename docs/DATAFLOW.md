@@ -18,9 +18,9 @@ continuation losing its pin). Observed behaviour is as of `main` at `721eeb8`.
 [Section 6](#6-findings) lists the conflicts and gaps found; each is **open**
 until its decision in [section 7](#7-decisions) is taken and the
 requirements amended. When that happens, update this page in the same change.
-Decisions 1 (M3), 2 (keeping a continuation with its parent) and 3 (a
-continuation sharing its parent's filter and collapse fate) are taken and
-implemented; the rest are open.
+Decisions 1 (M3), 2 (keeping a continuation with its parent), 3 (a
+continuation sharing its parent's filter and collapse fate) and 5 (a merge in
+which every input fails) are taken and implemented; decision 4 is open.
 
 ---
 
@@ -359,12 +359,22 @@ File A = err RT15 stamped @500, cont stamped @510. The other file varies.
 | M7 | as M1 | `--delta-scope global` | as M1; cont DELTA empty | yes | OK | none |
 | M8 | as M1 | `--separate-errors` | RT3 @505 | err @500; cont 2000 @500 | yes | OK | none |
 
-### Merge with every input unreadable
+### Merge inputs that fail, under `--allow-partial`
 
-| Row | Inputs | Options | Rust / Python | C++ | Verdict |
-|---|---|---|---|---|---|
-| N1 | two missing files | `--allow-partial` | exit 0, header-only `.partial`, WARN "unrecoverable sync loss at 0x0" | exit 2, "no input file could be opened", no file | **DIVERGENT; UNSPECIFIED** — L2-MRG-004 says the merge "complete[s] from the remaining inputs" and does not say what happens when none remain |
-| N1b | two files of `0xFF` bytes (open, then fail) | `--allow-partial` | exit 0, header-only `.partial` | exit 0, header-only `.partial` | agree; same open question |
+Rust, Python and C++ agree on every row (decision 5). A **single** file is the
+reference: `--allow-partial` never changes its open or non-MIE failure.
+
+| Row | Inputs (in order) | Result | Pinned by |
+|---|---|---|---|
+| N1 | missing, missing | exit 1, "MIE file not found", no file | `merge-allow-partial-all-missing` |
+| N1b | non-MIE, non-MIE | exit 2, "No valid MIE records", no file | `merge-allow-partial-all-unreadable` |
+| N1c | missing, non-MIE | exit 1 — the first input's error | `merge-allow-partial-missing-first` |
+| N1d | non-MIE, missing | exit 2 — the first input's error | `merge-allow-partial-unreadable-first` |
+| N1e | empty recording, missing | exit 0, header-only `.partial` (the empty recording succeeded) | `merge-allow-partial-empty-and-missing` |
+| N1f | missing, good | exit 0, `.partial` with the good file's rows; closing WARN "1 of 2 merge inputs could not be read and was left out" | `merge-allow-partial-missing-and-good` |
+
+Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
+2 in C++, and N1b–N1d exited 0 with an empty `.partial` in all three.
 
 ---
 
@@ -421,9 +431,17 @@ File A = err RT15 stamped @500, cont stamped @510. The other file varies.
 
 ### N. Cross-implementation
 
-- **N1 — every merge input failing to open under `--allow-partial` diverges**
-  (row N1): Rust/Python exit 0 with a header-only `.partial` and a misleading
-  "sync loss at 0x0" WARN; C++ exits 2. The requirement does not decide it.
+- **N1 — a merge in which every input fails under `--allow-partial`**
+  diverged (C++ exit 2, Rust/Python exit 0 with an empty `.partial`), and the
+  non-MIE variants exited 0 in all three. **Resolved** by decision 5.
+- **N2 — the final WARN of a partial merge misnames the cause** as
+  "unrecoverable sync loss at 0x0 after 0 recovery attempt(s)" when an input
+  was missing or unreadable, and the Python library raises
+  `MieUnrecoverableSyncLossError` at the end of such a merge. **Resolved**
+  with decision 5: such a merge ends in `MergeInputsDropped` /
+  `MieMergeInputsDroppedError`, whose WARN counts the inputs left out (and any
+  truncated). A merge whose inputs were only truncated mid-file still ends in
+  the real sync loss.
 
 ### G. Other findings
 
@@ -480,8 +498,15 @@ tests in all three implementations.
    exactly the 23 continuations of RT 15's bus-A errors (489 → 512).
 4. **M4 — the cap**: what happens to records after a cap flush (stay in arrival
    order for the rest of the run?), and one WARN per run regardless of cap.
-5. **N1 — every merge input unreadable under `--allow-partial`**: exit 2 (as
-   C++) or a header-only `.partial` and exit 0 (as Rust/Python).
+5. **N1 — every merge input failing under `--allow-partial`** — **decided
+   2026-10-03**: `--allow-partial` keeps what could be decoded; when every
+   input fails at open or priming there is nothing to keep, so the run fails
+   exactly as without the flag — with the first failing input's own error and
+   exit code, and no output file (L2-MRG-004). A valid empty recording counts
+   as a success. The alternative considered — always exit 2 with one message —
+   would report a mistyped path as "no records". The same change makes a
+   partial merge name what ended it (finding N2): a left-out input is
+   reported as left out, not as a sync loss at offset 0.
 6. **Documentation** follows the decisions. Done for decisions 1 and 2
    (`ERROR-CATALOG.md`, `MIE-FORMAT.md` §7.3 and §9, `DATA-SCENARIOS.md` §6 and
    §9, `VENDOR-CSV-DIFFS.md` §3d); decisions 3–5 will need their own.

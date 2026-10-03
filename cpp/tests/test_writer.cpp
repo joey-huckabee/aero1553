@@ -20,6 +20,7 @@
 #include <string>
 #include <vector>
 
+#include "log_capture.hpp"
 #include "mie/error.hpp"
 #include "mie/models.hpp"
 #include "temp_path.hpp"
@@ -389,6 +390,58 @@ TEST_CASE("allow-partial commits what was decoded to a .partial file",
     // ...and the real destination was never created, so a stale previous
     // decode would still be intact beside it.
     CHECK_FALSE(exists(out.str()));
+}
+
+TEST_CASE("allow-partial names the reason it stopped", "[writer][L1-EXIT-004][L2-MRG-004]") {
+    // A sync loss keeps its offset-and-attempts wording; a merge that left
+    // inputs out says so, rather than reporting a sync loss at offset 0 that
+    // never occurred.
+    mie::WriteOptions options;
+    options.allow_partial = true;
+    {
+        TempPath out("reason-loss.csv");
+        (void)out.sibling(".partial");
+        const mie_test::LogCapture capture(mie::log::LEVEL_WARN);
+        VectorSource source(one(sample()));
+        source.throw_at_end(mie::MieError::unrecoverable_sync_loss(0x1234, 3));
+        (void)mie::write_csv(source, to(out), options);
+        CHECK(capture.count_containing(
+                  "unrecoverable sync loss at 0x1234 after 3 recovery attempt(s); wrote 1 rows "
+                  "to ") == 1u);
+    }
+    {
+        TempPath out("reason-dropped.csv");
+        (void)out.sibling(".partial");
+        const mie_test::LogCapture capture(mie::log::LEVEL_WARN);
+        VectorSource source(one(sample()));
+        source.throw_at_end(mie::MieError::merge_inputs_dropped(1, 0, 2));
+        const mie::WriteOutcome outcome = mie::write_csv(source, to(out), options);
+        REQUIRE(outcome.partial.has_value());
+        CHECK(outcome.partial.value().offset == 0u);
+        CHECK(outcome.partial.value().sync_losses == 0u);
+        CHECK(capture.count_containing("1 of 2 merge inputs could not be read and was left out "
+                                       "(see the per-input warnings above); wrote 1 rows to ") ==
+              1u);
+        CHECK(capture.count_containing("sync loss") == 0u);
+    }
+    {
+        TempPath out("reason-split.csv");
+        const std::string errors_path = out.also_remove(mie::error_path_for(out.str()));
+        (void)out.sibling(".partial");
+        (void)out.also_remove(errors_path + ".partial");
+        const mie_test::LogCapture capture(mie::log::LEVEL_WARN);
+        std::vector<mie::MieMessage> messages;
+        messages.push_back(sample(100));
+        messages.push_back(errored());
+        VectorSource source(messages);
+        source.throw_at_end(mie::MieError::merge_inputs_dropped(1, 0, 2));
+        const mie::WriteOutcome outcome = mie::write_csv_split(source, out.str(), options);
+        REQUIRE(outcome.partial.has_value());
+        CHECK(outcome.partial.value().errors_path.has_value());
+        CHECK(capture.count_containing("1 of 2 merge inputs could not be read and was left out "
+                                       "(see the per-input warnings above); wrote 1 normal + 1 "
+                                       "error rows as partial to ") == 1u);
+    }
 }
 
 TEST_CASE("allow-partial does not swallow other failures", "[writer][L1-EXIT-004]") {

@@ -275,21 +275,31 @@ def read_hex(path: Path) -> bytes:
     return bytes.fromhex("".join(chunks))
 
 
+#: An ``inputs`` entry naming a file that must NOT exist: the input is given a
+#: path but nothing is written there, so a case can pin what an implementation
+#: does with an input it cannot open (L2-MRG-004).
+MISSING_INPUT = "<missing>"
+
+
 def materialize(
     into: Path, input_specs: list[str], input_names: list[str] | None, case_name: str
 ) -> list[Path]:
     """A case's hex fixtures written as .mie files under `into`.
 
     Each file is named from ``input_names`` when the case gives them, else
-    ``<case_name>-in<i>.mie``. Module-level, with every input passed in, so it
-    cannot read a previous case's names through a closure over the case loop.
+    ``<case_name>-in<i>.mie``. A :data:`MISSING_INPUT` entry gets a name and no
+    file. Module-level, with every input passed in, so it cannot read a
+    previous case's names through a closure over the case loop.
     """
     into.mkdir(parents=True, exist_ok=True)
     written = []
     for i, spec in enumerate(input_specs):
         fname = input_names[i] if input_names else f"{case_name}-in{i}.mie"
         src = into / fname
-        src.write_bytes(read_hex(SUITE / spec))
+        if spec == MISSING_INPUT:
+            src.unlink(missing_ok=True)
+        else:
+            src.write_bytes(read_hex(SUITE / spec))
         written.append(src)
     return written
 
@@ -903,6 +913,13 @@ def main() -> int:
             # while every CSV oracle in this suite still matched.
             for impl in running:
                 for i, src in enumerate(per_impl_sources.get(impl.name, sources)):
+                    if input_specs[i] == MISSING_INPUT:
+                        # Nothing may appear at a missing input's path either.
+                        if src.exists():
+                            raise AssertionError(
+                                f"{name}: {impl.label} CREATED its missing input {src.name}"
+                            )
+                        continue
                     original = read_hex(SUITE / input_specs[i])
                     if src.read_bytes() != original:
                         raise AssertionError(

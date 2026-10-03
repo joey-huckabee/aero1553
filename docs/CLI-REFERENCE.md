@@ -227,7 +227,7 @@ multi-file merge — see [Merge](#merge-multi-file) below.
 | Flag | Value | Default | Description |
 |------|-------|---------|-------------|
 | `--strict` | flag | off (lenient) | Raise on invalid records instead of skipping them. Overrides `[decode] strict`. |
-| `--allow-partial` | flag | off | On an unrecoverable mid-file sync loss, write `<output>.partial` and exit `0` instead of exit `3` (`L1-EXIT-004`). In a merge, a per-file failure is tolerated and the combined output is committed as `.partial`. Mirrors `[decode] allow_partial`. |
+| `--allow-partial` | flag | off | On an unrecoverable mid-file sync loss, write `<output>.partial` and exit `0` instead of exit `3` (`L1-EXIT-004`). In a merge, a per-file failure is tolerated and the combined output is committed as `.partial` — unless **every** input fails, in which case the run fails with the first failing input's own error (exit `1` or `2`) and writes nothing (`L2-MRG-004`). Mirrors `[decode] allow_partial`. |
 
 ### MUX column
 

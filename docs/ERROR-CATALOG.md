@@ -19,17 +19,21 @@ The exit-code taxonomy is pinned by L1-EXIT-001 through L1-EXIT-010 and the L2-C
 |------|-------|-------------------|---------------|-----------------|
 | **0** | `complete` | (none — decode finished normally) | Every record decoded without sync loss. | None. |
 | **0** | `partial-recovered` | (none — decode finished after sync loss recovery) | At least one mid-file sync loss occurred and was recovered. INFO summary names the recovery count. | Investigate the recording source if recovery counts are high or trending up. |
-| **0** | `complete` (`--allow-partial`) | `UnrecoverableSyncLoss` on the unrecoverable-but-tolerated path | An unrecoverable sync loss occurred but `--allow-partial` preserved the rows decoded so far as `<dest>.partial`. | Inspect the `.partial` output, then triage the recording. |
+| **0** | `complete` (`--allow-partial`) | `UnrecoverableSyncLoss` or `MergeInputsDropped` on the unrecoverable-but-tolerated path | An unrecoverable sync loss occurred, or a merge left out an input it could not read, but `--allow-partial` preserved the rows decoded so far as `<dest>.partial`. | Inspect the `.partial` output, then triage the recording. |
 | **0** | `complete (broken-pipe on stdout)` | a broken pipe on stdout output | A downstream consumer closed early (e.g. `aero1553 decode … \| head`). Not an error. | None. |
 | **0** | `empty-recording` | (none — a valid but empty recording) | The input is a genuine MIE recording that captured **zero records**: its stream opens directly on the `0x0000` end-of-records terminator (e.g. an unused MIL-STD-1553 channel — literally the two bytes `00 00`). A **header-only CSV** is written and a WARN names the empty capture (L1-EXIT-010 / L2-RDR-021). Distinct from exit `2`, which is a *wrong-file* rejection. | None — the recording simply captured nothing. |
 | **1** | runtime / decode error | `RecordTruncated`, `FirstRecordTruncated`, `PayloadError`, `InvalidTypeWord`, `UnknownTypeWord`, `UnknownErrorCode`, `WriterError` (non-broken-pipe), file I/O errors (incl. input not found) | Per-record validation failed in strict mode, the input couldn't be opened, or the output sink failed. | Read the stderr message; if it's a record error, lenient mode (`decode.strict = false`) usually skips and continues. |
 | **2** | `no-records` | `NoValidRecords`, `HomogeneousPayload`, `TimestampFormatMismatch` (strict mode only — ambiguous auto-detection per L2-DEC-016, or a forced `--input-time-format` the recording decisively contradicts per L2-DEC-013) | The input file isn't an MIE recording at all (wrong file type, single-byte-pad, ambiguous timestamp format), or the forced timestamp format is wrong for the file. No output file is created. **Not** the same as a valid empty recording (exit `0`, `empty-recording`): that case is recognized by the `0x0000` terminator at offset 0. | Verify the input path. If it's actually a recording, check that records begin within the first 64 KB and that the timestamp format is recognizable; drop `--input-time-format` to auto-detect, or pass the correct `--input-time-format irig\|standard`. |
-| **3** | `partial-unrecoverable` | `UnrecoverableSyncLoss` without `--allow-partial` | A mid-file sync loss could not be recovered within the 64 KB scan window. | Re-run with `--allow-partial` to keep the rows decoded before the loss as `<dest>.partial`, then triage the recording. |
+| **3** | `partial-unrecoverable` | `UnrecoverableSyncLoss` without `--allow-partial`; `MergeInputsDropped` when the merge writes to stdout, which cannot hold a `.partial` | A mid-file sync loss could not be recovered within the 64 KB scan window. | Re-run with `--allow-partial` to keep the rows decoded before the loss as `<dest>.partial`, then triage the recording. |
 | **4** | usage error | unknown/missing/invalid flag or argument, invalid flag value (e.g. `--detect-records 99`, `--standard-tick-rate-hz 0`), a `--glob` with a wildcard in its directory part (`captures/**/*.mie`), no subcommand | The command line itself is wrong. No input is opened and no output file is created. | Fix the invocation; run `--help` for the accepted flags. |
 | **5** | configuration error | config file not found, malformed TOML, or an invalid config value (e.g. `input_time_format = "potato"`, out-of-range `detect_records`) | The `--config` file can't be loaded or fails validation. No input is opened and no output file is created. | Fix the TOML file named in the stderr message. |
 | **6** | merge-incompatible inputs | `IncompatibleMergeInputs` — a multi-file merge whose inputs cannot share an absolute timeline: an input resolves to the Standard timestamp format, leads with a freerun IRIG record, or the set mixes timestamp formats (L1-EXIT-009 / L2-MRG-003) | Time-sorted merge requires every input to be calendar-locked IRIG. The offending file and its detected format are named on stderr. No output file is created. | Merge only calendar-locked IRIG recordings together; decode Standard or freerun inputs individually. |
 
 The `count` and `dump` subcommands inherit `0`, `1`, `2`, `4`, and `5` — they don't write a streaming output that could be partial (no exit `3`) and they don't merge (no exit `6`) (L2-CLI-011). A multi-file merge that exceeds `MAX_MERGE_FILES` (256) inputs, or combines input methods (positionals + `--manifest` / `--glob`), is a **usage error → exit 4**.
+
+**`--allow-partial` on a merge where every input fails.** A merge under `--allow-partial` drops a failing input and commits the rest as `.partial`, exit `0` (L2-MRG-004). When **every** input fails at open or priming there is nothing to keep, so the flag does not apply: the run exits with the **first** failing input's own code — `1` for a missing or unreadable file, `2` for one that is not a recording — and writes no output file, exactly as without the flag. A valid empty recording counts as a success, so an empty recording beside a failing input is still a partial merge.
+
+**How a partial merge names what happened.** When at least one input was left out — it could not be opened, or its first record could not be read — the merge ends in `MergeInputsDropped` (Python `MieMergeInputsDroppedError`) and the final WARN counts the inputs: `1 of 3 merge inputs could not be read and was left out (see the per-input warnings above); wrote N rows to <dest>.partial (--allow-partial)`, adding `, and K was truncated by an unrecoverable sync loss` when another input also lost sync mid-file. The per-input WARNs above it name each file and its own error. A merge whose inputs were only truncated mid-file still ends in that input's own `UnrecoverableSyncLoss`, with the offset and recovery count it always reported. (Before this, a left-out input was reported as a sync loss "at 0x0 after 0 recovery attempt(s)" that never occurred.)
 
 **Configuration vs. flag-value validation.** Out-of-range or malformed values are rejected *before* decoding begins, with a stderr message naming the offending key or flag. The same logical check yields a different code depending on the *source*: a bad **CLI flag value** (e.g. a non-positive `--standard-tick-rate-hz`, an out-of-range `--detect-records`) is a **usage error → exit 4**, while the same value supplied through a **TOML key** is a **configuration error → exit 5** (L2-CFG-011, L2-CLI-012). Either way the input is never opened and no output file is created.
 
@@ -62,7 +66,8 @@ Exception
     │   ├── MieFirstRecordTruncatedError
     │   ├── MiePayloadError
     │   ├── MieUnknownErrorCodeError
-    │   └── MieUnrecoverableSyncLossError
+    │   ├── MieUnrecoverableSyncLossError
+    │   └── MieMergeInputsDroppedError
     ├── MieWriterError               (output write failed)
     └── MieNonMonotonicInputError    (merge input not internally time-sorted)
 ```
@@ -88,11 +93,12 @@ MieError ├── FileNotFound             ── MieErrorKind::FileNotFound   
          ├── PayloadError             ── MieErrorKind::PayloadError             (is_record_error)
          ├── UnknownErrorCode         ── MieErrorKind::UnknownErrorCode         (is_record_error)
          ├── UnrecoverableSyncLoss    ── MieErrorKind::UnrecoverableSyncLoss    (is_record_error)
+         ├── MergeInputsDropped       ── MieErrorKind::MergeInputsDropped       (is_record_error — no byte offset)
          ├── WriterError              ── MieErrorKind::WriterError              (neither predicate)
          └── NonMonotonicInput        ── MieErrorKind::NonMonotonicInput        (neither predicate — no byte offset)
 ```
 
-`MieRecordError` and `MieError::is_record_error()` cover the same seven failures exactly, `UnrecoverableSyncLoss` included. (Rust omitted it until v2.12.0 — see the CHANGELOG.)
+`MieRecordError` and `MieError::is_record_error()` cover the same failures exactly, `UnrecoverableSyncLoss` included. (Rust omitted it until v2.12.0 — see the CHANGELOG.) `MergeInputsDropped` is record-class although it cites no record: it replaces the `UnrecoverableSyncLoss` a partial merge used to end with when an input was left out, and keeps that class so code catching `MieRecordError` around a merge does not break.
 
 Python's `MieFileError` is **wider** than `MieError::is_file_error()`, which answers only "did input I/O fail" (`FileNotFound`, `FileEmpty`, `FileIo`). The whole-file rejections (`NoValidRecords`, `HomogeneousPayload`, `TimestampFormatMismatch`, `IncompatibleMergeInputs`) and the destination guards (`InputOutputCollision`, `ClobberRefused`) extend `MieFileError` in Python but answer `false` to **both** Rust predicates; match on `kind()` for those. `WriterError` and `NonMonotonicInput` sit directly under `Aero1553Error` and likewise answer `false` to both.
 
@@ -120,7 +126,7 @@ These fire before any record is decoded, or before the writer touches the destin
 
 ## 4. Record-level errors
 
-These fire when a specific record fails decoding. Catchable in Python as `MieRecordError`; in Rust via `MieError::is_record_error()`. All variants carry the byte `offset` of the failing record (4-digit uppercase hex in formatted messages, matching DDC vendor conventions).
+These fire when a specific record fails decoding. Catchable in Python as `MieRecordError`; in Rust via `MieError::is_record_error()`. All variants but `MergeInputsDropped` carry the byte `offset` of the failing record (4-digit uppercase hex in formatted messages, matching DDC vendor conventions).
 
 In **lenient mode** (default), most record errors result in the record being skipped with a `WARN` log line; the iterator continues. In **strict mode** (`decode.strict = true`), the error is raised and decoding stops.
 
@@ -133,6 +139,7 @@ In **lenient mode** (default), most record errors result in the record being ski
 | `MiePayloadError` / `PayloadError` | Record's payload is internally inconsistent — IRIG range failure, structural invariant violation (L2-SYN-020/021/022/023), or generic extraction failure. | skip + WARN | raise |
 | `MieUnknownErrorCodeError` / `UnknownErrorCode` | An errored record (Type Word bit 14 set) carries an Error Word value outside the known DDC + decoder set (L2-ERR-004). | log WARN, emit row with the unknown code | raise |
 | `MieUnrecoverableSyncLossError` / `UnrecoverableSyncLoss` | After a sync loss, `recover_sync` scanned the full 64 KB window without finding a valid record (L2-SYN-011 / L1-EXIT-004). | terminal `Err` on the iterator; CLI exits **3** by default, or 0 + `.partial` with `--allow-partial` | same |
+| `MieMergeInputsDroppedError` / `MergeInputsDropped` | A merge under `--allow-partial` left out an input it could not open or whose first record could not be read (L2-MRG-004). Carries `left_out`, `truncated` (inputs also truncated mid-file) and `total`. Never raised without `--allow-partial`, which fails on the input's own error instead. | terminal `Err` once every kept record is out; CLI commits 0 + `.partial`, or exits **3** on stdout | same |
 
 For sync-validation failures, `sync.validate_record_detailed` /
 `sync::validate_record_detailed` exposes the shared `ValidationFailure` reason

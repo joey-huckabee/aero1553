@@ -1642,6 +1642,124 @@ fn merge_allow_partial_writes_partial_on_priming_failure() {
     let _ = std::fs::remove_file(&partial);
 }
 
+/// L2-MRG-004: `--allow-partial` keeps what could be decoded. When EVERY input
+/// fails to prime there is nothing to keep, so `new()` fails exactly as it would
+/// without the flag -- with the first input's own error -- rather than handing
+/// the writer a merge that would commit an empty `.partial` and exit 0.
+/// Requirements: L2-MRG-004
+#[test]
+fn merge_allow_partial_fails_when_every_input_fails() {
+    use aero1553::merge::MergedRecordIter;
+
+    let fa = TempFile::new(&vec![0xFFu8; 4096]);
+    let fb = TempFile::new(&vec![0xFFu8; 2048]);
+    let readers = vec![
+        MieFileReader::new(fa.path()).unwrap(),
+        MieFileReader::new(fb.path()).unwrap(),
+    ];
+    let Err(e) = MergedRecordIter::new(&readers, None, true, false) else {
+        panic!("every input failed, so the merge must fail too");
+    };
+    assert_eq!(e.kind(), aero1553::error::MieErrorKind::NoValidRecords);
+    let fa_name = fa
+        .path()
+        .file_name()
+        .unwrap()
+        .to_string_lossy()
+        .into_owned();
+    assert!(
+        e.to_string().contains(&fa_name),
+        "the FIRST input's error: {e}"
+    );
+}
+
+/// L2-MRG-004: a valid empty recording is a success, not a failure -- so an
+/// empty input alongside a failing one is still a partial merge, not "every
+/// input failed".
+/// Requirements: L2-MRG-004
+#[test]
+fn merge_allow_partial_counts_an_empty_recording_as_success() {
+    use aero1553::merge::MergedRecordIter;
+
+    let fa = TempFile::new(&[0x00, 0x00]); // the end-of-records terminator alone
+    let fb = TempFile::new(&vec![0xFFu8; 4096]);
+    let readers = vec![
+        MieFileReader::new(fa.path()).unwrap(),
+        MieFileReader::new(fb.path()).unwrap(),
+    ];
+    let merged = MergedRecordIter::new(&readers, None, true, false)
+        .expect("one input succeeded (with no records), so the merge proceeds");
+    let items: Vec<_> = merged.collect();
+    assert_eq!(items.len(), 1, "only the terminal partial marker");
+    let Err(e) = &items[0] else {
+        panic!("the terminal must be an error");
+    };
+    assert_eq!(
+        e.kind(),
+        aero1553::error::MieErrorKind::MergeInputsDropped,
+        "{e}"
+    );
+}
+
+/// L2-MRG-004: a partial merge ends with the error that actually happened. An
+/// input left out entirely (at open, counted by the caller, or at priming) ends
+/// it in `MergeInputsDropped` with the counts; an input only truncated mid-file
+/// ends it in that input's own `UnrecoverableSyncLoss`, as before. Both used to
+/// end in a sync loss at offset 0 after 0 attempts -- one that never occurred.
+/// Mirrors `test_merge_allow_partial_ends_with_the_error_that_happened` (Python)
+/// and "a partial merge ends with the error that happened" (C++).
+/// Requirements: L2-MRG-004
+#[test]
+fn merge_allow_partial_ends_with_the_error_that_happened() {
+    use aero1553::error::MieErrorKind;
+    use aero1553::merge::MergedRecordIter;
+
+    let good = [
+        rt15_record_at(192, 15, 54, 50, 100, false),
+        rt15_record_at(192, 15, 54, 50, 200, false),
+    ]
+    .concat();
+    let mut cut = [
+        rt15_record_at(192, 15, 54, 50, 200, false),
+        rt15_record_at(192, 15, 54, 50, 300, false),
+    ]
+    .concat();
+    cut.extend(vec![0xFFu8; 70_000]);
+    let f_bad = TempFile::new(&vec![0xFFu8; 4096]);
+    let f_good = TempFile::new(&good);
+    let f_cut = TempFile::new(&cut);
+    let bad = MieFileReader::new(f_bad.path()).unwrap();
+    let good = MieFileReader::new(f_good.path()).unwrap();
+    let cut = MieFileReader::new(f_cut.path()).unwrap();
+
+    let readers = [bad, good, cut];
+    let items: Vec<_> = MergedRecordIter::new(&readers, None, true, false)
+        .unwrap()
+        .inputs_left_out_at_open(1)
+        .collect();
+    assert_eq!(items.iter().filter(|r| r.is_ok()).count(), 4);
+    let Some(Err(e)) = items.last() else {
+        panic!("the merge must end in its terminal error");
+    };
+    assert_eq!(e.kind(), MieErrorKind::MergeInputsDropped);
+    assert_eq!(
+        e.to_string(),
+        "2 of 4 merge inputs could not be read and were left out, and 1 was truncated \
+         by an unrecoverable sync loss (see the per-input warnings above)"
+    );
+
+    let [_, good, cut] = readers;
+    let readers = [good, cut];
+    let items: Vec<_> = MergedRecordIter::new(&readers, None, true, false)
+        .unwrap()
+        .collect();
+    assert_eq!(items.iter().filter(|r| r.is_ok()).count(), 4);
+    let Some(Err(e)) = items.last() else {
+        panic!("the merge must end in its terminal error");
+    };
+    assert_eq!(e.kind(), MieErrorKind::UnrecoverableSyncLoss, "{e}");
+}
+
 /// L2-MRG-004: without `--allow-partial`, a priming-time failure fails the batch
 /// (the error surfaces from `new()`); no `.partial` is produced.
 /// Requirements: L2-MRG-004
@@ -1665,39 +1783,6 @@ fn merge_no_allow_partial_priming_failure_fails_batch() {
         result.is_err(),
         "a bad input fails the batch without --allow-partial"
     );
-}
-
-/// L2-MRG-004: with `--allow-partial`, a merge in which **every** input fails to
-/// prime still completes and commits an (empty) `.partial`.
-/// Requirements: L2-MRG-004
-#[test]
-fn merge_allow_partial_all_inputs_bad() {
-    use aero1553::merge::MergedRecordIter;
-    use aero1553::writer::{WriteOptions, write_csv};
-
-    let fa = TempFile::new(&vec![0xFFu8; 4096]);
-    let fb = TempFile::new(&vec![0xFFu8; 4096]);
-    let readers = vec![
-        MieFileReader::new(fa.path()).unwrap(),
-        MieFileReader::new(fb.path()).unwrap(),
-    ];
-    let merged = MergedRecordIter::new(&readers, None, true, false).unwrap();
-    let out = TempFile::new(b"");
-    let opts = WriteOptions {
-        input_path: None,
-        no_clobber: false,
-        allow_partial: true,
-        time_render: TimeRender::doy(),
-    };
-    let outcome = write_csv(merged, Some(out.path()), opts).unwrap();
-    assert!(
-        outcome.partial.is_some(),
-        "an all-bad merge still commits a .partial under --allow-partial"
-    );
-    assert_eq!(outcome.normal_count, 0, "no good rows survived");
-    let partial = std::path::PathBuf::from(format!("{}.partial", out.path().display()));
-    assert!(partial.exists());
-    let _ = std::fs::remove_file(&partial);
 }
 
 /// L2-MRG-004: the priming-time terminal survives the drain even when a later

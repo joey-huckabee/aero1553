@@ -60,6 +60,7 @@ enum MieErrorKind {
     KIND_INPUT_OUTPUT_COLLISION,
     KIND_CLOBBER_REFUSED,
     KIND_UNRECOVERABLE_SYNC_LOSS,
+    KIND_MERGE_INPUTS_DROPPED,
     KIND_TIMESTAMP_FORMAT_MISMATCH,
     KIND_CALENDAR_UNAVAILABLE,
     KIND_INCOMPATIBLE_MERGE_INPUTS,
@@ -108,6 +109,12 @@ class MieError : public std::exception {
     static MieError payload_error(uint64_t offset, const std::string& detail);
     static MieError unknown_error_code(uint64_t offset, uint16_t error_code);
     static MieError unrecoverable_sync_loss(uint64_t offset, uint64_t sync_losses);
+
+    /// How an `--allow-partial` merge ends when an input was left out at open
+    /// or while priming (L2-MRG-004). Record-class although it cites no record:
+    /// it replaces the `unrecoverable_sync_loss` such a merge used to end with,
+    /// and keeps that class so code catching it does not break.
+    static MieError merge_inputs_dropped(uint64_t left_out, uint64_t truncated, uint64_t total);
 
     // --- Destination guards and output ------------------------------------
 

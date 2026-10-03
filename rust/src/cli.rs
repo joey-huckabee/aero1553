@@ -1434,21 +1434,39 @@ fn build_config_overrides(
     }
 }
 
+/// The inputs that opened, with their positions in the resolved input list,
+/// and -- under `--allow-partial` on a merge -- the inputs that did not.
+struct OpenedInputs {
+    readers: Vec<MieFileReader>,
+    /// `positions[i]` is the input-list position of `readers[i]`.
+    positions: Vec<usize>,
+    /// The first input that could not be opened, with its position.
+    first_failure: Option<(usize, CliError)>,
+    /// How many inputs could not be opened.
+    left_out: usize,
+}
+
 /// Open a reader per resolved input (L2-MRG-001). Under `--allow-partial` a
-/// *merge* tolerates a per-file open failure — it drops that input with a WARN
-/// and reports `open_dropped = true` so the batch commits a `.partial`
-/// (L2-MRG-004). A single-input decode propagates the open error. Returns the
-/// opened readers and whether any input was dropped.
+/// *merge* tolerates a per-file open failure -- it drops that input with a WARN
+/// and the merge, told how many were left out, commits a `.partial`
+/// (L2-MRG-004). A single-input decode propagates the open error.
 fn open_all_readers(
     input_paths: &[PathBuf],
     cfg: &DecoderConfig,
     merge_requested: bool,
-) -> Result<(Vec<MieFileReader>, bool), CliError> {
-    let mut readers: Vec<MieFileReader> = Vec::with_capacity(input_paths.len());
-    let mut open_dropped = false;
-    for p in input_paths {
+) -> Result<OpenedInputs, CliError> {
+    let mut opened = OpenedInputs {
+        readers: Vec::with_capacity(input_paths.len()),
+        positions: Vec::with_capacity(input_paths.len()),
+        first_failure: None,
+        left_out: 0,
+    };
+    for (i, p) in input_paths.iter().enumerate() {
         match open_reader(p, cfg) {
-            Ok(r) => readers.push(r),
+            Ok(r) => {
+                opened.readers.push(r);
+                opened.positions.push(i);
+            }
             Err(e) if merge_requested && cfg.allow_partial => {
                 log_warn!(
                     "merge: input {} could not be opened; truncating it from the \
@@ -1456,25 +1474,34 @@ fn open_all_readers(
                     p.display(),
                     e.message
                 );
-                open_dropped = true;
+                opened.left_out += 1;
+                opened.first_failure.get_or_insert((i, e));
             }
             Err(e) => return Err(e),
         }
     }
-    Ok((readers, open_dropped))
+    Ok(opened)
+}
+
+/// Why `execute_decode_or_merge` ended before the writer ran.
+enum EarlyExit {
+    /// The exit code, the error already reported.
+    Code(u8),
+    /// An input that could not be opened, to be reported by the caller.
+    Cli(CliError),
 }
 
 /// Run the decode (single input) or k-way merge (two or more) and return the
 /// writer result. `Err(code)` is an early exit: an incompatible-merge or
 /// prime-time failure (L2-MRG-003) whose exit code is chosen here.
 fn execute_decode_or_merge(
-    readers: &[MieFileReader],
+    opened: &mut OpenedInputs,
     cfg: &DecoderConfig,
     output: Option<&Path>,
     write_opts: WriteOptions,
     merge_requested: bool,
-    open_dropped: bool,
-) -> Result<crate::error::MieResult<crate::writer::WriteOutcome>, u8> {
+) -> Result<crate::error::MieResult<crate::writer::WriteOutcome>, EarlyExit> {
+    let readers = &opened.readers;
     if !merge_requested {
         // L2-WRT-021: canonical row order is the LAST stage before the writer, so
         // the guarantee holds over exactly the rows that reach the CSV.
@@ -1492,28 +1519,24 @@ fn execute_decode_or_merge(
         cfg.strict,
     ) {
         Ok(merged) => {
+            // Inputs dropped at open time are counted into the merge, which ends
+            // its stream with one terminal naming every input left out or
+            // truncated, so the writer commits a `.partial` (L2-MRG-004).
             let merged = merged
                 .collapse(cfg.collapse_duplicates, cfg.collapse_window_us)
                 .max_collapse_survivors(cfg.max_collapse_survivors)
-                .delta_scope(cfg.delta_scope);
+                .delta_scope(cfg.delta_scope)
+                .inputs_left_out_at_open(opened.left_out);
             // Clone the suppressed-duplicate counter before the writer consumes
             // the iterator, then report it after (L2-MRG-007).
             let collapsed = merged.collapsed_handle();
-            // An input dropped at open time surfaces a terminal after the good
-            // rows so the writer commits a `.partial` (L2-MRG-004).
-            let open_tail =
-                open_dropped.then_some(Err(crate::error::MieError::UnrecoverableSyncLoss {
-                    offset: 0,
-                    sync_losses: 0,
-                }));
-            // L2-WRT-021: order_rows sits after the merge and the filters, and
-            // before `open_tail` — the tail is a terminal error that must stay
-            // last, and the reorder stage would otherwise hold rows behind it.
+            // L2-WRT-021: order_rows sits after the merge and the filters. The
+            // merge's terminal error flushes the reorder stage's buffered run
+            // before it propagates, so no row is held behind it.
             let result = write_messages(
                 merged
                     .filter_messages(cfg.filters.clone())
-                    .order_rows(cfg.max_sort_group)
-                    .chain(open_tail),
+                    .order_rows(cfg.max_sort_group),
                 output,
                 cfg.error_mode,
                 write_opts,
@@ -1526,7 +1549,23 @@ fn execute_decode_or_merge(
         }
         // Incompatible inputs (L2-MRG-003) and prime-time file failures surface
         // here, before any output — route through the same exit classifier.
-        Err(e) => Err(classify_decode_exit(Err(e), 0, false)),
+        //
+        // Under --allow-partial a prime-time failure reaches here only when
+        // every opened input failed (L2-MRG-004). If an input that failed to
+        // OPEN came earlier in the input list, every input has failed and that
+        // one is the first: report it, exactly as without the flag.
+        Err(e) => {
+            let open_failure_first = cfg.allow_partial
+                && !matches!(e, crate::error::MieError::IncompatibleMergeInputs { .. })
+                && opened
+                    .first_failure
+                    .as_ref()
+                    .is_some_and(|(at, _)| opened.positions.first().is_some_and(|p| at < p));
+            if open_failure_first && let Some((_, open_err)) = opened.first_failure.take() {
+                return Err(EarlyExit::Cli(open_err));
+            }
+            Err(EarlyExit::Code(classify_decode_exit(Err(e), 0, false)))
+        }
     }
 }
 
@@ -1556,8 +1595,15 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
     // commits the batch as `.partial` (L2-MRG-004), mirroring how a priming-time
     // or mid-file failure is handled. A single-input decode is unaffected.
     let merge_requested = input_paths.len() > 1;
-    let (readers, open_dropped) = open_all_readers(&input_paths, &cfg, merge_requested)?;
-    for r in &readers {
+    let mut opened = open_all_readers(&input_paths, &cfg, merge_requested)?;
+    // L2-MRG-004: when NO input could be opened there is nothing to keep, so
+    // --allow-partial does not apply -- report the first input's own error.
+    if opened.readers.is_empty()
+        && let Some((_, e)) = opened.first_failure.take()
+    {
+        return Err(e);
+    }
+    for r in &opened.readers {
         log_info!("opened {} ({} bytes)", r.path().display(), r.file_size());
     }
 
@@ -1596,16 +1642,17 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
     // given (L2-MRG-005). Both feed the same writer. An incompatible-merge /
     // prime-time failure returns its exit code directly.
     let write_result = match execute_decode_or_merge(
-        &readers,
+        &mut opened,
         &cfg,
         args.output.as_deref(),
         write_opts,
         merge_requested,
-        open_dropped,
     ) {
         Ok(r) => r,
-        Err(code) => return Ok(code),
+        Err(EarlyExit::Code(code)) => return Ok(code),
+        Err(EarlyExit::Cli(e)) => return Err(e),
     };
+    let readers = &opened.readers;
 
     // Cumulative sync-loss count across all inputs drives the L1-EXIT-005
     // exit-class summary. Safe to query after the iterator(s) are consumed.
@@ -1830,6 +1877,19 @@ fn classify_decode_exit(
             log_info!(
                 "decode exit class: partial-unrecoverable (sync_losses={sync_losses}); \
                  pass --allow-partial to preserve the rows decoded so far"
+            );
+            exit_code::SYNC_LOSS
+        }
+        Err(e @ MieError::MergeInputsDropped { .. }) => {
+            // L2-MRG-004: a merge under --allow-partial left inputs out. With a
+            // file destination the writer commits a `.partial` and this arm is
+            // never reached; it is reached on stdout, which cannot hold one --
+            // the same exit class a sync loss gets there.
+            log_error!("{e}");
+            eprintln!("Error: {e}");
+            log_info!(
+                "decode exit class: partial-unrecoverable (merge inputs left out); \
+                 write to a file with -o to keep the rows as a .partial"
             );
             exit_code::SYNC_LOSS
         }

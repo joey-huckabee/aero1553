@@ -157,8 +157,9 @@ impl PySource {
         parked()
     }
 
-    /// `MieUnrecoverableSyncLossError` becomes the decoder error it stands
-    /// for, because the writer acts on it; anything else is parked.
+    /// `MieUnrecoverableSyncLossError` and `MieMergeInputsDroppedError` become
+    /// the decoder errors they stand for, because the writer acts on them (it
+    /// commits a `.partial`); anything else is parked.
     fn translate(&self, py: Python<'_>, err: PyErr) -> MieError {
         let sync_loss = py
             .import("aero1553.exceptions")
@@ -177,6 +178,26 @@ impl PySource {
                     return MieError::UnrecoverableSyncLoss {
                         offset,
                         sync_losses,
+                    };
+                }
+            }
+        }
+        // `MieMergeInputsDroppedError` likewise ends a partial merge in a
+        // `.partial` (L2-MRG-004), so it too becomes the error it stands for.
+        let dropped = py
+            .import("aero1553.exceptions")
+            .and_then(|m| m.getattr("MieMergeInputsDroppedError"));
+        if let Ok(class) = dropped {
+            let value = err.value(py);
+            if value.is_instance(&class).unwrap_or(false) {
+                let count = |name: &str| value.getattr(name).and_then(|v| v.extract::<u64>());
+                if let (Ok(left_out), Ok(truncated), Ok(total)) =
+                    (count("left_out"), count("truncated"), count("total"))
+                {
+                    return MieError::MergeInputsDropped {
+                        left_out,
+                        truncated,
+                        total,
                     };
                 }
             }

@@ -434,6 +434,14 @@ pub struct MergedRecordIter<'a> {
     /// Error to surface once the heap drains (an `--allow-partial` deferred
     /// unrecoverable loss — lets the writer commit a `.partial`).
     pending_terminal: Option<MieError>,
+    /// L2-MRG-004 under `--allow-partial`: inputs left out (could not be opened,
+    /// or did not begin with a readable record), inputs truncated mid-file, and
+    /// the number of inputs the merge was asked for. When any input was left
+    /// out the terminal is [`MieError::MergeInputsDropped`] naming these counts;
+    /// otherwise it is the mid-file error itself, if there was one.
+    left_out: u64,
+    truncated: u64,
+    total: u64,
     /// Cross-recorder duplicate collapsing (L2-MRG-007). `Some` when enabled via
     /// `--collapse-duplicates`; `None` keeps every row (the default).
     dedup: Option<DedupWindow>,
@@ -520,10 +528,11 @@ impl<'a> MergedRecordIter<'a> {
         let mut heap = BinaryHeap::new();
         let mut next_seq = vec![0u64; paths.len()];
         let mut prev_us = vec![None; paths.len()];
-        // A priming-time failure under `allow_partial` arms this terminal so the
-        // writer commits a `.partial` (L2-MRG-004), exactly like a mid-file
-        // failure. The file contributed no records (truncated at offset 0).
-        let mut pending_terminal: Option<MieError> = None;
+        // L2-MRG-004: `--allow-partial` keeps what could be decoded. When EVERY
+        // input fails here there is nothing to keep, so the merge fails exactly
+        // as it would without the flag: with the first input's own error.
+        let mut failed = 0usize;
+        let mut first_failure: Option<MieError> = None;
 
         for (idx, iter) in iters.iter_mut().enumerate() {
             match iter.next() {
@@ -548,21 +557,30 @@ impl<'a> MergedRecordIter<'a> {
                             paths[idx].display(),
                             e
                         );
-                        pending_terminal = Some(MieError::UnrecoverableSyncLoss {
-                            offset: 0,
-                            sync_losses: 0,
-                        });
+                        // Counted, not armed: the terminal is chosen when the
+                        // heap drains (`take_terminal`), so it can name every
+                        // input that was left out or truncated.
+                        failed += 1;
+                        first_failure.get_or_insert(e);
                     } else {
                         return Err(e);
                     }
                 }
                 None => {
-                    // File produced no records; contributes nothing.
+                    // File produced no records; contributes nothing. A valid
+                    // empty recording is a success, not a failure.
                 }
             }
         }
+        if failed == iters.len()
+            && let Some(e) = first_failure
+        {
+            return Err(e);
+        }
 
         let warned_backward = vec![false; paths.len()];
+        let total = u64::try_from(paths.len()).unwrap_or(u64::MAX);
+        let left_out = u64::try_from(failed).unwrap_or(u64::MAX);
         Ok(Self {
             iters,
             heap,
@@ -576,7 +594,10 @@ impl<'a> MergedRecordIter<'a> {
             paths,
             delta_tracker: DeltaTracker::new(tick),
             pending_error: None,
-            pending_terminal,
+            pending_terminal: None,
+            left_out,
+            truncated: 0,
+            total,
             dedup: None,
             max_survivors: DEFAULT_MAX_COLLAPSE_SURVIVORS,
             delta_scope: DeltaScope::PerFile,
@@ -622,6 +643,36 @@ impl<'a> MergedRecordIter<'a> {
     pub fn delta_scope(mut self, scope: DeltaScope) -> Self {
         self.delta_scope = scope;
         self
+    }
+
+    /// Record `count` inputs the caller left out of this merge because they
+    /// could not be opened (L2-MRG-004, `--allow-partial`). They were never
+    /// handed to [`Self::new`], but they belong in the count the merge reports
+    /// when it ends: "1 of 3 merge inputs could not be read", not "0 of 2".
+    #[must_use]
+    pub fn inputs_left_out_at_open(mut self, count: usize) -> Self {
+        let count = u64::try_from(count).unwrap_or(u64::MAX);
+        self.left_out = self.left_out.saturating_add(count);
+        self.total = self.total.saturating_add(count);
+        self
+    }
+
+    /// The error that ends the merged stream once the heap drains, if any: a
+    /// [`MieError::MergeInputsDropped`] summary when an input was left out,
+    /// otherwise the deferred mid-file error itself (L2-MRG-004).
+    fn take_terminal(&mut self) -> Option<MieError> {
+        if self.left_out > 0 {
+            self.pending_terminal = None;
+            let summary = MieError::MergeInputsDropped {
+                left_out: self.left_out,
+                truncated: self.truncated,
+                total: self.total,
+            };
+            // Surface once: a second `next()` after the terminal yields `None`.
+            self.left_out = 0;
+            return Some(summary);
+        }
+        self.pending_terminal.take()
     }
 
     /// A shared handle to the suppressed-duplicate counter (L2-MRG-007). The CLI
@@ -709,6 +760,7 @@ impl<'a> MergedRecordIter<'a> {
                     );
                     // Defer until the heap drains so all good records are
                     // written first, then the writer commits a `.partial`.
+                    self.truncated += 1;
                     self.pending_terminal = Some(e);
                 } else {
                     // Surface on the next call (after the popped record).
@@ -729,7 +781,7 @@ impl Iterator for MergedRecordIter<'_> {
                 return Some(Err(e));
             }
             let Some(Reverse(entry)) = self.heap.pop() else {
-                return self.pending_terminal.take().map(Err);
+                return self.take_terminal().map(Err);
             };
             let file_index = entry.file_index;
             // Collapse cross-recorder duplicates *before* the global-DELTA stage

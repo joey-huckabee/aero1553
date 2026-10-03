@@ -138,6 +138,10 @@ def test_conformance_manifest_has_cases_with_oracles() -> None:
             oracle = expected_dir / Path(case[oracle_key]).name
             assert oracle.is_file(), f"oracle for case {name!r} missing at {oracle}"
         for spec in specs:
+            # `<missing>` names an input the runner deliberately never
+            # creates (a merge input that cannot be opened, L2-MRG-004).
+            if spec == "<missing>":
+                continue
             fixture = inputs_dir / Path(spec).name
             assert fixture.is_file(), f"input fixture for case {name!r} missing at {fixture}"
 

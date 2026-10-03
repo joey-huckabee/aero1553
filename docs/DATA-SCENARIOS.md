@@ -316,6 +316,19 @@ failure is detected:*
 | **At open** | empty / unreadable / missing file | dropped → `.partial`, exit 0 |
 | **At priming** (its first record) | non-MIE / all-0xFF first record | dropped → `.partial`, exit 0 |
 | **Mid-file** | unrecoverable sync loss part-way | truncated there → `.partial`, exit 0 |
+| **Every input** fails at open or priming | all missing / all non-MIE | **no** `.partial`: the run fails with the **first** failing input's own error — exit 1 for a missing file, 2 for a non-MIE one — exactly as without `--allow-partial` |
+
+`--allow-partial` keeps what could be decoded; when nothing could be, there is
+nothing to keep, so it does not turn an all-failed run into a success. A valid
+**empty** recording counts as an input that succeeded, so an empty recording
+beside a missing file still gives a (header-only) `.partial`, exit 0.
+
+The closing WARN says what happened. When an input was dropped at open or
+priming it counts them — `1 of 3 merge inputs could not be read and was left
+out (see the per-input warnings above); wrote N rows to out.csv.partial` — and
+adds how many were truncated mid-file, if any; the per-input WARNs above it
+name each file. When inputs were only truncated mid-file, it reports the sync
+loss itself, with its offset.
 
 Without `--allow-partial`, any of these fails the batch (the exit code matches the
 underlying failure). This uniform open/priming/mid-file handling is pinned by an

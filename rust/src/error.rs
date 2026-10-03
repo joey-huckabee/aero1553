@@ -107,6 +107,20 @@ pub enum MieError {
     /// recovery-attempt count for the decode invocation.
     UnrecoverableSyncLoss { offset: u64, sync_losses: u64 },
 
+    /// L2-MRG-004: a merge under `--allow-partial` left out `left_out` of its
+    /// `total` inputs because they could not be opened or did not begin with a
+    /// readable record, and truncated a further `truncated` at a mid-file
+    /// unrecoverable sync loss. It ends the stream exactly as
+    /// [`Self::UnrecoverableSyncLoss`] does -- the writer commits a `.partial`
+    /// -- but names what happened rather than reporting a sync loss at offset 0
+    /// that never occurred. Raised only when `left_out > 0`; a merge whose only
+    /// failure is a mid-file sync loss reports that error itself.
+    MergeInputsDropped {
+        left_out: u64,
+        truncated: u64,
+        total: u64,
+    },
+
     /// L2-DEC-016: the L2-DEC-015 multi-record probe completed with a
     /// confidence below the configured floor — either the winning
     /// aggregate score is too low or the margin between the two
@@ -177,6 +191,7 @@ pub enum MieErrorKind {
     InputOutputCollision,
     ClobberRefused,
     UnrecoverableSyncLoss,
+    MergeInputsDropped,
     TimestampFormatMismatch,
     CalendarUnavailable,
     IncompatibleMergeInputs,
@@ -202,6 +217,7 @@ impl MieError {
             Self::InputOutputCollision { .. } => MieErrorKind::InputOutputCollision,
             Self::ClobberRefused { .. } => MieErrorKind::ClobberRefused,
             Self::UnrecoverableSyncLoss { .. } => MieErrorKind::UnrecoverableSyncLoss,
+            Self::MergeInputsDropped { .. } => MieErrorKind::MergeInputsDropped,
             Self::TimestampFormatMismatch { .. } => MieErrorKind::TimestampFormatMismatch,
             Self::CalendarUnavailable { .. } => MieErrorKind::CalendarUnavailable,
             Self::IncompatibleMergeInputs { .. } => MieErrorKind::IncompatibleMergeInputs,
@@ -244,7 +260,10 @@ impl MieError {
     /// Note that carrying an `offset` field is *not* on its own sufficient:
     /// `HomogeneousPayload` and `TimestampFormatMismatch` both cite an offset
     /// but reject the file as a whole, and Python classes them under
-    /// `MieFileError` accordingly.
+    /// `MieFileError` accordingly. Conversely `MergeInputsDropped` cites none
+    /// yet is record-class: it replaces the `UnrecoverableSyncLoss` a partial
+    /// merge used to end with, and keeps that class so code catching it does
+    /// not break.
     #[must_use]
     pub fn is_record_error(&self) -> bool {
         matches!(
@@ -256,6 +275,7 @@ impl MieError {
                 | MieErrorKind::PayloadError
                 | MieErrorKind::UnknownErrorCode
                 | MieErrorKind::UnrecoverableSyncLoss
+                | MieErrorKind::MergeInputsDropped
         )
     }
 }
@@ -368,6 +388,26 @@ impl fmt::Display for MieError {
                  not reacquire sync within the scan window. \
                  Pass --allow-partial to keep what was decoded as a .partial file."
             ),
+            Self::MergeInputsDropped {
+                left_out,
+                truncated,
+                total,
+            } => {
+                let verb = |n: u64| if n == 1 { "was" } else { "were" };
+                write!(
+                    f,
+                    "{left_out} of {total} merge inputs could not be read and {} left out",
+                    verb(*left_out)
+                )?;
+                if *truncated > 0 {
+                    write!(
+                        f,
+                        ", and {truncated} {} truncated by an unrecoverable sync loss",
+                        verb(*truncated)
+                    )?;
+                }
+                write!(f, " (see the per-input warnings above)")
+            }
             Self::TimestampFormatMismatch {
                 offset,
                 irig_score,
@@ -495,6 +535,10 @@ mod tests {
             K::PayloadError,
             K::UnknownErrorCode,
             K::UnrecoverableSyncLoss,
+            // Not tied to one offset, but it replaces the UnrecoverableSyncLoss
+            // a partial merge used to end with, so it keeps that class: Python
+            // code catching MieRecordError around such a merge still works.
+            K::MergeInputsDropped,
         ];
         // File-class: an I/O failure on the input itself.
         const FILE: &[K] = &[K::FileNotFound, K::FileEmpty, K::FileIo];
@@ -533,6 +577,7 @@ mod tests {
                 | K::InputOutputCollision
                 | K::ClobberRefused
                 | K::UnrecoverableSyncLoss
+                | K::MergeInputsDropped
                 | K::TimestampFormatMismatch
                 | K::CalendarUnavailable
                 | K::IncompatibleMergeInputs
@@ -541,7 +586,7 @@ mod tests {
         }
         let listed = RECORD.len() + FILE.len() + NEITHER.len();
         assert_eq!(
-            listed, 19,
+            listed, 20,
             "every MieErrorKind variant must appear in exactly one list; \
              add the new variant to RECORD, FILE or NEITHER (and to the \
              matching Python base class)"
@@ -620,6 +665,11 @@ mod tests {
             MieErrorKind::UnrecoverableSyncLoss => MieError::UnrecoverableSyncLoss {
                 offset: 0,
                 sync_losses: 0,
+            },
+            MieErrorKind::MergeInputsDropped => MieError::MergeInputsDropped {
+                left_out: 1,
+                truncated: 0,
+                total: 2,
             },
             MieErrorKind::TimestampFormatMismatch => MieError::TimestampFormatMismatch {
                 offset: 0,
