@@ -421,6 +421,12 @@ MergedSource::MergedSource(const std::vector<MieFileReader*>& readers, const Mer
         iters_.push_back(readers_[i]->iter());
     }
 
+    // L2-MRG-004: --allow-partial keeps what could be decoded. When EVERY input
+    // fails here there is nothing to keep, so the merge fails exactly as it
+    // would without the flag: with the first input's own error.
+    std::size_t failed = 0;
+    PendingError first_failure;
+
     for (std::size_t i = 0; i < iters_.size(); ++i) {
         MieMessage first;
         bool got = false;
@@ -439,6 +445,10 @@ MergedSource::MergedSource(const std::vector<MieFileReader*>& readers, const Mer
                          "(--allow-partial): " +
                          error.message());
             pending_terminal_.reset(new MieError(MieError::unrecoverable_sync_loss(0, 0)));
+            failed += 1;
+            if (!first_failure) {
+                first_failure.reset(new MieError(error));
+            }
             continue;
         }
         if (!got) {
@@ -455,6 +465,9 @@ MergedSource::MergedSource(const std::vector<MieFileReader*>& readers, const Mer
         has_prev_[i] = true;
         next_seq_[i] = 1;
         heap_.push(entry);
+    }
+    if (first_failure && failed == iters_.size()) {
+        throw take(first_failure);
     }
 }
 

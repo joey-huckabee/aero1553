@@ -31,6 +31,8 @@ The exit-code taxonomy is pinned by L1-EXIT-001 through L1-EXIT-010 and the L2-C
 
 The `count` and `dump` subcommands inherit `0`, `1`, `2`, `4`, and `5` — they don't write a streaming output that could be partial (no exit `3`) and they don't merge (no exit `6`) (L2-CLI-011). A multi-file merge that exceeds `MAX_MERGE_FILES` (256) inputs, or combines input methods (positionals + `--manifest` / `--glob`), is a **usage error → exit 4**.
 
+**`--allow-partial` on a merge where every input fails.** A merge under `--allow-partial` drops a failing input and commits the rest as `.partial`, exit `0` (L2-MRG-004). When **every** input fails at open or priming there is nothing to keep, so the flag does not apply: the run exits with the **first** failing input's own code — `1` for a missing or unreadable file, `2` for one that is not a recording — and writes no output file, exactly as without the flag. A valid empty recording counts as a success, so an empty recording beside a failing input is still a partial merge.
+
 **Configuration vs. flag-value validation.** Out-of-range or malformed values are rejected *before* decoding begins, with a stderr message naming the offending key or flag. The same logical check yields a different code depending on the *source*: a bad **CLI flag value** (e.g. a non-positive `--standard-tick-rate-hz`, an out-of-range `--detect-records`) is a **usage error → exit 4**, while the same value supplied through a **TOML key** is a **configuration error → exit 5** (L2-CFG-011, L2-CLI-012). Either way the input is never opened and no output file is created.
 
 ---

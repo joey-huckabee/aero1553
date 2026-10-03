@@ -690,6 +690,78 @@
       "expected_stderr_contains": "could not be read; truncating it from the merge"
     },
     {
+      "name": "merge-allow-partial-all-missing",
+      "inputs": [
+        "<missing>",
+        "<missing>"
+      ],
+      "args": [
+        "--allow-partial"
+      ],
+      "expected_exit": 1,
+      "expected_stderr_contains": "MIE file not found"
+    },
+    {
+      "name": "merge-allow-partial-all-unreadable",
+      "inputs": [
+        "inputs/no-valid-records.hex",
+        "inputs/no-valid-records.hex"
+      ],
+      "args": [
+        "--allow-partial"
+      ],
+      "expected_exit": 2,
+      "expected_stderr_contains": "No valid MIE records"
+    },
+    {
+      "name": "merge-allow-partial-missing-first",
+      "inputs": [
+        "<missing>",
+        "inputs/no-valid-records.hex"
+      ],
+      "args": [
+        "--allow-partial"
+      ],
+      "expected_exit": 1,
+      "expected_stderr_contains": "MIE file not found"
+    },
+    {
+      "name": "merge-allow-partial-unreadable-first",
+      "inputs": [
+        "inputs/no-valid-records.hex",
+        "<missing>"
+      ],
+      "args": [
+        "--allow-partial"
+      ],
+      "expected_exit": 2,
+      "expected_stderr_contains": "No valid MIE records"
+    },
+    {
+      "name": "merge-allow-partial-empty-and-missing",
+      "inputs": [
+        "inputs/empty-recording.hex",
+        "<missing>"
+      ],
+      "args": [
+        "--allow-partial"
+      ],
+      "expected_partial": "expected/merge-allow-partial-empty-and-missing.csv.partial",
+      "expected_stderr_contains": "could not be opened; truncating it from the merge"
+    },
+    {
+      "name": "merge-allow-partial-missing-and-good",
+      "inputs": [
+        "<missing>",
+        "inputs/merge-a.hex"
+      ],
+      "args": [
+        "--allow-partial"
+      ],
+      "expected_partial": "expected/merge-allow-partial-missing-and-good.csv.partial",
+      "expected_stderr_contains": "could not be opened; truncating it from the merge"
+    },
+    {
       "name": "config-exclude-types-int",
       "input": "inputs/basic-multi-record.hex",
       "expected": "expected/config-filter.csv",

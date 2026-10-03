@@ -316,6 +316,12 @@ failure is detected:*
 | **At open** | empty / unreadable / missing file | dropped → `.partial`, exit 0 |
 | **At priming** (its first record) | non-MIE / all-0xFF first record | dropped → `.partial`, exit 0 |
 | **Mid-file** | unrecoverable sync loss part-way | truncated there → `.partial`, exit 0 |
+| **Every input** fails at open or priming | all missing / all non-MIE | **no** `.partial`: the run fails with the **first** failing input's own error — exit 1 for a missing file, 2 for a non-MIE one — exactly as without `--allow-partial` |
+
+`--allow-partial` keeps what could be decoded; when nothing could be, there is
+nothing to keep, so it does not turn an all-failed run into a success. A valid
+**empty** recording counts as an input that succeeded, so an empty recording
+beside a missing file still gives a (header-only) `.partial`, exit 0.
 
 Without `--allow-partial`, any of these fails the batch (the exit code matches the
 underlying failure). This uniform open/priming/mid-file handling is pinned by an

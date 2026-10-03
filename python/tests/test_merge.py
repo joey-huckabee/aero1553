@@ -15,6 +15,7 @@ from aero1553.exceptions import (
     Aero1553Error,
     MieIncompatibleMergeInputsError,
     MieNonMonotonicInputError,
+    MieNoValidRecordsError,
 )
 from aero1553.merge import (
     MAX_MERGE_FILES,
@@ -549,23 +550,18 @@ def test_merge_no_allow_partial_priming_failure_raises(tmp_path: Path) -> None:
 
 
 @pytest.mark.requirement("L2-MRG-004")
-def test_merge_allow_partial_all_inputs_bad(tmp_path: Path) -> None:
-    """L2-MRG-004: a merge where every input fails to prime still commits an
-    (empty) ``.partial`` under allow_partial."""
-    from aero1553.writer import WriteOptions, write_csv
-
+def test_merge_allow_partial_fails_when_every_input_fails(tmp_path: Path) -> None:
+    """L2-MRG-004: allow_partial keeps what could be decoded. When EVERY input
+    fails there is nothing to keep, so the merge fails exactly as it would
+    without the flag -- with the first input's own error -- instead of handing
+    the writer an empty ``.partial`` to commit as a success."""
     fa = tmp_path / "a.mie"
     fb = tmp_path / "b.mie"
     fa.write_bytes(b"\xff" * 4096)
-    fb.write_bytes(b"\xff" * 4096)
+    fb.write_bytes(b"\xff" * 2048)
     readers = [MieFileReader(fa), MieFileReader(fb)]
-    merged = merge_readers(readers, allow_partial=True)
-
-    out = tmp_path / "out.csv"
-    outcome = write_csv(merged, output=out, opts=WriteOptions(allow_partial=True))
-    assert outcome.partial is not None
-    assert outcome.normal_count == 0
-    assert (tmp_path / "out.csv.partial").exists()
+    with pytest.raises(MieNoValidRecordsError, match=r"a\.mie"):
+        merge_readers(readers, allow_partial=True)
 
 
 @pytest.mark.requirement("L2-MRG-004")

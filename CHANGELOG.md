@@ -211,6 +211,18 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **A merge in which every input fails no longer reports success under
+  `--allow-partial`** (all three implementations; L2-MRG-004 amended).
+  `--allow-partial` keeps what a merge could decode; when every input failed
+  at open or on its first record there was nothing to keep, yet Rust and
+  Python exited `0` with an empty `.partial` -- as did C++ for non-MIE inputs,
+  while it exited `2` for missing ones. Such a run now fails exactly as it
+  would without the flag: with the **first** failing input's own error and
+  exit code (`1` for a missing or unreadable file, `2` for one that is not a
+  recording), and no output file. A valid empty recording counts as an input
+  that succeeded. **Behaviour change:** a batch script that ran a merge of
+  only bad inputs with `--allow-partial` now sees exit `1` or `2` instead of
+  `0`.
 - **Filters and `--collapse-duplicates` treat an error and its `SPURIOUS_DATA`
   continuation as one unit** (all three implementations; new L2-FLT-003,
   L2-FLT-001 and L2-MRG-007 amended). A continuation has no RT or subaddress,

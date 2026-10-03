@@ -524,6 +524,11 @@ impl<'a> MergedRecordIter<'a> {
         // writer commits a `.partial` (L2-MRG-004), exactly like a mid-file
         // failure. The file contributed no records (truncated at offset 0).
         let mut pending_terminal: Option<MieError> = None;
+        // L2-MRG-004: `--allow-partial` keeps what could be decoded. When EVERY
+        // input fails here there is nothing to keep, so the merge fails exactly
+        // as it would without the flag: with the first input's own error.
+        let mut failed = 0usize;
+        let mut first_failure: Option<MieError> = None;
 
         for (idx, iter) in iters.iter_mut().enumerate() {
             match iter.next() {
@@ -552,14 +557,22 @@ impl<'a> MergedRecordIter<'a> {
                             offset: 0,
                             sync_losses: 0,
                         });
+                        failed += 1;
+                        first_failure.get_or_insert(e);
                     } else {
                         return Err(e);
                     }
                 }
                 None => {
-                    // File produced no records; contributes nothing.
+                    // File produced no records; contributes nothing. A valid
+                    // empty recording is a success, not a failure.
                 }
             }
+        }
+        if failed == iters.len()
+            && let Some(e) = first_failure
+        {
+            return Err(e);
         }
 
         let warned_backward = vec![false; paths.len()];

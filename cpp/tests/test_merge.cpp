@@ -822,3 +822,58 @@ TEST_CASE("a copied pair collapses as a pair", "[merge][L2-MRG-007]") {
                         error_and_continuation(15, 0x0000, 500), collapsed) == "RT15,cont:0000");
     CHECK(collapsed == 2u);
 }
+
+// ---------------------------------------------------------------------------
+// L2-MRG-004: --allow-partial when every input fails
+// ---------------------------------------------------------------------------
+
+TEST_CASE("a partial merge in which every input fails reports the first input's error",
+          "[merge][L2-MRG-004]") {
+    // --allow-partial keeps what could be decoded. When nothing could be, there
+    // is nothing to keep: the merge fails exactly as it would without the flag,
+    // instead of handing the writer an empty .partial to commit as a success.
+    const TempFile a("mie-allfail-a.mie", std::vector<uint8_t>(4096, 0xFF));
+    const TempFile b("mie-allfail-b.mie", std::vector<uint8_t>(2048, 0xFF));
+    mie::MieFileReader reader_a;
+    mie::MieFileReader reader_b;
+    reader_a.open(a.str(), irig_options());
+    reader_b.open(b.str(), irig_options());
+    std::vector<mie::MieFileReader*> readers;
+    readers.push_back(&reader_a);
+    readers.push_back(&reader_b);
+
+    mie::merge::MergeOptions options;
+    options.allow_partial = true;
+    bool threw = false;
+    try {
+        const mie::merge::MergedSource source(readers, options);
+    } catch (const mie::MieError& error) {
+        threw = true;
+        CHECK(error.kind() == mie::KIND_NO_VALID_RECORDS);
+        CHECK(error.message().find("mie-allfail-a.mie") != std::string::npos);
+    }
+    CHECK(threw);
+}
+
+TEST_CASE("an empty recording counts as a successful input in a partial merge",
+          "[merge][L2-MRG-004]") {
+    // A valid empty recording (the terminator alone) contributed nothing but did
+    // not fail, so a failing input beside it is a partial merge, not "every
+    // input failed".
+    const TempFile empty("mie-partial-empty.mie", std::vector<uint8_t>(2, 0x00));
+    const TempFile bad("mie-partial-bad.mie", std::vector<uint8_t>(4096, 0xFF));
+    mie::MieFileReader reader_a;
+    mie::MieFileReader reader_b;
+    reader_a.open(empty.str(), irig_options());
+    reader_b.open(bad.str(), irig_options());
+    std::vector<mie::MieFileReader*> readers;
+    readers.push_back(&reader_a);
+    readers.push_back(&reader_b);
+
+    mie::merge::MergeOptions options;
+    options.allow_partial = true;
+    mie::merge::MergedSource source(readers, options);
+    mie::MieMessage message;
+    // No records, then the terminal marker that makes the writer commit .partial.
+    CHECK_THROWS_AS(source.next(message), mie::MieError);
+}

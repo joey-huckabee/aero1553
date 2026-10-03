@@ -1138,6 +1138,12 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
     std::vector<std::shared_ptr<MieFileReader>> owned;
     std::vector<MieFileReader*> readers;
     bool open_dropped = false;
+    // The first input that failed to open (under --allow-partial on a merge),
+    // and the input-list positions of it and of the first input that opened:
+    // when every input fails, the earlier of the two is reported (L2-MRG-004).
+    std::shared_ptr<CliError> first_open_failure;
+    std::size_t first_open_failure_at = 0;
+    std::size_t first_opened_at = 0;
     owned.reserve(inputs.size());
     readers.reserve(inputs.size());
     for (std::size_t i = 0; i < inputs.size(); ++i) {
@@ -1153,6 +1159,10 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
                              "(--allow-partial): " +
                              error.message());
                 open_dropped = true;
+                if (!first_open_failure) {
+                    first_open_failure.reset(new CliError(exit_code_for(error), error.message()));
+                    first_open_failure_at = i;
+                }
                 continue;
             }
             throw CliError(exit_code_for(error), error.message());
@@ -1161,9 +1171,15 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
                      " bytes)");
         readers.push_back(reader.get());
         owned.push_back(reader);
+        if (readers.size() == 1) {
+            first_opened_at = i;
+        }
     }
-    if (readers.empty()) {
-        throw CliError(EXIT_NO_RECORDS, "no input file could be opened");
+    // L2-MRG-004: when NO input could be opened there is nothing to keep, so
+    // --allow-partial does not apply -- report the first input's own error,
+    // exactly as without the flag.
+    if (readers.empty() && first_open_failure) {
+        throw CliError(first_open_failure->code, first_open_failure->message);
     }
 
     // `--output` is a PATH, and no value of it is special-cased -- `-o -`
@@ -1240,6 +1256,15 @@ int run_decode(const Streams& streams, const GlobalArgs& globals, DecodeArgs& ar
             // Incompatible inputs (L2-MRG-003) and priming failures surface
             // here, before any output exists -- through the same classifier
             // that handles a mid-stream failure, so the exit codes agree.
+            //
+            // Under --allow-partial a priming failure reaches here only when
+            // every opened input failed (L2-MRG-004). If an input that failed
+            // to OPEN came earlier in the input list, every input has failed
+            // and that one is the first: report it, exactly as without the flag.
+            if (config.allow_partial && error.kind() != KIND_INCOMPATIBLE_MERGE_INPUTS &&
+                first_open_failure && first_open_failure_at < first_opened_at) {
+                throw CliError(first_open_failure->code, first_open_failure->message);
+            }
             return report_decode_failure(streams, error, 0);
         }
         head = merged.get();
