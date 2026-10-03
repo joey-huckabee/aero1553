@@ -86,6 +86,20 @@ void log_filtered_out(const MieMessage& message) {
 }  // namespace
 
 bool FilterConfig::should_exclude(const MieMessage& message) const {
+    return excluded(message, true);
+}
+
+bool FilterConfig::excludes_as_parent(const MieMessage& parent) const {
+    return excluded(parent, false);
+}
+
+bool FilterConfig::excludes_type_of(const MieMessage& message) const {
+    const uint8_t message_type = message.type_word.message_type;
+    return contains(exclude_types, message_type) ||
+           (!include_types.empty() && !contains(include_types, message_type));
+}
+
+bool FilterConfig::excluded(const MieMessage& message, bool with_types) const {
     const uint8_t message_type = message.type_word.message_type;
     const Bus bus = message.type_word.bus;
     const bool has_command = message.command_word.has_value();
@@ -110,7 +124,7 @@ bool FilterConfig::should_exclude(const MieMessage& message) const {
     // Inclusion. An EMPTY set is no constraint at all -- reading it as "include
     // nothing" would make a config that sets only exclude_rts drop every record
     // in the file.
-    if (!include_types.empty() && !contains(include_types, message_type)) {
+    if (with_types && !include_types.empty() && !contains(include_types, message_type)) {
         return true;
     }
     if (!include_buses.empty() && !contains(include_buses, bus)) {
@@ -131,7 +145,7 @@ bool FilterConfig::should_exclude(const MieMessage& message) const {
 }
 
 FilteredSource::FilteredSource(MessageSource& inner, const FilterConfig& filters)
-    : inner_(&inner), filters_(filters), passed_(0), excluded_(0) {
+    : inner_(&inner), filters_(filters), passed_(0), excluded_(0), parent_kept_() {
     if (filters_.is_active()) {
         log_active_filters(filters_);
     }
@@ -158,13 +172,29 @@ bool FilteredSource::next(MieMessage& out) {
         if (!inner_->next(out)) {
             return false;
         }
-        if (!filters_.should_exclude(out)) {
+        if (!drops(out)) {
             passed_ += 1;
             return true;
         }
         excluded_ += 1;
         log_filtered_out(out);
     }
+}
+
+bool FilteredSource::drops(const MieMessage& message) {
+    // A 0x2000 continuation is the second half of its parent's transaction, so
+    // it shares the parent's fate (L2-FLT-003): kept exactly when the parent
+    // passes the RT, subaddress, bus and type-exclusion filters, and its own
+    // type passes any type filter.
+    const bool drop = (parent_kept_.has_value() && message.is_continuation())
+                          ? (!parent_kept_.value() || filters_.excludes_type_of(message))
+                          : filters_.should_exclude(message);
+    if (message.is_error() && !message.is_spurious()) {
+        parent_kept_.set(!filters_.excludes_as_parent(message));
+    } else {
+        parent_kept_.reset();
+    }
+    return drop;
 }
 
 }  // namespace mie

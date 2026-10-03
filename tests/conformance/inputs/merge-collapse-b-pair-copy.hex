@@ -1,0 +1,9 @@
+# Recorder B for the L2-MRG-007 pairing cases: an exact copy of recorder A's
+# whole pair (merge-continuation-a.hex). Under --collapse-duplicates both of
+# B's records collapse, leaving one error and one continuation.
+
+# RT15 SA11 Receive, ERRORED -- identical to recorder A's @ .000500
+0248 0F18 20DB F401 7E79 0000 0000 1E01
+
+# SPURIOUS_DATA continuation -> 0x2000, stamped @ .000510 -- identical to A's
+2005 0F18 20DB FE01 0000

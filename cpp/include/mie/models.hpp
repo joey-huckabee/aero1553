@@ -528,6 +528,14 @@ struct MieMessage {
     bool is_error() const { return type_word.error; }
     bool is_spurious() const { return message_format == FORMAT_SPURIOUS_DATA; }
 
+    /// A SPURIOUS_DATA record continuing the errored record decoded just before
+    /// it (decoder code 0x2000, L2-ERR-005). Filtering and duplicate collapse
+    /// decide its fate through its parent rather than on its own.
+    bool is_continuation() const {
+        return is_spurious() && error_word.has_value() &&
+               error_word.value() == ERROR_SPURIOUS_CONTINUATION;
+    }
+
     /// The `ERROR` column: "", "ERROR", or "SPURIOUS".
     const char* error_label() const;
 };

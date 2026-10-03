@@ -211,6 +211,21 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **Filters and `--collapse-duplicates` treat an error and its `SPURIOUS_DATA`
+  continuation as one unit** (all three implementations; new L2-FLT-003,
+  L2-FLT-001 and L2-MRG-007 amended). A continuation has no RT or subaddress,
+  so it used to be judged as if it stood alone: `--exclude-rts 15` removed
+  RT15's error rows but kept their `0x2000` continuations, each now under an
+  unrelated row, and `--collapse-duplicates` could collapse an error while
+  keeping its continuation, or the reverse. A continuation now shares its
+  error's fate: the RT, subaddress and bus filters and a type exclusion naming
+  the error's type keep or remove both, and collapse removes both or neither.
+  **Behaviour change:** `--include-rts` / `--include-subaddresses` /
+  `--include-buses` now keep the continuations of the errors they keep (they
+  used to drop every spurious row). Type filters still judge a continuation by
+  its own type: `--exclude-types SPURIOUS_DATA` removes it and
+  `--include-types SPURIOUS_DATA` keeps it. Standalone `0x2001` records are
+  unaffected.
 - **A `SPURIOUS_DATA` continuation now always sits directly under its error
   row, in one recording and in a multi-file merge** (all three
   implementations; L2-ERR-005, L1-OUT-003 and L2-WRT-021 amended). Each
@@ -227,8 +242,8 @@ shared behavior) holds at any compatible version pair. See
   equal-timestamp run it follows, and sorting would move the record it
   followed away from the run's end, that run is written in arrival order
   (logged at DEBUG), as the `max_sort_group` cap already does.
-  `docs/DATAFLOW.md` records the analysis and the cases still open (a filter
-  or duplicate collapse removing the error row).
+  `docs/DATAFLOW.md` records the analysis. Filters and duplicate collapse
+  keep the pair together too (the entry above).
 - **A `--glob` with a wildcard in its directory part is now a usage error
   (exit `4`) with a message that says so** (all three implementations;
   L2-MRG-001). Wildcards have only ever applied to the filename, so

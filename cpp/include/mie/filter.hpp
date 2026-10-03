@@ -23,6 +23,7 @@
 #include <vector>
 
 #include "mie/models.hpp"
+#include "mie/optional.hpp"
 #include "mie/source.hpp"
 
 namespace mie {
@@ -51,8 +52,25 @@ struct FilterConfig {
     /// entirely rather than run a predicate that cannot reject anything.
     bool is_active() const;
 
-    /// True when `message` should be dropped from the output.
+    /// True when `message` should be dropped from the output, judged on its
+    /// own. In a stream, `FilteredSource` judges a 0x2000 continuation through
+    /// its parent instead (L2-FLT-003).
     bool should_exclude(const MieMessage& message) const;
+
+    /// The parent half of the pairing rule (L2-FLT-003): would `parent`'s RT,
+    /// subaddress, bus or type-exclusion filters drop it? `include_types` is
+    /// left out on purpose -- a type SELECTION is judged on each record's own
+    /// type, so `--include-types SPURIOUS_DATA` keeps the continuations it
+    /// asked for even though it drops their parents.
+    bool excludes_as_parent(const MieMessage& parent) const;
+
+    /// The continuation half: is the record's own type excluded, or left out
+    /// of an active type selection?
+    bool excludes_type_of(const MieMessage& message) const;
+
+  private:
+    /// `should_exclude`, with the type selection optionally skipped.
+    bool excluded(const MieMessage& message, bool with_types) const;
 };
 
 /// A `MessageSource` that drops what the filters exclude.
@@ -78,10 +96,21 @@ class FilteredSource : public MessageSource {
     uint64_t excluded() const { return excluded_; }
 
   private:
+    /// Whether to drop `message`, applying the continuation pairing rule.
+    bool drops(const MieMessage& message);
+
     MessageSource* inner_;
     FilterConfig filters_;
     uint64_t passed_;
     uint64_t excluded_;
+    /// For the record just seen, when it was an errored (non-spurious) one:
+    /// whether it passed the parent-side filters. Absent after any other
+    /// record, so a continuation with no errored record before it is judged on
+    /// its own. A continuation always arrives directly after its parent -- the
+    /// reader emits them back to back, they share one timestamp so a merge
+    /// cannot separate them, and collapse keeps or drops them together -- so
+    /// one remembered verdict is all the state this needs.
+    Optional<bool> parent_kept_;
 };
 
 }  // namespace mie

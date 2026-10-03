@@ -339,6 +339,8 @@ over-collapses. See [`USER-GUIDE.md`](USER-GUIDE.md) for worked examples.
 | Situation | What the tool does |
 |---|---|
 | Several recorders witnessed one transaction | With `--collapse-duplicates`, one row survives; without it, one row per recorder. |
+| A recorder's error duplicates another's, but its spurious continuation (`2000`) holds different leftover words | The error collapses and its continuation goes with it — a continuation is never kept without its own error row. |
+| A recorder's error is its own, but its continuation's words match another recorder's continuation | Both are kept: a continuation is collapsed only when its error is, never on its own content. |
 | The recorders' clocks differ by a few hundred microseconds | Widen the tolerance: `--collapse-window-us 200`. The test is absolute distance, so it does not matter which recorder is ahead. |
 | One recorder's clock stepped backward mid-file | Neither faults nor over-collapses -- and the survivor set still shrinks, because retention is defined over the whole set rather than over the oldest arrival (`L2-MRG-007`). |
 | Every record falls inside one window (all-alike timestamps, or a very wide window) | The `max_collapse_survivors` cap (default 4096) is reached; the oldest survivor is evicted to make room, **one** WARN is emitted for the whole run, collapsing continues best-effort, **no rows are dropped** from the output, exit 0. |
@@ -391,6 +393,15 @@ and aren't counted):
 - `--include-types/-rts/-buses/-subaddresses` keep *only* matching records.
 - Values are comma-separated and the flag repeats to accumulate
   (`--include-rts 15,20 --include-rts 31`).
+- A spurious **continuation** (`2000`) goes wherever its error row goes: filter
+  out RT 15 and RT 15's errors take their continuations with them; keep only
+  RT 15 and the continuations stay. Only a type filter judges it by its own
+  type — `--exclude-types SPURIOUS_DATA` removes it, `--include-types
+  SPURIOUS_DATA` keeps it. A standalone spurious row (`2001`) has no RT, so an
+  RT or subaddress *exclusion* never removes it and an *inclusion* always does
+  (`L2-FLT-003`).
+- `--collapse-duplicates` treats an error and its continuation as one unit:
+  both are collapsed as another recorder's copy, or neither is (§8).
 
 **MUX** fills the `MUX` column from a field of each input's file name (default on,
 `L2-WRT-020`) — handy when file names encode the source recorder. Each merged row

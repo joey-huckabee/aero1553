@@ -1,0 +1,25 @@
+# L2-FLT-003: a 0x2000 continuation shares its errored parent's filter fate.
+# Three records, the third differing from the parent in EVERY filtered
+# dimension, so each filter case shows what happens to the pair alone:
+#
+#   parent        RT15  SA11  Receive   BC_TO_RT  bus A   ERRORED  @ .456225
+#   continuation  (no RT / SA)          SPURIOUS  bus A   0x2000   (stamped .456504,
+#                                                                  reported at .456225)
+#   other         RT3   SA22  Transmit  RT_TO_BC  bus B   clean    @ .457187
+
+# Errored RT15 SA11 Receive with one captured payload word and DDC error 0x011E.
+02470F1826DB21F6
+7E79 0004 1E01
+
+# SPURIOUS_DATA continuation with two raw words.
+20060F1826DB38F7
+AAAA BBBB
+
+# Clean RT3 SA22 Transmit on bus B (errors-inline's last record, RT and bus
+# changed; its Status Word carries RT3 to match).
+84240F1826DBE3F9
+DE1E 0018
+2010 8241 0000 0815 0000 0000 0000 0000
+00FE 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0300 0000 0000 0000 0000 0000
+0000 0020 0000 0000 0000 0000

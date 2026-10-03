@@ -451,6 +451,147 @@
       "expected": "expected/merge-continuation-tie-at-parent.csv"
     },
     {
+      "name": "filter-continuation-exclude-rts-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-exclude-rts-parent.csv",
+      "args": [
+        "--exclude-rts",
+        "15"
+      ]
+    },
+    {
+      "name": "filter-continuation-exclude-rts-other",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-exclude-rts-other.csv",
+      "args": [
+        "--exclude-rts",
+        "3"
+      ]
+    },
+    {
+      "name": "filter-continuation-include-rts-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-include-rts-parent.csv",
+      "args": [
+        "--include-rts",
+        "15"
+      ]
+    },
+    {
+      "name": "filter-continuation-include-rts-other",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-include-rts-other.csv",
+      "args": [
+        "--include-rts",
+        "3"
+      ]
+    },
+    {
+      "name": "filter-continuation-exclude-subaddresses-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-exclude-subaddresses-parent.csv",
+      "args": [
+        "--exclude-subaddresses",
+        "11"
+      ]
+    },
+    {
+      "name": "filter-continuation-include-subaddresses-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-include-subaddresses-parent.csv",
+      "args": [
+        "--include-subaddresses",
+        "11"
+      ]
+    },
+    {
+      "name": "filter-continuation-exclude-buses-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-exclude-buses-parent.csv",
+      "args": [
+        "--exclude-buses",
+        "A"
+      ]
+    },
+    {
+      "name": "filter-continuation-include-buses-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-include-buses-parent.csv",
+      "args": [
+        "--include-buses",
+        "A"
+      ]
+    },
+    {
+      "name": "filter-continuation-exclude-types-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-exclude-types-parent.csv",
+      "args": [
+        "--exclude-types",
+        "BC_TO_RT"
+      ]
+    },
+    {
+      "name": "filter-continuation-exclude-types-spurious",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-exclude-types-spurious.csv",
+      "args": [
+        "--exclude-types",
+        "SPURIOUS_DATA"
+      ]
+    },
+    {
+      "name": "filter-continuation-include-types-spurious",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-include-types-spurious.csv",
+      "args": [
+        "--include-types",
+        "SPURIOUS_DATA"
+      ]
+    },
+    {
+      "name": "filter-continuation-include-types-parent",
+      "input": "inputs/filter-continuation.hex",
+      "expected": "expected/filter-continuation-include-types-parent.csv",
+      "args": [
+        "--include-types",
+        "BC_TO_RT"
+      ]
+    },
+    {
+      "name": "merge-collapse-parent-copy",
+      "inputs": [
+        "inputs/merge-continuation-a.hex",
+        "inputs/merge-collapse-b-parent-copy.hex"
+      ],
+      "expected": "expected/merge-collapse-parent-copy.csv",
+      "args": [
+        "--collapse-duplicates"
+      ]
+    },
+    {
+      "name": "merge-collapse-continuation-copy",
+      "inputs": [
+        "inputs/merge-continuation-a.hex",
+        "inputs/merge-collapse-b-continuation-copy.hex"
+      ],
+      "expected": "expected/merge-collapse-continuation-copy.csv",
+      "args": [
+        "--collapse-duplicates"
+      ]
+    },
+    {
+      "name": "merge-collapse-pair-copy",
+      "inputs": [
+        "inputs/merge-continuation-a.hex",
+        "inputs/merge-collapse-b-pair-copy.hex"
+      ],
+      "expected": "expected/merge-collapse-pair-copy.csv",
+      "args": [
+        "--collapse-duplicates"
+      ]
+    },
+    {
       "name": "merge-collapse-cross-recorder",
       "inputs": [
         "inputs/merge-a.hex",

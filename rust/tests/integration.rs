@@ -1833,6 +1833,101 @@ fn merge_collapse_cross_recorder_duplicate() {
     assert_eq!(collapsed.load(Ordering::Relaxed), 1);
 }
 
+/// Merge two recorders with `--collapse-duplicates` and describe what survives:
+/// `(rt or "cont", first data word)` per record, plus the suppressed count. The
+/// records use the conformance fixtures' encodings (`merge-continuation-a.hex`
+/// and the `merge-collapse-b-*.hex` variants).
+fn collapse_pair(a: &[u8], b: &[u8]) -> (Vec<(String, u16)>, u64) {
+    use aero1553::merge::MergedRecordIter;
+    use std::sync::atomic::Ordering;
+    let (fa, fb) = (TempFile::new(a), TempFile::new(b));
+    let readers = vec![
+        MieFileReader::new(fa.path()).unwrap(),
+        MieFileReader::new(fb.path()).unwrap(),
+    ];
+    let merged = MergedRecordIter::new(&readers, None, false, false)
+        .unwrap()
+        .collapse(true, 0);
+    let collapsed = merged.collapsed_handle();
+    let rows = merged
+        .map(|m| {
+            let m = m.unwrap();
+            let who = m
+                .rt()
+                .map_or_else(|| "cont".to_string(), |rt| rt.to_string());
+            (who, m.data_words.as_slice()[0])
+        })
+        .collect();
+    (rows, collapsed.load(Ordering::Relaxed))
+}
+
+/// Recorder A's errored RT15 record @ .000500 and its continuation (word 0000).
+fn recorder_a_pair() -> Vec<u8> {
+    [
+        hex("02480F1820DBF4017E79000000001E01"),
+        hex("20050F1820DBFE010000"),
+    ]
+    .concat()
+}
+
+/// L2-MRG-007 pairing, first example: B's error is an exact copy of A's, but
+/// B's continuation holds different words. B's error collapses, and its
+/// continuation goes with it -- a continuation is never kept without its own
+/// parent. A's continuation (word 0000) is the one that survives.
+/// Requirements: L2-MRG-007, L2-ERR-005
+#[test]
+fn collapsing_a_parent_also_collapses_its_continuation() {
+    let b = [
+        hex("02480F1820DBF4017E79000000001E01"),
+        hex("20050F1820DBFE012222"),
+    ]
+    .concat();
+    let (rows, collapsed) = collapse_pair(&recorder_a_pair(), &b);
+    assert_eq!(
+        rows,
+        [("15".to_string(), 0x0000), ("cont".to_string(), 0x0000)]
+    );
+    assert_eq!(collapsed, 2, "B's error and B's continuation");
+}
+
+/// L2-MRG-007 pairing, second example: B's error differs from A's (RT16), but
+/// B's continuation is an exact copy of A's. Judged on content alone it would
+/// collapse and leave B's error without its leftover words; it shares its
+/// parent's fate instead, and B's parent survives.
+/// Requirements: L2-MRG-007, L2-ERR-005
+#[test]
+fn a_continuation_is_not_collapsed_while_its_parent_survives() {
+    let b = [
+        hex("02480F1820DBF4017E81000000001E01"),
+        hex("20050F1820DBFE010000"),
+    ]
+    .concat();
+    let (rows, collapsed) = collapse_pair(&recorder_a_pair(), &b);
+    assert_eq!(
+        rows,
+        [
+            ("15".to_string(), 0x0000),
+            ("cont".to_string(), 0x0000),
+            ("16".to_string(), 0x0000),
+            ("cont".to_string(), 0x0000),
+        ]
+    );
+    assert_eq!(collapsed, 0);
+}
+
+/// L2-MRG-007 pairing: a whole pair copied by another recorder collapses as a
+/// pair.
+/// Requirements: L2-MRG-007
+#[test]
+fn a_copied_pair_collapses_as_a_pair() {
+    let (rows, collapsed) = collapse_pair(&recorder_a_pair(), &recorder_a_pair());
+    assert_eq!(
+        rows,
+        [("15".to_string(), 0x0000), ("cont".to_string(), 0x0000)]
+    );
+    assert_eq!(collapsed, 2);
+}
+
 /// L2-MRG-007: identical content at *different* timestamps (beyond the window)
 /// is real periodic traffic, not a cross-recorder duplicate — both rows survive.
 /// Requirements: L2-MRG-007
