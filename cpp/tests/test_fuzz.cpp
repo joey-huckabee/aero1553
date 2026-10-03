@@ -105,9 +105,17 @@ uint64_t xorshift64(uint64_t& state) {
 /// the source stays ASCII: U+00E9 and U+4E2D. Rust and Python match over
 /// scalar values and this matcher advances `?` by a whole UTF-8 character, and
 /// this is the surface where that agreement is either real or it is not.
-const std::size_t GLOB_ALPHABET_SIZE = 15;
+///
+/// `/` is there so `expand_glob` sees a directory part at all: without it every
+/// pattern was a bare filename, and neither the textual split at the last
+/// separator nor the directory-wildcard refusal (L2-MRG-001) was ever reached.
+/// `/` and not `\`: a forward slash is a separator on every platform, a
+/// backslash only on Windows, so it would split the same pattern differently on
+/// the two CI hosts and the counters would legitimately differ.
+const std::size_t GLOB_ALPHABET_SIZE = 16;
 const char* const GLOB_ALPHABET[GLOB_ALPHABET_SIZE] = {
-    "*", "*", "*", "?", "?", ".", "a", "b", "m", "i", "e", "-", "x", "\xC3\xA9", "\xE4\xB8\xAD"};
+    "*", "*", "*", "?", "?", ".", "a", "b", "m", "i", "e", "-", "x", "\xC3\xA9", "\xE4\xB8\xAD",
+    "/"};
 
 /// Names the generated patterns are matched against: ASCII, Latin-1, CJK.
 /// Counted separately so a divergence says which one broke.
@@ -508,6 +516,7 @@ TEST_CASE("merge input resolution tolerates arbitrary bytes",
     uint64_t manifest_errors = 0;
     uint64_t manifest_paths = 0;
     uint64_t glob_hits[3] = {0, 0, 0};
+    uint64_t glob_refused = 0;
 
     for (std::size_t i = 0; i < iterations; ++i) {
         const std::size_t size = static_cast<std::size_t>(xorshift64(state) % 96);
@@ -545,9 +554,16 @@ TEST_CASE("merge input resolution tolerates arbitrary bytes",
             }
         }
 
+        // What it returns is crash-safety only (see above), but WHETHER it
+        // refuses the pattern as a directory wildcard is decided before any
+        // I/O, from the pattern's text alone -- so that is comparable across
+        // implementations and hosts.
         std::vector<std::string> expanded;
         mie::platform::OsError glob_err;
-        static_cast<void>(mie::merge::expand_glob(pattern, expanded, glob_err));
+        if (!mie::merge::expand_glob(pattern, expanded, glob_err) &&
+            glob_err.code == mie::merge::GLOB_INVALID_PATTERN) {
+            ++glob_refused;
+        }
     }
 
     std::string fields = "bytes=" + mie::text::decimal(total_bytes);
@@ -557,6 +573,7 @@ TEST_CASE("merge input resolution tolerates arbitrary bytes",
     fields += " glob_ascii=" + mie::text::decimal(glob_hits[0]);
     fields += " glob_latin1=" + mie::text::decimal(glob_hits[1]);
     fields += " glob_cjk=" + mie::text::decimal(glob_hits[2]);
+    fields += " glob_refused=" + mie::text::decimal(glob_refused);
     fields += " outcome=ok";
     emit_summary("merge", iterations, fields);
 

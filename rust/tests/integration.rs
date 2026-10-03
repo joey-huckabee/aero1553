@@ -1365,8 +1365,15 @@ fn read_manifest_grammar_is_exactly_specified() {
 /// 95 characters long and matched a probe **zero** times in 512 iterations —
 /// which is to say it fuzzed the matcher's reject path and nothing else. Short,
 /// wildcard-heavy patterns are what reach the interesting branches.
-const GLOB_ALPHABET: [&str; 15] = [
-    "*", "*", "*", "?", "?", ".", "a", "b", "m", "i", "e", "-", "x", "\u{e9}", "\u{4e2d}",
+///
+/// `/` is there so `expand_glob` sees a directory part at all: without it every
+/// pattern was a bare filename, and neither the textual split at the last
+/// separator nor the directory-wildcard refusal (L2-MRG-001) was ever reached.
+/// `/` and not `\`: a forward slash is a separator on every platform, while a
+/// backslash is one only on Windows, so it would split the same pattern
+/// differently on the two CI hosts and the counters would legitimately differ.
+const GLOB_ALPHABET: [&str; 16] = [
+    "*", "*", "*", "?", "?", ".", "a", "b", "m", "i", "e", "-", "x", "\u{e9}", "\u{4e2d}", "/",
 ];
 
 /// Probe names the generated patterns are matched against. ASCII, Latin-1 and
@@ -1392,16 +1399,12 @@ fn merge_input_resolution_tolerates_arbitrary_bytes() {
     // this many inputs comfortably cover. The shared knob still overrides.
     let iterations = fuzz_iterations_or(512);
 
-    let mut total_bytes = 0u64;
-    let mut manifest_ok = 0u64;
-    let mut manifest_errors = 0u64;
-    let mut manifest_paths = 0u64;
-    let mut glob_hits = [0u64; GLOB_PROBES.len()];
+    let mut counts = MergeFuzzCounts::default();
 
     for i in 0..iterations {
         let size = usize::try_from(fuzz_xorshift64(&mut state) % 96).unwrap_or(0);
         let bytes = fuzz_bytes(&mut state, size);
-        total_bytes += u64::try_from(size).unwrap_or(0);
+        counts.total_bytes += u64::try_from(size).unwrap_or(0);
 
         // The pattern is drawn separately from the manifest bytes, and short:
         // the two surfaces want different input shapes, and deriving one from
@@ -1426,30 +1429,29 @@ fn merge_input_resolution_tolerates_arbitrary_bytes() {
             for (slot, probe) in hits.iter_mut().zip(GLOB_PROBES) {
                 *slot = u64::from(aero1553::merge::glob_match(&pattern, probe));
             }
-            // Crash-safety only; see the doc comment.
-            let _ = aero1553::merge::expand_glob(&pattern);
-            (ok, errs, paths, hits)
+            // What it returns is crash-safety only (see the doc comment), but
+            // WHETHER it refuses the pattern as a directory wildcard is decided
+            // before any I/O, from the pattern's text alone -- so that is
+            // comparable across implementations and hosts.
+            let refused = u64::from(matches!(
+                aero1553::merge::expand_glob(&pattern),
+                Err(e) if e.kind() == std::io::ErrorKind::InvalidInput
+            ));
+            (ok, errs, paths, hits, refused)
         });
 
         match result {
-            Ok((ok, errs, paths, hits)) => {
-                manifest_ok += ok;
-                manifest_errors += errs;
-                manifest_paths += paths;
-                for (total, hit) in glob_hits.iter_mut().zip(hits) {
+            Ok((ok, errs, paths, hits, refused)) => {
+                counts.manifest_ok += ok;
+                counts.manifest_errors += errs;
+                counts.manifest_paths += paths;
+                counts.glob_refused += refused;
+                for (total, hit) in counts.glob_hits.iter_mut().zip(hits) {
                     *total += hit;
                 }
             }
             Err(_) => {
-                merge_fuzz_summary(
-                    iterations,
-                    total_bytes,
-                    manifest_ok,
-                    manifest_errors,
-                    manifest_paths,
-                    glob_hits,
-                    "panic",
-                );
+                merge_fuzz_summary(iterations, &counts, "panic");
                 panic!(
                     "merge input resolution panicked on random input \
                      (seed=0x{FUZZ_SEED:X}, iter={i}, size={size}). First 32 bytes: {:02X?}",
@@ -1459,36 +1461,38 @@ fn merge_input_resolution_tolerates_arbitrary_bytes() {
         }
     }
 
-    merge_fuzz_summary(
-        iterations,
-        total_bytes,
-        manifest_ok,
-        manifest_errors,
-        manifest_paths,
-        glob_hits,
-        "ok",
-    );
+    merge_fuzz_summary(iterations, &counts, "ok");
 }
 
-/// Formats the merge harness's summary. Split out so the success and panic
-/// paths cannot drift apart in field order or spelling.
-fn merge_fuzz_summary(
-    iterations: usize,
+/// The merge harness's running counters, so the success and panic paths hand
+/// the summary one value rather than a parameter per field.
+#[derive(Default)]
+struct MergeFuzzCounts {
     total_bytes: u64,
     manifest_ok: u64,
     manifest_errors: u64,
     manifest_paths: u64,
     glob_hits: [u64; GLOB_PROBES.len()],
-    outcome: &str,
-) {
+    glob_refused: u64,
+}
+
+/// Formats the merge harness's summary. Split out so the success and panic
+/// paths cannot drift apart in field order or spelling.
+fn merge_fuzz_summary(iterations: usize, c: &MergeFuzzCounts, outcome: &str) {
     fuzz_summary(
         "merge",
         iterations,
         &format!(
-            "bytes={total_bytes} manifest_ok={manifest_ok} \
-             manifest_errors={manifest_errors} manifest_paths={manifest_paths} \
-             glob_ascii={} glob_latin1={} glob_cjk={} outcome={outcome}",
-            glob_hits[0], glob_hits[1], glob_hits[2]
+            "bytes={} manifest_ok={} manifest_errors={} manifest_paths={} \
+             glob_ascii={} glob_latin1={} glob_cjk={} glob_refused={} outcome={outcome}",
+            c.total_bytes,
+            c.manifest_ok,
+            c.manifest_errors,
+            c.manifest_paths,
+            c.glob_hits[0],
+            c.glob_hits[1],
+            c.glob_hits[2],
+            c.glob_refused,
         ),
     );
 }

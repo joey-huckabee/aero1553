@@ -47,6 +47,7 @@ GLOB_ALPHABET = (
     "x",
     "é",
     "中",
+    "/",
 )
 """The glob-pattern alphabet the merge fuzz harness draws from.
 
@@ -66,6 +67,13 @@ else. The last two entries are deliberately non-ASCII: Rust and Python match
 over scalar values and the C++ matcher advances ``?`` by a whole UTF-8
 character, and this is the surface where that agreement is either real or it is
 not.
+
+``/`` is there so ``expand_glob`` sees a directory part at all: without it every
+pattern was a bare filename, and neither the textual split at the last separator
+nor the directory-wildcard refusal (L2-MRG-001) was ever reached. ``/`` and not
+a backslash: a forward slash is a separator on every platform, a backslash only
+on Windows, so it would split the same pattern differently on the two CI hosts
+and the counters would legitimately differ.
 """
 
 GLOB_PROBES = ("some.name.mie", "café.mie", "中文.mie")
