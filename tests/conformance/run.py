@@ -799,7 +799,7 @@ def main() -> int:
             # directory entries it was applied to were not, and that is where
             # the three implementations actually disagreed.
             (temp / "glob-parity-source.mie").write_bytes(parity_input.read_bytes())
-            check_glob_parity(invocations, ROOT, temp)
+            check_glob_parity(invocations, temp)
         else:
             # A differential check needs something to differ from.
             print(

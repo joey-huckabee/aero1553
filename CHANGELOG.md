@@ -211,6 +211,12 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **Rust and Python: `--glob` now expands as L2-MRG-001 specifies, as C++
+  already did.** A `*` in the pattern failed to match a filename containing
+  a literal `*` at that position, so on POSIX `--glob 'dir/*'` silently left
+  out `*x.mie`. And the pattern was split with path normalisation, which
+  dropped a trailing separator: `dir/*.mie/` decoded the files in `dir`
+  instead of failing on the missing directory `*.mie` (exit `1`).
 - **Rust and Python: RT and subaddress filter values above 31 are now a
   usage error (exit `4`)** (L2-CLI-010). `--include-rts`, `--exclude-rts`,
   `--include-subaddresses` and `--exclude-subaddresses` accepted anything

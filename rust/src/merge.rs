@@ -92,13 +92,16 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
     let mut star: Option<usize> = None;
     let mut mark = 0usize;
     while t < txt.len() {
-        if p < pat.len() && (pat[p] == '?' || pat[p] == txt[t]) {
-            p += 1;
-            t += 1;
-        } else if p < pat.len() && pat[p] == '*' {
+        // `*` is tested FIRST. A pattern `*` is never literal (L2-MRG-001), but
+        // testing equality first consumed it as one against a `*` in the name
+        // without recording it for backtracking, so `*` failed to match `*x`.
+        if p < pat.len() && pat[p] == '*' {
             star = Some(p);
             mark = t;
             p += 1;
+        } else if p < pat.len() && (pat[p] == '?' || pat[p] == txt[t]) {
+            p += 1;
+            t += 1;
         } else if let Some(sp) = star {
             p = sp + 1;
             mark += 1;
@@ -136,14 +139,17 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
 /// nothing is **not** an error — it yields an empty list, which is what lets the
 /// CLI report "matched no files" distinctly from "could not read the directory".
 pub fn expand_glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
-    let p = Path::new(pattern);
-    let name_pat = p
-        .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let dir = match p.parent() {
-        Some(parent) if !parent.as_os_str().is_empty() => parent.to_path_buf(),
-        _ => PathBuf::from("."),
+    // A textual split at the LAST separator, with the platform deciding what a
+    // separator is (L2-MRG-001 clause 1). This used `Path::file_name` and
+    // `Path::parent`, which normalise first: they drop a trailing `/` and a
+    // trailing `/.`, so `dir/*.mie/` expanded as `dir/*.mie` here while C++
+    // read a directory named `*.mie` with an empty filename pattern -- as the
+    // grammar says. A pattern ending in a separator matches nothing.
+    let (dir, name_pat) = match pattern.rfind(std::path::is_separator) {
+        None => (PathBuf::from("."), pattern),
+        // Rooted at the separator itself, e.g. `/recordings*.mie`.
+        Some(0) => (PathBuf::from(&pattern[..1]), &pattern[1..]),
+        Some(i) => (PathBuf::from(&pattern[..i]), &pattern[i + 1..]),
     };
     let mut out = Vec::new();
     for entry in fs::read_dir(&dir)? {
@@ -151,7 +157,7 @@ pub fn expand_glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
         // Name test before the stat: a directory of thousands of entries should
         // cost one `stat` per *match*, not one per entry.
         let fname = entry.file_name().to_string_lossy().into_owned();
-        if !glob_match(&name_pat, &fname) {
+        if !glob_match(name_pat, &fname) {
             continue;
         }
         let path = entry.path();
@@ -726,6 +732,21 @@ mod tests {
         assert!(!glob_match("a.b", "axb"));
     }
 
+    /// A pattern `*` is a wildcard even where the name holds a literal `*`.
+    /// Equality was tested before the star, so the two were consumed as a
+    /// literal pair and the star was never recorded for backtracking.
+    /// Requirements: L2-MRG-001
+    #[test]
+    fn glob_star_is_a_wildcard_against_a_literal_star() {
+        assert!(glob_match("*", "*x"));
+        assert!(glob_match("*", "*"));
+        assert!(glob_match("a*", "a*"));
+        assert!(glob_match("a*", "a*b"));
+        assert!(glob_match("*.mie", "*x.mie"));
+        assert!(glob_match("*x.mie", "*x.mie"));
+        assert!(!glob_match("*.mie", "*x.csv"));
+    }
+
     /// A scratch directory under the system temp, removed on drop.
     struct GlobDir(PathBuf);
 
@@ -834,6 +855,33 @@ mod tests {
         d.file("odd\\name.mie");
         d.file("plain.mie");
         assert_eq!(d.names("odd\\name*.mie"), vec!["odd\\name.mie".to_string()]);
+    }
+
+    /// The split is textual: a pattern ending in a separator names a directory
+    /// called `*.mie` and an empty filename pattern, as in C++. `Path::parent`
+    /// normalised the trailing `/` (and `/.`) away and expanded `*.mie`.
+    /// Requirements: L2-MRG-001
+    #[test]
+    fn expand_glob_does_not_normalise_a_trailing_separator() {
+        let d = GlobDir::new("trailing");
+        d.file("a.mie");
+        let base = d.0.to_string_lossy().into_owned();
+        let sep = std::path::MAIN_SEPARATOR;
+        for pattern in [
+            format!("{base}{sep}*.mie{sep}"),
+            format!("{base}{sep}*.mie{sep}."),
+        ] {
+            // The kind is the platform's: `NotFound` on POSIX, while Windows
+            // refuses `*` in a directory name outright (`InvalidFilename`).
+            // Either way the directory is not read and `a.mie` is not matched.
+            assert!(expand_glob(&pattern).is_err(), "{pattern}");
+        }
+        // An existing directory with a trailing separator: the filename
+        // pattern is empty, so nothing matches -- and that is not an error.
+        assert_eq!(
+            expand_glob(&format!("{base}{sep}")).unwrap(),
+            Vec::<PathBuf>::new()
+        );
     }
 
     /// A message whose wire content is driven by `seq`, so a stream of them
