@@ -560,9 +560,9 @@
       <tspan x="566" dy="16">transmit (L2-WRT-021). Never reorders across a timestamp boundary.</tspan>
       <tspan x="566" dy="16">Records with no Command Word (SPURIOUS_DATA) are pinned to the</tspan>
       <tspan x="566" dy="16">record they followed, keeping a 0x2000 continuation adjacent.</tspan>
-      <tspan x="566" dy="16">Run length is capped by output.max_sort_group (default 4096); at</tspan>
-      <tspan x="566" dy="16">the cap the run is emitted in arrival order with one WARN</tspan>
-      <tspan x="566" dy="16">(L2-WRT-022). A cap of 1 disables reordering.</tspan>
+      <tspan x="566" dy="16">Run length is capped by output.max_sort_group (default 65536);</tspan>
+      <tspan x="566" dy="16">each cap-sized chunk is emitted in arrival order with one WARN</tspan>
+      <tspan x="566" dy="16">(L2-WRT-022). A cap of 1 disables reordering, silently.</tspan>
       <tspan x="566" dy="16">Last stage on BOTH the single-file and merge paths; not applied</tspan>
       <tspan x="566" dy="16">to the dump subcommand.</tspan>
     </text>

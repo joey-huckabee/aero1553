@@ -19,8 +19,8 @@ continuation losing its pin). Observed behaviour is as of `main` at `721eeb8`.
 until its decision in [section 7](#7-decisions) is taken and the
 requirements amended. When that happens, update this page in the same change.
 Decisions 1 (M3), 2 (keeping a continuation with its parent), 3 (a
-continuation sharing its parent's filter and collapse fate) and 5 (a merge in
-which every input fails) are taken and implemented; decision 4 is open.
+continuation sharing its parent's filter and collapse fate), 4 (the sort-group
+cap) and 5 (a merge in which every input fails) are taken and implemented.
 
 ---
 
@@ -174,7 +174,7 @@ writer, on both paths (L2-WRT-021), with bounded memory (L2-WRT-022).
 | Reordering confined to runs of **consecutive** equal timestamps; differing timestamps never reordered | L1-OUT-003, L2-MRG-006 |
 | A record with no Command Word keeps its place "immediately following the record [it] followed on input" | L1-OUT-003, L2-WRT-021 |
 | Flush the buffered run before passing an `Err` through | L2-WRT-021, L3-RS-016, L3-PY-016 |
-| Run length capped by `max_sort_group`; at the cap, arrival order and **one WARN per capped run**; `1` disables reordering | L2-WRT-022, L3-WRT-003 |
+| Run length capped by `max_sort_group` (default 65536); each time the cap is reached, the records so far in arrival order with **one WARN**, and the rest of the run gathered afresh; `1` disables reordering silently | L2-WRT-022, L3-WRT-003 |
 
 **How pinning is implemented** (identical in all three): a run is split into
 *chunks* — one record with a Command Word plus the pinned records trailing it —
@@ -321,10 +321,11 @@ reported at. **Verdict** is against the current requirement text:
 
 | Row | Input | Options | Output | Agree | Verdict | Pinned by |
 |---|---|---|---|---|---|---|
-| C1 | as S3 | `--max-sort-group 1` | RT3; err RT1; cont 2000 — all @500 | yes | OK (arrival order); **3 WARNs for 3 records** | `tie-cap-disabled` (no WARN count) |
+| C1 | as S3 | `--max-sort-group 1` | RT3; err RT1; cont 2000 — all @500 | yes | OK (arrival order), no WARN (decision 4; was 3 WARNs for 3 records) | `tie-cap-disabled`; WARN count in Rust CLI, Python and C++ tests |
 | C2 | as S3 | `--max-sort-group 2` | RT3; err RT1; cont 2000 — all @500 | yes | OK (the cap → arrival order) | none |
 | C3 | as S1 | `--max-sort-group 2` | err RT15; cont 2000; RT3 | yes | OK | none |
-| C4 | five clean records RT 21, 9, 3, 30, 1 @500 | `--max-sort-group 2` | 21, 9, 3, 30, 1 (arrival) with **2 WARNs** | yes | **BREAKS L2-WRT-022** "exactly one WARN per capped run" | `tie-cap-overflow` (no WARN count) |
+| C4 | five clean records RT 21, 9, 3, 30, 1 @500 | `--max-sort-group 2` | 21, 9, 3, 30, 1 (arrival) with 2 WARNs, one per chunk | yes | OK — L2-WRT-022 now requires one WARN per cap-sized chunk (decision 4) | `tie-cap-overflow`; WARN count in Python and C++ tests |
+| C5 | as C4 | `--max-sort-group 3` | 21, 9, 3, then **1, 30** (the remainder sorted) with 1 WARN | yes | OK (decision 4) | Rust, Python and C++ order tests |
 
 ### Split output
 
@@ -389,10 +390,11 @@ Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
   on input". **Resolved**: the requirement and the `order.rs` module doc now
   state only the second.
 - **M4 — the cap's WARN is per flush, not per run** (rows C1, C4). L2-WRT-022
-  requires exactly one per capped run; `--max-sort-group 1`, documented as
-  "off", warns once per record. Records after a cap flush start a fresh buffer
+  required exactly one per capped run; `--max-sort-group 1`, documented as
+  "off", warned once per record. Records after a cap flush start a fresh buffer
   that is sorted on its own, so a long capped run is a mix of arrival-order and
-  sorted segments.
+  sorted segments. **Resolved** by decision 4: the requirement now states the
+  per-chunk behaviour the code had, and a cap of `1` is silent.
 
 ### C. Merge
 
@@ -496,8 +498,18 @@ tests in all three implementations.
    `--include-buses` now keep the continuations of the errors they keep. Golden
    pins unchanged; the PYTHON-GUIDE `include_rts={15}` example's count rose by
    exactly the 23 continuations of RT 15's bus-A errors (489 → 512).
-4. **M4 — the cap**: what happens to records after a cap flush (stay in arrival
-   order for the rest of the run?), and one WARN per run regardless of cap.
+4. **M4 — the cap** — **decided 2026-10-03**: the behaviour stays as it is —
+   each time a run reaches the cap, the records so far go out in arrival order
+   with one WARN, and the rest of the run is gathered afresh and sorted — and
+   L2-WRT-022 is amended to say so (one WARN per cap-sized chunk). A cap of `1`,
+   the documented "off" switch, is silent: it is requested, not reached, and a
+   WARN per record was measured at a 40x slowdown on a 780,000-record file. The
+   default rises from 4096 to 65536 (about 10 MB worst case; the longest real
+   run measured is 7). The dedup cap of L2-MRG-008 stays at 4096: it costs time
+   per record rather than memory, and at 65536 a broken-clock merge under
+   `--collapse-duplicates` took 126 s against 10 s. Only records with a broken
+   clock ever reach either cap. The alternative considered — arrival order for
+   the whole rest of an overflowing run — was not taken.
 5. **N1 — every merge input failing under `--allow-partial`** — **decided
    2026-10-03**: `--allow-partial` keeps what could be decoded; when every
    input fails at open or priming there is nothing to keep, so the run fails
@@ -509,7 +521,10 @@ tests in all three implementations.
    reported as left out, not as a sync loss at offset 0.
 6. **Documentation** follows the decisions. Done for decisions 1 and 2
    (`ERROR-CATALOG.md`, `MIE-FORMAT.md` §7.3 and §9, `DATA-SCENARIOS.md` §6 and
-   §9, `VENDOR-CSV-DIFFS.md` §3d); decisions 3–5 will need their own.
+   §9, `VENDOR-CSV-DIFFS.md` §3d). Decisions 3–5 updated their own documents
+   in the change that implemented each (filters and collapse; the cap's
+   `CONFIG-REFERENCE.md`, `ARCHITECTURE.md` and `DATA-SCENARIOS.md` entries;
+   `ERROR-CATALOG.md` and `DATA-SCENARIOS.md` §8 for failing merge inputs).
 
 ---
 

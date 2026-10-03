@@ -52,16 +52,19 @@ const std::size_t LOOKAHEAD_RECORDS_MIN = 1;
 const std::size_t LOOKAHEAD_RECORDS_MAX = 32;
 
 /// L2-WRT-022: cap on one buffered equal-timestamp run. `1` disables
-/// reordering and restores raw DDC capture order.
+/// reordering and restores raw DDC capture order. The default bounds a
+/// broken-clock file to about 10 MB of buffering; real ties are single digits.
 const std::size_t MAX_SORT_GROUP_MIN = 1;
 const std::size_t MAX_SORT_GROUP_MAX = 1048576;
-const std::size_t DEFAULT_MAX_SORT_GROUP = 4096;
+const std::size_t DEFAULT_MAX_SORT_GROUP = 65536;
 
 /// L2-MRG-008: bounds on `merge.max_collapse_survivors`, the cap on the
 /// de-duplication survivor set. The collapse window bounds retention in TIME;
 /// this bounds it in COUNT, so input whose timestamps all decode alike cannot
-/// grow the set without limit. The default matches DEFAULT_MAX_SORT_GROUP
-/// deliberately: the two caps guard the same class of pathological input.
+/// grow the set without limit. The default is deliberately NOT
+/// DEFAULT_MAX_SORT_GROUP: that cap costs memory, this one costs time -- every
+/// record is compared against every survivor -- so raising it to match made a
+/// broken-clock merge 13x slower (L2-MRG-008).
 const std::size_t MAX_COLLAPSE_SURVIVORS_MIN = 1;
 const std::size_t MAX_COLLAPSE_SURVIVORS_MAX = 1048576;
 const std::size_t DEFAULT_MAX_COLLAPSE_SURVIVORS = 4096;

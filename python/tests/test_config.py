@@ -1141,7 +1141,7 @@ class TestSharedDefaultConfig:
         assert cfg.detect_records == 8
         assert cfg.lookahead_records == 2
         assert cfg.output_format == "csv"
-        assert cfg.max_sort_group == 4096
+        assert cfg.max_sort_group == 65_536
 
     @pytest.mark.requirement("L2-SYN-026")
     def test_shipped_defaults_for_the_record_count_knobs(self) -> None:
@@ -1221,7 +1221,7 @@ class TestMaxSortGroupKey:
     def test_defaults_when_absent(self, tmp_path: Path) -> None:
         cfg_file = tmp_path / "c.toml"
         cfg_file.write_text("[output]\nno_clobber = true\n")
-        assert load_config(cfg_file).max_sort_group == 4096
+        assert load_config(cfg_file).max_sort_group == 65_536
 
     @pytest.mark.requirement("L2-WRT-022")
     def test_accepts_documented_off_value_and_upper_bound(self, tmp_path: Path) -> None:

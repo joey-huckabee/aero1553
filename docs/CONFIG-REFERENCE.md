@@ -31,7 +31,7 @@ lookahead_records = 2            # sync look-ahead depth, [1, 32]
 [output]
 format             = "csv"       # csv (the only value currently supported)
 no_clobber         = false       # true | false
-max_sort_group     = 4096        # 1..=1048576 (1 disables row reordering)
+max_sort_group     = 65536       # 1..=1048576 (1 disables row reordering)
 output_time_format = "doy"       # doy | iso | dom (how TIME_STAMP is WRITTEN)
 # year             = 2026        # 1..=9999; required by iso/dom, ignored by doy
 utc_offset         = "+00:00"    # Z | +HH:MM | -HH:MM (iso zone designator)
@@ -67,7 +67,7 @@ exclude_subaddresses = []        # array of integers in [0, 31]
 | `decode.standard_tick_rate_hz` | float | unset | `--standard-tick-rate-hz` | L2-CFG-011, L2-DEC-017 |
 | `output.format` | string | `"csv"` | `--format` | L2-CFG-001 |
 | `output.no_clobber` | bool | `false` | `--no-clobber` | L2-CFG-001, L2-WRT-017 |
-| `output.max_sort_group` | int | `4096` | `--max-sort-group` | L2-WRT-022, L1-OUT-003 |
+| `output.max_sort_group` | int | `65536` | `--max-sort-group` | L2-WRT-022, L1-OUT-003 |
 | `output.output_time_format` | string | `"doy"` | `--output-time-format` | L2-CFG-012, L2-WRT-025 |
 | `output.year` | int | unset | `--year` | L2-CFG-012, L2-WRT-026 |
 | `output.utc_offset` | string | `"+00:00"` | `--utc-offset` | L2-CFG-012, L2-WRT-025 |
@@ -320,7 +320,7 @@ Both cases surface the same `ClobberRefused` class as the pre-flight, naming the
 
 ### `max_sort_group`
 
-**Type:** int · **Default:** `4096` · **Range:** `[1, 1048576]` · **CLI:** `--max-sort-group`
+**Type:** int · **Default:** `65536` · **Range:** `[1, 1048576]` · **CLI:** `--max-sort-group`
 
 Caps how many **consecutive records sharing one `TIME_STAMP`** the canonical row-order stage buffers at once (L2-WRT-022).
 
@@ -328,11 +328,11 @@ Rows are always written in canonical order (L1-OUT-003): ascending `TIME_STAMP`,
 
 | Value | Behavior |
 |-------|----------|
-| `1` | **Disables reordering.** Every record is its own run, so output is raw DDC capture order. This is the supported way to get byte-for-byte row parity with vendor CSV — see [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) §3a. |
-| `4096` | Default. Far above any real tie: a 1553 bus carries one transaction at a time, so genuine ties come only from the two concurrent buses or from overlapping recorders in a merge — single digits in practice. |
+| `1` | **Disables reordering**, silently (no WARN). Every record is its own run, so output is raw DDC capture order. This is the supported way to get byte-for-byte row parity with vendor CSV — see [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) §3a. |
+| `65536` | Default. Far above any real tie: a 1553 bus carries one transaction at a time, so genuine ties come only from the two concurrent buses or from overlapping recorders in a merge — single digits in practice (the longest in the large golden merge is 7). Worst-case buffering is about 10 MB (152 bytes a record). |
 | up to `1048576` | Raise it only if you have a legitimate reason to expect enormous equal-timestamp runs. Worst-case buffering scales with this value. |
 
-**On overflow** the stage writes the buffered run in **arrival order**, emits exactly one WARN naming the timestamp and the cap, and continues. No record is dropped and the decode does not fail — the ordering guarantee is simply suspended for that run. The motivating case is a corrupt or misconfigured recording whose timestamps all decode to the same value, which would otherwise buffer the entire file.
+**On overflow** the stage writes the records buffered so far in **arrival order**, emits one WARN naming the timestamp and the cap, and gathers the rest of the run afresh — sorting it, and WARNing again if it too reaches the cap. A run longer than the cap therefore WARNs once per cap-sized chunk. No record is dropped and the decode does not fail — the ordering guarantee is simply suspended for that run. The motivating case is a corrupt or misconfigured recording whose timestamps all decode to the same value, which would otherwise buffer the entire file.
 
 **Validation:** TOML integer only (a bool or string is rejected); out-of-range values are rejected at load time (exit `5`). An out-of-range `--max-sort-group` is a usage error (exit `4`), matching `--detect-records`.
 

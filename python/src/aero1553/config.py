@@ -258,7 +258,7 @@ class DecoderConfig:
 
     #: L2-WRT-022: cap on the number of consecutive equal-TIME_STAMP records the
     #: canonical-order stage (L2-WRT-021) buffers at once. Range
-    #: [MAX_SORT_GROUP_MIN, MAX_SORT_GROUP_MAX]. Default 4096; 1 disables
+    #: [MAX_SORT_GROUP_MIN, MAX_SORT_GROUP_MAX]. Default 65536; 1 disables
     #: reordering, restoring raw DDC capture order.
     max_sort_group: int = DEFAULT_MAX_SORT_GROUP
 

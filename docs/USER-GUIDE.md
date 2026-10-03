@@ -645,11 +645,12 @@ Three things worth knowing:
   vendor CSV — see [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md).
 
 `max_sort_group` otherwise just caps how many same-timestamp records are held in
-memory at once (default `4096`). Real ties are tiny — a 1553 bus runs one
+memory at once (default `65536`). Real ties are tiny — a 1553 bus runs one
 transaction at a time, so ties come from the two concurrent buses or from
 overlapping recorders in a merge. The cap only matters for a corrupt recording
-whose timestamps all decode to the same value; on hitting it, the decoder writes
-that group in arrival order, warns once, and carries on without dropping rows.
+whose timestamps all decode to the same value; each time it is hit, the decoder
+writes the records held so far in arrival order, warns, and carries on with the
+rest of the group, without dropping rows.
 
 For the binary-level field reference (what's in the Type Word, how IRIG packing works, etc.), see [`MIE-FORMAT.md`](MIE-FORMAT.md).
 

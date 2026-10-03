@@ -300,9 +300,10 @@ pub const MAX_COLLAPSE_SURVIVORS_MAX: usize = 1_048_576;
 /// genuine population of one collapse window — a 1553 bus carries one
 /// transaction at a time, so a window holds one record per recorder per
 /// transaction — while bounding worst-case retention to a few hundred kilobytes.
-/// Matches `DEFAULT_MAX_SORT_GROUP` deliberately: the two caps guard the same
-/// class of pathological input and an operator who has reasoned about one
-/// should not have to re-derive the other.
+/// Deliberately **not** `DEFAULT_MAX_SORT_GROUP`, although both guard the same
+/// pathological input: that cap costs memory, this one costs time, because
+/// every record is compared against every survivor. Raised to match, a
+/// broken-clock merge with `--collapse-duplicates` ran 13x slower (L2-MRG-008).
 pub const DEFAULT_MAX_COLLAPSE_SURVIVORS: usize = 4096;
 
 /// Sliding time-window de-duplicator over the merged stream (L2-MRG-007), with

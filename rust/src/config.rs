@@ -135,7 +135,7 @@ pub struct DecoderConfig {
     pub delta_scope: DeltaScope,
     /// L2-WRT-022: cap on the number of consecutive equal-`TIME_STAMP` records
     /// the canonical-order stage (L2-WRT-021) buffers at once. Default
-    /// `DEFAULT_MAX_SORT_GROUP` (`4096`). Set via `output.max_sort_group = N` in
+    /// `DEFAULT_MAX_SORT_GROUP` (`65536`). Set via `output.max_sort_group = N` in
     /// TOML or `--max-sort-group N` on the CLI. Validated against
     /// `[MAX_SORT_GROUP_MIN, MAX_SORT_GROUP_MAX]` at load time. `1` disables
     /// reordering, restoring raw DDC capture order.

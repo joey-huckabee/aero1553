@@ -390,20 +390,22 @@ utc_offset = "+00:00"
 # time, so ties come from the two concurrent buses or from overlapping
 # recorders in a merge). The cap exists for corrupt recordings whose
 # timestamps all decode to one value, which would otherwise buffer the whole
-# file. On overflow the run is written in arrival order with one WARN and
-# decoding continues — no records are lost.
+# file. On overflow the records buffered so far are written in arrival order
+# with one WARN, the rest of the run is gathered afresh (and sorted) as a new
+# group, and decoding continues — no records are lost. A run longer than the
+# cap therefore WARNs once per cap-sized chunk.
 #
 #   1        — disables reordering entirely: every record is its own run, so
 #              output is raw DDC capture order. Use this for a byte-for-byte
-#              vendor-CSV diff (see docs/VENDOR-CSV-DIFFS.md).
-#   4096     — the default; far above any real tie.
+#              vendor-CSV diff (see docs/VENDOR-CSV-DIFFS.md). Silent: no WARN.
+#   65536    — the default; far above any real tie (about 10 MB worst case).
 #   1048576  — the maximum.
 #
 # Overridden by --max-sort-group.
 #
-# Default: 4096
+# Default: 65536
 # ──────────────────────────────────────────────────────────────────────────
-max_sort_group = 4096
+max_sort_group = 65536
 
 
 [mux]
