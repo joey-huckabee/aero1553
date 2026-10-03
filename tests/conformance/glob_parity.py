@@ -49,15 +49,28 @@ from pathlib import Path
 
 from differential import describe_divergence
 
-#: A case yields ``(directory, glob pattern, expected matched-file count)``, or
-#: ``None`` to skip itself on this platform.
-CaseResult = tuple[Path, str, int]
+#: A case yields ``(working directory, --glob value, expectation)``, or ``None``
+#: to skip itself on this platform. The ``--glob`` value is passed exactly as an
+#: operator would type it, which is what lets a case pin a relative pattern or a
+#: particular separator spelling. The expectation is the matched-file count for
+#: a decode that should succeed, or ``"exit N"`` for one that should fail -- the
+#: exit code is then all that is compared, since there are no rows.
+CaseResult = tuple[Path, str, int | str]
 Case = tuple[str, Callable[[Path, bytes], CaseResult | None]]
 
 #: Records per materialized recording. The merge writes the total across every
 #: matched file, so the CSV holds ``RECORDS_PER_FILE * matched`` data rows --
 #: which is what makes "how many files matched" observable from outside.
 RECORDS_PER_FILE = 1
+
+
+def _at(directory: Path, name_pattern: str) -> str:
+    """``directory`` and a filename pattern joined with the native separator.
+
+    Joined as text, not with ``/``: pathlib drops a trailing separator, and the
+    pattern has to reach the implementations exactly as written.
+    """
+    return f"{directory}{os.sep}{name_pattern}"
 
 
 def _plain_files(temp: Path, recording: bytes) -> CaseResult:
@@ -67,7 +80,7 @@ def _plain_files(temp: Path, recording: bytes) -> CaseResult:
     (d / "a.mie").write_bytes(recording)
     (d / "b.mie").write_bytes(recording)
     (d / "notes.txt").write_bytes(recording)
-    return (d, "*.mie", 2)
+    return (temp, _at(d, "*.mie"), 2)
 
 
 def _directory_named_like_a_recording(temp: Path, recording: bytes) -> CaseResult:
@@ -80,7 +93,7 @@ def _directory_named_like_a_recording(temp: Path, recording: bytes) -> CaseResul
     (d / "a.mie").write_bytes(recording)
     (d / "b.mie").write_bytes(recording)
     (d / "archive.mie").mkdir(exist_ok=True)
-    return (d, "*.mie", 2)
+    return (temp, _at(d, "*.mie"), 2)
 
 
 def _symlink_to_a_recording(temp: Path, recording: bytes) -> CaseResult | None:
@@ -101,7 +114,7 @@ def _symlink_to_a_recording(temp: Path, recording: bytes) -> CaseResult | None:
         link.symlink_to(real)
     except (OSError, NotImplementedError):
         return None
-    return (d, "*.mie", 2)
+    return (temp, _at(d, "*.mie"), 2)
 
 
 def _dangling_symlink(temp: Path, recording: bytes) -> CaseResult | None:
@@ -121,7 +134,7 @@ def _dangling_symlink(temp: Path, recording: bytes) -> CaseResult | None:
         link.symlink_to(d / "absent-target.bin")
     except (OSError, NotImplementedError):
         return None
-    return (d, "*.mie", 1)
+    return (temp, _at(d, "*.mie"), 1)
 
 
 def _backslash_is_not_a_separator_on_posix(temp: Path, recording: bytes) -> CaseResult | None:
@@ -137,7 +150,7 @@ def _backslash_is_not_a_separator_on_posix(temp: Path, recording: bytes) -> Case
     d.mkdir(exist_ok=True)
     (d / "odd\\name.mie").write_bytes(recording)
     (d / "plain.mie").write_bytes(recording)
-    return (d, "odd\\name*.mie", 1)
+    return (temp, _at(d, "odd\\name*.mie"), 1)
 
 
 def _matches_nothing(temp: Path, _recording: bytes) -> CaseResult:
@@ -145,7 +158,107 @@ def _matches_nothing(temp: Path, _recording: bytes) -> CaseResult:
     implementation -- not a silent empty decode and not an I/O failure."""
     d = temp / "glob-empty"
     d.mkdir(exist_ok=True)
-    return (d, "*.nosuchextension", 0)
+    return (temp, _at(d, "*.nosuchextension"), "exit 4")
+
+
+def _star_matches_a_literal_star(temp: Path, recording: bytes) -> CaseResult | None:
+    """A pattern ``*`` is a wildcard even against a ``*`` in a filename.
+
+    The Rust divergence: its matcher compared characters before testing for the
+    star, so the pattern's ``*`` was consumed as a literal against the name's
+    and never backtracked -- ``*x.mie`` was dropped. POSIX-only because Windows
+    forbids ``*`` in a filename; not a capability question.
+    """
+    if os.name == "nt":
+        return None
+    d = temp / "glob-literal-star"
+    d.mkdir(exist_ok=True)
+    (d / "*x.mie").write_bytes(recording)
+    (d / "plain.mie").write_bytes(recording)
+    return (temp, _at(d, "*"), 2)
+
+
+def _trailing_separator(temp: Path, recording: bytes) -> CaseResult:
+    """The split is textual: ``*.mie/`` names a directory called ``*.mie``.
+
+    The Rust divergence: ``Path::parent`` normalised the trailing separator away
+    and expanded ``*.mie``, while C++ split where L2-MRG-001 says to. No such
+    directory exists, so expanding it is an I/O failure (exit ``1``) -- not a
+    decode of the files beside it.
+    """
+    d = temp / "glob-trailing"
+    d.mkdir(exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    return (temp, _at(d, "*.mie" + os.sep), "exit 1")
+
+
+def _relative_pattern(temp: Path, recording: bytes) -> CaseResult:
+    """A relative pattern resolves against the working directory.
+
+    Every other case passes an absolute path, so nothing pinned the shape an
+    operator types most -- ``captures/*.mie`` from inside the capture tree. A
+    forward slash is a separator on every platform, so this runs everywhere.
+    """
+    base = temp / "glob-relative"
+    d = base / "captures"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    (d / "b.mie").write_bytes(recording)
+    (base / "c.mie").write_bytes(recording)
+    return (base, "captures/*.mie", 2)
+
+
+def _forward_slashes_on_windows(temp: Path, recording: bytes) -> CaseResult | None:
+    """``C:/data/*.mie`` -- Windows accepts ``/`` as a separator, so must we.
+
+    Windows-only: on POSIX a forward slash is the native separator and the
+    absolute-path cases already cover it.
+    """
+    if os.name != "nt":
+        return None
+    d = temp / "glob-forward-slashes"
+    d.mkdir(exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    (d / "b.mie").write_bytes(recording)
+    return (temp, f"{d.as_posix()}/*.mie", 2)
+
+
+def _mixed_separators_on_windows(temp: Path, recording: bytes) -> CaseResult | None:
+    r"""``C:\data\sub/*.mie`` -- both separators in one pattern.
+
+    The split is at the LAST separator of either kind (L2-MRG-001 clause 1), so
+    the pattern ending ``sub/*.mie`` and the one ending ``sub\*.mie`` name the
+    same directory. Windows-only, where ``\`` is a separator at all.
+    """
+    if os.name != "nt":
+        return None
+    base = temp / "glob-mixed"
+    d = base / "sub"
+    d.mkdir(parents=True, exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    (d / "b.mie").write_bytes(recording)
+    return (temp, f"{base}\\sub/*.mie", 2)
+
+
+def _drive_relative_on_windows(temp: Path, recording: bytes) -> CaseResult | None:
+    """``C:*.mie`` has no separator, so it is a filename pattern in the cwd.
+
+    Windows reads ``C:name`` as "name in drive C's current directory", and Rust's
+    ``Path::parent`` followed it, taking ``C:`` as the directory. L2-MRG-001
+    splits at a separator and there is none, so the pattern is ``C:*.mie``
+    matched against the names in the working directory -- none of which begin
+    with ``C:`` (a colon is not a legal filename character there). The run is
+    rooted in a directory holding recordings, so the Windows reading would have
+    matched them: exit ``4`` is the textual one. Windows-only, as only Windows
+    has drives.
+    """
+    if os.name != "nt":
+        return None
+    d = temp / "glob-drive-relative"
+    d.mkdir(exist_ok=True)
+    (d / "a.mie").write_bytes(recording)
+    (d / "b.mie").write_bytes(recording)
+    return (d, f"{d.drive}*.mie", "exit 4")
 
 
 CASES: list[Case] = [
@@ -155,6 +268,12 @@ CASES: list[Case] = [
     ("dangling-symlink", _dangling_symlink),
     ("backslash-not-a-separator", _backslash_is_not_a_separator_on_posix),
     ("matches-nothing", _matches_nothing),
+    ("star-matches-a-literal-star", _star_matches_a_literal_star),
+    ("trailing-separator", _trailing_separator),
+    ("relative-pattern", _relative_pattern),
+    ("forward-slashes-on-windows", _forward_slashes_on_windows),
+    ("mixed-separators-on-windows", _mixed_separators_on_windows),
+    ("drive-relative-on-windows", _drive_relative_on_windows),
 ]
 
 
@@ -173,7 +292,7 @@ def _data_rows(csv_path: Path) -> int | None:
     return len(lines) - 1
 
 
-def check_glob_parity(invocations: dict[str, list[str]], root: Path, temp: Path) -> None:
+def check_glob_parity(invocations: dict[str, list[str]], temp: Path) -> None:
     """Drive ``CASES`` through every implementation; raise on any divergence.
 
     Both halves are compared: the implementations must agree with **each other**
@@ -196,7 +315,7 @@ def check_glob_parity(invocations: dict[str, list[str]], root: Path, temp: Path)
         if case is None:
             skipped.append(name)
             continue
-        directory, pattern, expect_files = case
+        cwd, pattern, expect = case
         checked += 1
 
         observed: dict[str, str] = {}
@@ -207,20 +326,20 @@ def check_glob_parity(invocations: dict[str, list[str]], root: Path, temp: Path)
                     *prefix,
                     "decode",
                     "--glob",
-                    str(directory / pattern),
+                    pattern,
                     "-o",
                     str(out),
                     "--no-mux",
                 ],
-                cwd=root,
+                cwd=cwd,
                 capture_output=True,
                 text=True,
                 check=False,
                 timeout=30,
             )
-            if expect_files == 0:
-                # Nothing matched: the CLI turns that into a usage error naming
-                # the pattern. Compare the exit code, since there are no rows.
+            if isinstance(expect, str):
+                # An expected failure: compare the exit code, since there are
+                # no rows.
                 observed[impl] = f"exit {result.returncode}"
                 continue
             rows = _data_rows(out)
@@ -236,7 +355,7 @@ def check_glob_parity(invocations: dict[str, list[str]], root: Path, temp: Path)
             continue
 
         agreed = next(iter(observed.values()))
-        expected = "exit 4" if expect_files == 0 else f"{expect_files * RECORDS_PER_FILE} rows"
+        expected = expect if isinstance(expect, str) else f"{expect * RECORDS_PER_FILE} rows"
         if agreed != expected:
             failures.append(f"{name}: all reported {agreed!r}, expected {expected!r}")
 
