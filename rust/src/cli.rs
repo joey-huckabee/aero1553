@@ -1636,8 +1636,15 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
             ))
         })?
     } else if let Some(pattern) = &args.glob {
-        crate::merge::expand_glob(pattern)
-            .map_err(|e| CliError::runtime(format!("failed to expand --glob {pattern:?}: {e}")))?
+        crate::merge::expand_glob(pattern).map_err(|e| {
+            // A wildcard in the directory part is a malformed pattern, refused
+            // before any I/O: the command line is wrong, so exit 4, not 1.
+            if e.kind() == std::io::ErrorKind::InvalidInput {
+                CliError::usage(format!("--glob {pattern:?}: {e}"))
+            } else {
+                CliError::runtime(format!("failed to expand --glob {pattern:?}: {e}"))
+            }
+        })?
     } else {
         args.inputs.clone()
     };

@@ -96,7 +96,15 @@ bool glob_match(const std::string& pattern, const std::string& name);
 /// False on an I/O failure, with `err` set. A glob that matches nothing is not
 /// an I/O failure: it returns true with an empty list, and the caller decides
 /// what to say about it.
+///
+/// Also false, with `err.code == GLOB_INVALID_PATTERN` and no I/O attempted,
+/// when the directory part holds a `*` or `?` (`captures/**/*.mie`): wildcards
+/// apply to the filename only, and the CLI reports this as a usage error.
 bool expand_glob(const std::string& pattern, std::vector<std::string>& out, platform::OsError& err);
+
+/// The `OsError::code` `expand_glob` sets for a wildcard in the directory part.
+/// Negative so it can never collide with an errno or a Win32 error code.
+const int GLOB_INVALID_PATTERN = -1;
 
 // ---------------------------------------------------------------------------
 // The merge

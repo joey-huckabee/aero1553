@@ -116,6 +116,25 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
     p == pat.len()
 }
 
+/// Why a pattern with a wildcard in its directory part is refused. Shared by
+/// every caller so the CLI and the Python binding say the same thing.
+const GLOB_DIRECTORY_WILDCARD_MESSAGE: &str = "wildcards are only supported in the filename, \
+     not in the directory part (no recursive **)";
+
+/// Whether the directory part of a glob (everything up to and including the
+/// last separator) holds a `*` or `?`.
+///
+/// On Windows the extended-length prefix `\\?\` is skipped: its `?` is syntax,
+/// not a wildcard, and refusing it would refuse every long-path pattern.
+fn directory_has_wildcard(directory: &str) -> bool {
+    let directory = if cfg!(windows) {
+        directory.strip_prefix(r"\\?\").unwrap_or(directory)
+    } else {
+        directory
+    };
+    directory.contains(['*', '?'])
+}
+
 /// Expand a single-directory glob `DIR/PATTERN` (or `PATTERN` for the current
 /// directory). PATTERN wildcards (`*`, `?`) apply to the **filename only** —
 /// no recursive `**`, no brace expansion. Returns matching regular files
@@ -135,9 +154,12 @@ pub fn glob_match(pattern: &str, name: &str) -> bool {
 ///
 /// # Errors
 ///
-/// Returns the [`io::Error`] from enumerating the directory. A pattern matching
-/// nothing is **not** an error — it yields an empty list, which is what lets the
-/// CLI report "matched no files" distinctly from "could not read the directory".
+/// Returns an [`io::ErrorKind::InvalidInput`] error, without touching the
+/// filesystem, when the directory part holds a wildcard (`captures/**/*.mie`,
+/// `capt*/a.mie`): the CLI reports that as a usage error. Otherwise returns the
+/// [`io::Error`] from enumerating the directory. A pattern matching nothing is
+/// **not** an error — it yields an empty list, which is what lets the CLI report
+/// "matched no files" distinctly from "could not read the directory".
 pub fn expand_glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
     // A textual split at the LAST separator, with the platform deciding what a
     // separator is (L2-MRG-001 clause 1). This used `Path::file_name` and
@@ -151,6 +173,16 @@ pub fn expand_glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
         Some(0) => (PathBuf::from(&pattern[..1]), &pattern[1..]),
         Some(i) => (PathBuf::from(&pattern[..i]), &pattern[i + 1..]),
     };
+    // Wildcards apply to the filename only (L2-MRG-001 clause 2). Read
+    // literally, `captures/**` is a directory named `**`, and the failure to
+    // open it reported "No such file or directory" -- a missing folder, when
+    // the mistake is the pattern.
+    if directory_has_wildcard(&pattern[..pattern.len() - name_pat.len()]) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            GLOB_DIRECTORY_WILDCARD_MESSAGE,
+        ));
+    }
     let mut out = Vec::new();
     for entry in fs::read_dir(&dir)? {
         let entry = entry?;
@@ -858,8 +890,9 @@ mod tests {
     }
 
     /// The split is textual: a pattern ending in a separator names a directory
-    /// called `*.mie` and an empty filename pattern, as in C++. `Path::parent`
-    /// normalised the trailing `/` (and `/.`) away and expanded `*.mie`.
+    /// and an empty filename pattern, as in C++. `Path::parent` normalised the
+    /// trailing `/` (and `/.`) away, so `a.mie/` matched the file `a.mie`.
+    /// No wildcard here, so the directory check does not pre-empt the split.
     /// Requirements: L2-MRG-001
     #[test]
     fn expand_glob_does_not_normalise_a_trailing_separator() {
@@ -868,12 +901,11 @@ mod tests {
         let base = d.0.to_string_lossy().into_owned();
         let sep = std::path::MAIN_SEPARATOR;
         for pattern in [
-            format!("{base}{sep}*.mie{sep}"),
-            format!("{base}{sep}*.mie{sep}."),
+            format!("{base}{sep}a.mie{sep}"),
+            format!("{base}{sep}a.mie{sep}."),
         ] {
-            // The kind is the platform's: `NotFound` on POSIX, while Windows
-            // refuses `*` in a directory name outright (`InvalidFilename`).
-            // Either way the directory is not read and `a.mie` is not matched.
+            // `a.mie` is a file, so enumerating it as a directory fails; the
+            // kind is the platform's. Either way `a.mie` is not matched.
             assert!(expand_glob(&pattern).is_err(), "{pattern}");
         }
         // An existing directory with a trailing separator: the filename
@@ -882,6 +914,45 @@ mod tests {
             expand_glob(&format!("{base}{sep}")).unwrap(),
             Vec::<PathBuf>::new()
         );
+    }
+
+    /// A wildcard in the directory part is refused as `InvalidInput` before any
+    /// I/O -- even where a directory literally named `capt*` exists, since the
+    /// answer must not depend on the filesystem. Read literally it reported
+    /// "No such file or directory", a missing folder rather than a bad pattern.
+    /// Requirements: L2-MRG-001
+    #[test]
+    fn expand_glob_refuses_a_wildcard_in_the_directory_part() {
+        let d = GlobDir::new("dirwild");
+        fs::create_dir(d.0.join("captures")).unwrap();
+        fs::write(d.0.join("captures").join("a.mie"), b"\x00\x00").unwrap();
+        let base = d.0.to_string_lossy().into_owned();
+        let sep = std::path::MAIN_SEPARATOR;
+        for pattern in [
+            format!("{base}{sep}captures{sep}**{sep}*.mie"),
+            format!("{base}{sep}capt*{sep}a.mie"),
+            format!("{base}{sep}capture?{sep}*.mie"),
+            format!("**{sep}*.mie"),
+        ] {
+            let err = expand_glob(&pattern).unwrap_err();
+            assert_eq!(err.kind(), io::ErrorKind::InvalidInput, "{pattern}");
+            assert!(err.to_string().contains("directory part"), "{pattern}");
+        }
+        // Wildcards in the filename part are the supported case.
+        assert_eq!(d.names(&format!("captures{sep}*.mie")).len(), 1);
+    }
+
+    /// The `?` of Windows' extended-length prefix `\\?\` is syntax, not a
+    /// wildcard; refusing it would refuse every long-path pattern.
+    /// Requirements: L2-MRG-001
+    #[test]
+    fn directory_wildcard_check_skips_the_extended_length_prefix() {
+        assert!(directory_has_wildcard("data/**/"));
+        assert!(directory_has_wildcard("da?a/"));
+        assert!(!directory_has_wildcard("data/ch10/"));
+        assert!(!directory_has_wildcard(""));
+        assert_eq!(directory_has_wildcard(r"\\?\C:\data\"), !cfg!(windows));
+        assert!(directory_has_wildcard(r"\\?\C:\d*\"));
     }
 
     /// A message whose wire content is driven by `seq`, so a stream of them

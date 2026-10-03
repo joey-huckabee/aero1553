@@ -169,7 +169,7 @@ multi-file merge — see [Merge](#merge-multi-file) below.
 |------|-------|---------|-------------|
 | `INPUT...` (positional) | path(s) | — | One or more MIE recording files. More than one merges them. |
 | `--manifest PATH` | path | *(none)* | Read input paths from a file, one per line; blank lines and `#`-comments are ignored. |
-| `--glob PATTERN` | glob | *(none)* | Expand a single-directory glob (e.g. `dir/*.mie`); `*` and `?` match over the filename only (no recursion). |
+| `--glob PATTERN` | glob | *(none)* | Expand a single-directory glob (e.g. `dir/*.mie`); `*` and `?` match over the filename only. A wildcard in the directory part (`captures/**/*.mie`, `capt*/a.mie`) is a usage error (exit `4`): there is no recursion. For a set spread over several directories, list it in a `--manifest`. |
 
 > **`--glob` selects by *filename*, not by content.** Every file whose name
 > matches is treated as a recording and decoded — the glob does no content or
