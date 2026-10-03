@@ -120,7 +120,7 @@ DECODE OPTIONS:
                                         on a single input. L2-MRG-005.
   --max-sort-group N                    Max consecutive same-TIME_STAMP records
                                         buffered to order rows by RT then MSG
-                                        (range 1..=1048576, default 4096). Use 1
+                                        (range 1..=1048576, default 65536). Use 1
                                         to disable reordering and emit raw
                                         capture order. L2-WRT-022.
   --max-collapse-survivors N            Max records the --collapse-duplicates

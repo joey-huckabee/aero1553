@@ -690,7 +690,7 @@
       <text class="name" x="1505" y="1302" text-anchor="middle">OrderIterExt</text>
       <line class="sep" x1="1390" y1="1312" x2="1620" y2="1312"/>
       <text class="mono" x="1398" y="1327" xml:space="preserve">
-        <tspan x="1398" dy="0">DEFAULT_MAX_SORT_GROUP = 4096</tspan>
+        <tspan x="1398" dy="0">DEFAULT_MAX_SORT_GROUP = 65536</tspan>
       </text>
       <line class="sep" x1="1390" y1="1337" x2="1620" y2="1337"/>
       <text class="mono" x="1398" y="1352" xml:space="preserve">

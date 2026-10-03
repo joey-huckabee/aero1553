@@ -240,6 +240,30 @@ class TestCap:
         assert len(warnings) == 1, f"expected exactly one WARN, got {len(warnings)}"
 
     @pytest.mark.requirement("L2-WRT-022")
+    def test_cap_warns_once_per_chunk(self, caplog: pytest.LogCaptureFixture) -> None:
+        # Five records at one instant, cap 2: two chunks reach the cap and each
+        # WARNs; the fifth record is the remainder and does not.
+        with caplog.at_level(logging.WARNING, logger="aero1553.order"):
+            got = ordered([rec(10, r, 1) for r in (21, 9, 3, 30, 1)], cap=2)
+        assert [m.rt for m in got] == [21, 9, 3, 30, 1]
+        warnings = [r for r in caplog.records if "max_sort_group" in r.getMessage()]
+        assert len(warnings) == 2, f"expected one WARN per chunk, got {len(warnings)}"
+
+    @pytest.mark.requirement("L2-WRT-022")
+    def test_cap_sorts_the_rest_of_the_run_as_a_new_group(self) -> None:
+        # The chunk that reached the cap keeps arrival order; what follows it at
+        # the same instant is gathered afresh and sorted.
+        got = ordered([rec(10, r, 1) for r in (21, 9, 3, 30, 1)], cap=3)
+        assert [m.rt for m in got] == [21, 9, 3, 1, 30]
+
+    @pytest.mark.requirement("L2-WRT-022")
+    def test_cap_of_one_is_silent(self, caplog: pytest.LogCaptureFixture) -> None:
+        # The documented "off" switch is a request, not an overflow.
+        with caplog.at_level(logging.WARNING, logger="aero1553.order"):
+            ordered([rec(10, 21, 3), rec(10, 3, 3), rec(10, 9, 3)], cap=MAX_SORT_GROUP_MIN)
+        assert not [r for r in caplog.records if "max_sort_group" in r.getMessage()]
+
+    @pytest.mark.requirement("L2-WRT-022")
     def test_cap_of_one_disables_reordering(self) -> None:
         got = ordered([rec(10, 21, 3), rec(10, 3, 3)], cap=MAX_SORT_GROUP_MIN)
         assert [m.rt for m in got] == [21, 3]
@@ -253,7 +277,7 @@ class TestCap:
     def test_constants_are_consistent_with_rust(self) -> None:
         assert MAX_SORT_GROUP_MIN == 1
         assert MAX_SORT_GROUP_MAX == 1_048_576
-        assert DEFAULT_MAX_SORT_GROUP == 4096
+        assert DEFAULT_MAX_SORT_GROUP == 65_536
         assert MAX_SORT_GROUP_MIN <= DEFAULT_MAX_SORT_GROUP <= MAX_SORT_GROUP_MAX
 
 

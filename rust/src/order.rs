@@ -18,8 +18,10 @@
 //!   where it is.
 //! - Buffering is capped by `max_group` (L2-WRT-022). A corrupt recording whose
 //!   timestamps all decode to one value would otherwise buffer the whole file;
-//!   at the cap the run is flushed in arrival order with one WARN and decoding
-//!   continues.
+//!   each time the cap is reached the buffered records are flushed in arrival
+//!   order with one WARN, the rest of the run is gathered (and sorted) as a new
+//!   group, and decoding continues. A cap of `1` is the documented "off" switch
+//!   and flushes silently.
 //!
 //! `SPURIOUS_DATA` records carry no Command Word, so they have no `RT`/`MSG` to
 //! sort on. They are **pinned**: they travel with the record they followed on
@@ -45,10 +47,11 @@ use crate::models::{Direction, MieMessage, Timestamp};
 
 /// Default cap on one buffered equal-timestamp run (L2-WRT-022). Far above any
 /// real tie — a 1553 bus carries one transaction at a time, so genuine ties come
-/// from the two concurrent buses or from overlapping recorders in a merge —
-/// while bounding worst-case buffering to a few hundred kilobytes. Shared in
-/// value with the Python implementation (L3-WRT-003).
-pub const DEFAULT_MAX_SORT_GROUP: usize = 4096;
+/// from the two concurrent buses or from overlapping recorders in a merge, and
+/// the longest run in the large golden merge is 7 — while bounding worst-case
+/// buffering to about 10 MB (152 bytes a record). Only a broken clock reaches
+/// it. Shared in value with the Python and C++ implementations (L3-WRT-003).
+pub const DEFAULT_MAX_SORT_GROUP: usize = 65_536;
 
 /// Valid range for `output.max_sort_group` / `--max-sort-group` (L3-WRT-003).
 /// `1` disables reordering entirely (every run is already at the cap), which is
@@ -218,19 +221,26 @@ impl<I, E> Ordered<I, E> {
         }
     }
 
-    /// Flush a run that hit the L2-WRT-022 cap: emitted in arrival order, with
-    /// one WARN naming the timestamp and the cap.
+    /// Flush a run that hit the L2-WRT-022 cap: the buffered records are emitted
+    /// in arrival order, with one WARN naming the timestamp and the cap. The
+    /// rest of the run is gathered afresh, so a run longer than the cap WARNs
+    /// once per cap-sized chunk. A cap of `1` is the documented "off" switch,
+    /// not an overflow, so it flushes silently: a WARN per record was a flood
+    /// (and, measured, a 40x slowdown on a large file).
     fn flush_capped(&mut self) {
-        crate::log_warn!(
-            "equal-timestamp run at {} reached the {}-record max_sort_group cap; \
-             emitting this run in arrival order (raise [output] max_sort_group / \
-             --max-sort-group to restore canonical RT/MSG order for it)",
-            self.buf
-                .first()
-                .map(|m| m.timestamp.format())
-                .unwrap_or_default(),
-            self.max_group
-        );
+        if self.max_group > MAX_SORT_GROUP_MIN {
+            crate::log_warn!(
+                "equal-timestamp run at {} reached the {}-record max_sort_group cap; \
+                 emitting these records in arrival order and gathering the rest of \
+                 the run afresh (raise [output] max_sort_group / --max-sort-group to \
+                 restore canonical RT/MSG order for it)",
+                self.buf
+                    .first()
+                    .map(|m| m.timestamp.format())
+                    .unwrap_or_default(),
+                self.max_group
+            );
+        }
         self.out.extend(self.buf.drain(..).rev());
     }
 }
@@ -672,6 +682,32 @@ mod tests {
                 Some((6, 1, 0)),
             ],
             "a capped run keeps arrival order"
+        );
+    }
+
+    /// After a cap flush the rest of the same run is gathered afresh and
+    /// sorted: the chunk that reached the cap keeps arrival order, the
+    /// remainder does not.
+    ///
+    /// Requirements: L2-WRT-022
+    #[test]
+    fn cap_sorts_the_rest_of_the_run_as_a_new_group() {
+        let got = ordered(
+            [21, 9, 3, 30, 1]
+                .into_iter()
+                .map(|rt| rec(10, rt, 1, Direction::Receive))
+                .collect(),
+            3,
+        );
+        assert_eq!(
+            got,
+            vec![
+                Some((21, 1, 0)),
+                Some((9, 1, 0)),
+                Some((3, 1, 0)),
+                Some((1, 1, 0)),
+                Some((30, 1, 0)),
+            ]
         );
     }
 

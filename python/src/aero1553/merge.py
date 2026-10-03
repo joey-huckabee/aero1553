@@ -49,9 +49,10 @@ DEFAULT_MAX_COLLAPSE_SURVIVORS = 4096
 Far above any genuine population of one collapse window -- a 1553 bus carries
 one transaction at a time, so a window holds one record per recorder per
 transaction -- while bounding worst-case retention to a few hundred kilobytes.
-Matches ``DEFAULT_MAX_SORT_GROUP`` deliberately: the two caps guard the same
-class of pathological input, and an operator who has reasoned about one should
-not have to re-derive the other.
+Deliberately **not** ``DEFAULT_MAX_SORT_GROUP``, although both guard the same
+pathological input: that cap costs memory, this one costs time, because every
+record is compared against every survivor. Raised to match, a broken-clock
+merge with ``--collapse-duplicates`` ran 13x slower.
 """
 
 

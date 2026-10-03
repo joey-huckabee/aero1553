@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "log_capture.hpp"
+#include "mie/config.hpp"
 #include "mie/error.hpp"
 #include "mie/log.hpp"
 #include "mie/models.hpp"
@@ -113,7 +114,7 @@ class VectorSource : public mie::MessageSource {
 /// Drain an OrderedSource, returning the file_offset of each record in the
 /// order emitted.
 std::vector<uint64_t> order_of(const std::vector<mie::MieMessage>& input,
-                               std::size_t max_group = 4096) {
+                               std::size_t max_group = mie::DEFAULT_MAX_SORT_GROUP) {
     VectorSource source(tagged(input));
     mie::OrderedSource ordered(source, max_group);
     std::vector<uint64_t> out;
@@ -142,6 +143,12 @@ std::vector<uint64_t> seq(uint64_t a, uint64_t b, uint64_t c) {
 std::vector<uint64_t> seq(uint64_t a, uint64_t b, uint64_t c, uint64_t d) {
     std::vector<uint64_t> out = seq(a, b, c);
     out.push_back(d);
+    return out;
+}
+
+std::vector<uint64_t> seq(uint64_t a, uint64_t b, uint64_t c, uint64_t d, uint64_t e) {
+    std::vector<uint64_t> out = seq(a, b, c, d);
+    out.push_back(e);
     return out;
 }
 
@@ -366,6 +373,40 @@ TEST_CASE("a capped run is emitted in arrival order with one WARN", "[order][L2-
 
     CHECK(order_of(input, 2) == seq(0, 1, 2));
     CHECK(capture.count_containing("max_sort_group cap") == 1);
+}
+
+TEST_CASE("a long run WARNs once per chunk and sorts the remainder", "[order][L2-WRT-022]") {
+    // Five records at one instant. At cap 2, two chunks reach the cap and each
+    // WARNs; the fifth is the remainder. At cap 3, the chunk that reached the
+    // cap keeps arrival order and the rest of the run is gathered afresh and
+    // sorted.
+    std::vector<mie::MieMessage> input;
+    const uint8_t rts[5] = {21, 9, 3, 30, 1};
+    input.reserve(5);
+    for (std::size_t i = 0; i < 5; ++i) {
+        input.push_back(at(100, rts[i], 1, false));
+    }
+    {
+        const LogCapture capture(mie::log::LEVEL_WARN);
+        CHECK(order_of(input, 2) == seq(0, 1, 2, 3, 4));
+        CHECK(capture.count_containing("max_sort_group cap") == 2);
+    }
+    {
+        const LogCapture capture(mie::log::LEVEL_WARN);
+        CHECK(order_of(input, 3) == seq(0, 1, 2, 4, 3));
+        CHECK(capture.count_containing("max_sort_group cap") == 1);
+    }
+}
+
+TEST_CASE("a cap of one is silent", "[order][L2-WRT-022]") {
+    // The documented "off" switch is a request, not an overflow.
+    const LogCapture capture(mie::log::LEVEL_WARN);
+    std::vector<mie::MieMessage> input;
+    input.push_back(at(100, 21, 1, false));
+    input.push_back(at(100, 3, 1, false));
+    input.push_back(at(100, 9, 1, false));
+    CHECK(order_of(input, 1) == seq(0, 1, 2));
+    CHECK(capture.count_containing("max_sort_group") == 0);
 }
 
 TEST_CASE("a capped run keeps every row", "[order][L2-WRT-022]") {

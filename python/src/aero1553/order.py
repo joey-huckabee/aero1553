@@ -15,9 +15,11 @@ Two properties make this safe over a streaming pipeline:
   forbids re-sorting) is left exactly as it arrived: the stream ``T, T, U, T``
   sorts the leading pair and leaves the trailing ``T`` where it is.
 - Buffering is capped by ``max_group`` (L2-WRT-022). A corrupt recording whose
-  timestamps all decode to one value would otherwise buffer the whole file; at
-  the cap the run is emitted in arrival order with one WARN and decoding
-  continues.
+  timestamps all decode to one value would otherwise buffer the whole file;
+  each time the cap is reached the buffered records are emitted in arrival
+  order with one WARN, the rest of the run is gathered (and sorted) as a new
+  group, and decoding continues. A cap of ``1`` is the "off" switch and is
+  silent.
 
 ``SPURIOUS_DATA`` records carry no Command Word, so they have no ``RT``/``MSG``
 to sort on. They are **pinned**: excluded from the permutation and kept
@@ -52,8 +54,9 @@ if TYPE_CHECKING:
 #: Default cap on one buffered equal-timestamp run (L2-WRT-022). Far above any
 #: real tie — a 1553 bus carries one transaction at a time, so genuine ties come
 #: from the two concurrent buses or from overlapping recorders in a merge —
-#: while bounding worst-case buffering. Shared in value with Rust (L3-WRT-003).
-DEFAULT_MAX_SORT_GROUP = 4096
+#: while bounding worst-case buffering to about 10 MB. Only a broken clock
+#: reaches it. Shared in value with Rust and C++ (L3-WRT-003).
+DEFAULT_MAX_SORT_GROUP = 65_536
 
 #: Valid range for ``output.max_sort_group`` / ``--max-sort-group``
 #: (L3-WRT-003). ``1`` disables reordering entirely (every run is already at the

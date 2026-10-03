@@ -168,6 +168,8 @@ aero1553 decode recording.mie -o mie.csv --no-mux --max-sort-group 1
 
 `--max-sort-group 1` makes every record its own sort group, so nothing is
 reordered and the output is raw capture order — exactly what the vendor writes.
+It is silent: the cap's overflow WARN is for a cap that is *reached*, not one
+you set to 1 on purpose.
 Combine it with `--no-mux` (§3) for a full vendor-exact decode. The equivalent
 config keys are `[output] max_sort_group = 1` and `[mux] enabled = false`.
 

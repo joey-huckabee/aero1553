@@ -126,6 +126,19 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **`max_sort_group` defaults to 65536, and `--max-sort-group 1` is silent**
+  (all three implementations; L2-WRT-022 amended, `docs/DATAFLOW.md` decision
+  4). The cap on one buffered run of same-`TIME_STAMP` records rises from
+  4096 to 65536 (about 10 MB worst case); only a recording with a broken clock
+  reaches it -- the longest real run measured is 7 records. `--max-sort-group
+  1`, the documented way to get vendor capture order, no longer WARNs once per
+  record: on a 780,000-record file that flood made the decode 40x slower. A
+  run longer than the cap still WARNs once per cap-sized chunk, which
+  L2-WRT-022 now states (it had said once per run, which the code never did),
+  and the WARN now says the rest of the run is gathered afresh. The merge's
+  `max_collapse_survivors` stays at 4096 on purpose: that cap costs time per
+  record rather than memory, and at 65536 a broken-clock merge under
+  `--collapse-duplicates` ran 13x slower.
 - **The Python package is built with maturin and developed with uv; Poetry
   is gone.** This is the groundwork for the Python package becoming a PyO3
   binding over the Rust decoder: it now contains a compiled extension,

@@ -11,7 +11,7 @@
 
 namespace mie {
 
-const std::size_t ORDER_DEFAULT_MAX_SORT_GROUP = 4096;
+const std::size_t ORDER_DEFAULT_MAX_SORT_GROUP = 65536;
 
 namespace {
 
@@ -185,12 +185,17 @@ void OrderedSource::flush(bool keep_tail) {
 }
 
 void OrderedSource::flush_capped() {
-    MIE_LOG_WARN("equal-timestamp run at " +
-                 (buffer_.empty() ? std::string() : buffer_.front().timestamp.format()) +
-                 " reached the " + text::decimal(max_group_) +
-                 "-record max_sort_group cap; emitting this run in arrival order (raise "
-                 "[output] max_sort_group / --max-sort-group to restore canonical RT/MSG "
-                 "order for it)");
+    // A cap of 1 is the documented "off" switch, not an overflow: it flushes
+    // silently. A WARN per record was a flood, and a measured 40x slowdown.
+    if (max_group_ > 1) {
+        MIE_LOG_WARN("equal-timestamp run at " +
+                     (buffer_.empty() ? std::string() : buffer_.front().timestamp.format()) +
+                     " reached the " + text::decimal(max_group_) +
+                     "-record max_sort_group cap; emitting these records in arrival order "
+                     "and gathering the rest of the run afresh (raise [output] "
+                     "max_sort_group / --max-sort-group to restore canonical RT/MSG order "
+                     "for it)");
+    }
     for (std::size_t i = buffer_.size(); i > 0; --i) {
         pending_.push_back(buffer_[i - 1]);
     }

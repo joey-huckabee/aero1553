@@ -1551,10 +1551,29 @@ fn capped_run_warns_and_keeps_every_row() {
         4,
         "no row may be dropped at the cap"
     );
+    // Two cap-sized chunks of one run: one WARN each, naming the cap.
+    let stderr = String::from_utf8_lossy(&o.stderr);
+    assert_eq!(
+        stderr.matches("max_sort_group cap").count(),
+        2,
+        "one WARN per chunk that reached the cap, got: {stderr}"
+    );
+
+    // A cap of 1 is the "off" switch, not an overflow: rows in capture order,
+    // and no WARN at all.
+    let o = run([
+        "decode",
+        input.to_str().unwrap(),
+        "-o",
+        out.to_str().unwrap(),
+        "--max-sort-group",
+        "1",
+    ]);
+    assert_eq!(exit_code(&o), 0);
     let stderr = String::from_utf8_lossy(&o.stderr);
     assert!(
-        stderr.contains("max_sort_group"),
-        "a capped run must WARN naming the cap, got: {stderr}"
+        !stderr.contains("max_sort_group"),
+        "a cap of 1 must not WARN, got: {stderr}"
     );
 }
 
