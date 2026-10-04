@@ -539,11 +539,29 @@ bool RecordIter::next(MieMessage& out) {
 }
 
 RecordIter::Step RecordIter::decode_one(MieMessage& out) {
-    // A Type Word plus the smallest possible payload has to fit.
-    if (offset_ + decode::MIN_RECORD_BYTES_STANDARD > file_len_) {
-        done_ = true;
-        log_complete();
-        return STEP_STOP;
+    // A Type Word plus the smallest possible payload has to fit. A tail of
+    // 2-7 bytes still holds a readable Type Word, and unless it is the null
+    // terminator it is a record cut short. Strict mode falls through so the
+    // validator reports it (L2-RDR-003): no valid record fits in fewer than 8
+    // bytes, so validation fails before a byte past the Type Word is read.
+    // Lenient mode stops cleanly (L2-RDR-002) and says what it dropped, as it
+    // does for every other byte it discards.
+    const std::size_t remaining = file_len_ > offset_ ? file_len_ - offset_ : 0;
+    if (remaining < decode::MIN_RECORD_BYTES_STANDARD) {
+        uint16_t tail_raw = 0;
+        const bool cut_short = remaining >= 2 &&
+                               decode::read_u16(data_, file_len_, offset_, tail_raw) &&
+                               !decode::is_terminator_type_word(tail_raw);
+        if (!(strict_ && cut_short)) {
+            if (cut_short) {
+                MIE_LOG_WARN(dec(remaining) + " trailing byte(s) at " + hex(offset_) +
+                             " do not hold a complete record (Type Word " + hexw(tail_raw, 4) +
+                             "); stopping");
+            }
+            done_ = true;
+            log_complete();
+            return STEP_STOP;
+        }
     }
 
     uint16_t type_raw = 0;

@@ -1304,6 +1304,64 @@ TEST_CASE("a truncated final record is an error in strict mode", "[reader][L2-RD
     CHECK(walk.messages.size() == 2);
 }
 
+TEST_CASE("a truncated tail of two to seven bytes is reported in strict mode",
+          "[reader][L2-RDR-002][L2-RDR-003]") {
+    // Fewer than 8 bytes cannot hold a record, but 2-7 still hold a readable
+    // Type Word, so strict mode reports the tail like any longer one: a
+    // plausible Type Word is RecordTruncated, an implausible one gets the
+    // Type-Word classes. A null Type Word is the terminator and one byte holds
+    // no Type Word; both end cleanly. Lenient mode keeps the whole records and
+    // says what it dropped, once.
+    struct Case {
+        std::vector<uint8_t> tail;
+        bool reported;
+        mie::MieErrorKind kind;
+    };
+    std::vector<Case> cases;
+    const uint8_t two[] = {0x02, 0x24};
+    const uint8_t four[] = {0x02, 0x24, 0xAA, 0xAA};
+    const uint8_t seven[] = {0x02, 0x24, 1, 2, 3, 4, 5};
+    const uint8_t bad_type[] = {0x7F, 0x24, 0xAA, 0xAA};
+    const uint8_t bad_count[] = {0x02, 0x01, 0xAA, 0xAA};
+    const uint8_t terminator[] = {0x00, 0x00};
+    const uint8_t one[] = {0x02};
+    cases.push_back(Case{std::vector<uint8_t>(two, two + 2), true, mie::KIND_RECORD_TRUNCATED});
+    cases.push_back(Case{std::vector<uint8_t>(four, four + 4), true, mie::KIND_RECORD_TRUNCATED});
+    cases.push_back(Case{std::vector<uint8_t>(seven, seven + 7), true, mie::KIND_RECORD_TRUNCATED});
+    cases.push_back(
+        Case{std::vector<uint8_t>(bad_type, bad_type + 4), true, mie::KIND_UNKNOWN_TYPE_WORD});
+    cases.push_back(
+        Case{std::vector<uint8_t>(bad_count, bad_count + 4), true, mie::KIND_INVALID_TYPE_WORD});
+    cases.push_back(
+        Case{std::vector<uint8_t>(terminator, terminator + 2), false, mie::KIND_FILE_IO});
+    cases.push_back(Case{std::vector<uint8_t>(one, one + 1), false, mie::KIND_FILE_IO});
+
+    std::vector<uint16_t> words = bc_to_rt(3, 5, 2, 0);
+    words += bc_to_rt(3, 5, 2, 100);
+    for (std::size_t i = 0; i < cases.size(); ++i) {
+        INFO("case " << i);
+        std::vector<uint8_t> bytes = le_bytes(words);
+        bytes.insert(bytes.end(), cases[i].tail.begin(), cases[i].tail.end());
+        const mie_test::TempFile fixture("short-tail.mie", bytes);
+
+        const Walk strict = walk_file(fixture.str(), strict_options());
+        CHECK(strict.messages.size() == 2);
+        CHECK(strict.threw == cases[i].reported);
+        if (cases[i].reported) {
+            CHECK(strict.kind == cases[i].kind);
+        }
+
+        mie::ReaderOptions lenient;
+        lenient.input_time_format = mie::TIMESTAMP_IRIG;
+        const LogCapture capture(mie::log::LEVEL_WARN);
+        const Walk loose = walk_file(fixture.str(), lenient);
+        CHECK_FALSE(loose.threw);
+        CHECK(loose.messages.size() == 2);
+        CHECK(capture.count_containing("do not hold a complete record") ==
+              (cases[i].reported ? 1u : 0u));
+    }
+}
+
 TEST_CASE("a corrupt region larger than the scan window is unrecoverable",
           "[reader][L1-EXIT-004][L2-SYN-010][L2-SYN-011]") {
     std::vector<uint16_t> words = bc_to_rt(3, 5, 2, 0);

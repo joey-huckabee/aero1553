@@ -120,6 +120,7 @@ below calls out where the two differ.
 | **All-0xFF / single-byte padding** ("homogeneous payload") | A defensive check rejects a file whose candidate records are byte-identical except for the timestamp — almost always a pad, not data. | 2 |
 | **Truncated first record** | A valid Type Word is found but the record runs past end-of-file. Strict: error (`FirstRecordTruncated`). Lenient: a WARN names the truncation, and the decode fails as "no valid records" — there is nothing after it to skip to, and a decode that produced no rows is not a success. No output file is created. | 1 / 2 |
 | **Truncated mid-file record** | Same idea further in: strict errors; lenient skips the short record and continues. | 1 / 0 |
+| **Truncated final record** | The file ends inside a record -- even 2 bytes of one. Strict: error (`RecordTruncated`). Lenient: every whole record is kept, a WARN names the dropped bytes, and the decode ends normally. A single stray byte holds no Type Word and ends the decode silently; a trailing `00 00` is the end-of-records terminator. | 1 / 0 |
 | **Records start past the 64 KB scan window** | Not detected; reported as "no valid records." | 2 |
 
 These checks live in the reader/sync code; the full error names and the decision

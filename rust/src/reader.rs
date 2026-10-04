@@ -766,11 +766,34 @@ impl RecordIter<'_> {
     /// proceed. All the original loop-body paths are preserved exactly; only the
     /// control flow is expressed via [`Step`] so the work can live in helpers.
     fn decode_one(&mut self) -> Step {
-        // Need at least a Type Word + minimum-format payload.
-        if self.offset + MIN_RECORD_BYTES_STANDARD > self.file_len {
-            self.done = true;
-            self.log_complete();
-            return Step::Stop;
+        // Need at least a Type Word + minimum-format payload. A tail of 2-7
+        // bytes still holds a readable Type Word, and unless it is the null
+        // terminator it is a record cut short. Strict mode falls through so the
+        // validator reports it (L2-RDR-003): no valid record fits in fewer than
+        // 8 bytes, so validation fails before a byte past the Type Word is
+        // read. Lenient mode stops cleanly (L2-RDR-002) and says what it
+        // dropped, as it does for every other byte it discards.
+        let remaining = self.file_len.saturating_sub(self.offset);
+        if remaining < MIN_RECORD_BYTES_STANDARD {
+            let tail = if remaining >= 2 {
+                read_u16(&self.data, self.offset).filter(|&raw| !is_terminator_type_word(raw))
+            } else {
+                None
+            };
+            if !(self.strict && tail.is_some()) {
+                if let Some(raw) = tail {
+                    log_warn!(
+                        "{} trailing byte(s) at 0x{:X} do not hold a complete record \
+                         (Type Word 0x{:04X}); stopping",
+                        remaining,
+                        self.offset,
+                        raw
+                    );
+                }
+                self.done = true;
+                self.log_complete();
+                return Step::Stop;
+            }
         }
         let Some(type_raw) = read_u16(&self.data, self.offset) else {
             self.done = true;
@@ -1605,6 +1628,92 @@ mod tests {
         // Subsequent calls: None forever.
         assert!(it.next().is_none());
         assert!(it.next().is_none());
+    }
+
+    /// Two clean records, then `tail`. The second record is re-timed and its
+    /// first data word changed, so the pair is not a homogeneous pad.
+    fn two_records_then(tail: &[u8]) -> Vec<u8> {
+        let mut second = rt15_sa11_rcv();
+        second[6] = 0x22; // a later IRIG timestamp
+        second[10] ^= 0x01; // a different first data word
+        let mut data = rt15_sa11_rcv();
+        data.extend(second);
+        data.extend_from_slice(tail);
+        data
+    }
+
+    /// Decode `data` to completion, returning the rows and the terminal error.
+    fn decode_tail(data: &[u8], strict: bool) -> (usize, Option<MieError>) {
+        let f = write_temp(data);
+        let reader = MieFileReader::with_options(
+            f.path(),
+            ReaderOptions {
+                strict,
+                input_time_format: TimestampFormat::Irig,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut rows = 0;
+        for item in &reader {
+            match item {
+                Ok(_) => rows += 1,
+                Err(e) => return (rows, Some(e)),
+            }
+        }
+        (rows, None)
+    }
+
+    /// A tail of 2-7 bytes after the last whole record holds a readable Type
+    /// Word, so strict mode reports it like any longer truncated tail
+    /// (L2-RDR-003): `RecordTruncated` for a plausible Type Word, and the
+    /// Type-Word classes for an implausible one. A null Type Word is the
+    /// terminator and a single byte holds no Type Word; both end cleanly.
+    /// Lenient mode keeps every whole record either way (L2-RDR-002).
+    /// Requirements: L2-RDR-002, L2-RDR-003
+    #[test]
+    fn strict_reports_a_truncated_tail_of_two_to_seven_bytes() {
+        use crate::error::MieErrorKind;
+        let cases: [(&[u8], Option<MieErrorKind>); 7] = [
+            (&[0x02, 0x24], Some(MieErrorKind::RecordTruncated)),
+            (
+                &[0x02, 0x24, 0xAA, 0xAA],
+                Some(MieErrorKind::RecordTruncated),
+            ),
+            (
+                &[0x02, 0x24, 1, 2, 3, 4, 5],
+                Some(MieErrorKind::RecordTruncated),
+            ),
+            (
+                &[0x7F, 0x24, 0xAA, 0xAA],
+                Some(MieErrorKind::UnknownTypeWord),
+            ),
+            (
+                &[0x02, 0x01, 0xAA, 0xAA],
+                Some(MieErrorKind::InvalidTypeWord),
+            ),
+            (&[0x00, 0x00], None),
+            (&[0x02], None),
+        ];
+        for (tail, want) in cases {
+            let data = two_records_then(tail);
+            let (rows, err) = decode_tail(&data, true);
+            assert_eq!(rows, 2, "tail {tail:02X?}");
+            assert_eq!(err.as_ref().map(MieError::kind), want, "tail {tail:02X?}");
+            if let Some(MieError::RecordTruncated {
+                offset,
+                available_bytes,
+                ..
+            }) = err
+            {
+                assert_eq!(offset, 144);
+                assert_eq!(available_bytes, tail.len() as u64);
+            }
+
+            let (rows, err) = decode_tail(&data, false);
+            assert_eq!(rows, 2, "lenient, tail {tail:02X?}");
+            assert!(err.is_none(), "lenient, tail {tail:02X?}: {err:?}");
+        }
     }
 
     /// Regression: L2-RDR-004. A file that contains a structurally-

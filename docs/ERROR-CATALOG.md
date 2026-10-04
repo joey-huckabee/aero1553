@@ -134,7 +134,7 @@ In **lenient mode** (default), most record errors result in the record being ski
 |---------|---------------|---------|--------|
 | `MieInvalidTypeWordError` / `InvalidTypeWord` | Type Word has zero or below-minimum word count (L2-SYN-002). | skip + WARN | raise |
 | `MieUnknownTypeWordError` / `UnknownTypeWord` | Type Word's message type field is not in the known set (L2-SYN-001). | skip + WARN | raise |
-| `MieRecordTruncatedError` / `RecordTruncated` | A non-first record's declared extent runs past EOF (L2-RDR-002, L2-RDR-003). | stop iteration cleanly | raise |
+| `MieRecordTruncatedError` / `RecordTruncated` | A non-first record's declared extent runs past EOF (L2-RDR-002, L2-RDR-003) -- however short the tail, provided it holds a readable, non-null Type Word (2 bytes or more). | stop cleanly, keeping every whole record, with a WARN | raise |
 | `MieFirstRecordTruncatedError` / `FirstRecordTruncated` | The *first* record after header detection has a declared extent past EOF (L2-RDR-004). Distinct class so it doesn't get confused with mid-stream truncation. | WARN naming the truncation, then `NoValidRecords` (exit 2), zero records emitted | raise |
 | `MiePayloadError` / `PayloadError` | Record's payload is internally inconsistent — IRIG range failure, structural invariant violation (L2-SYN-020/021/022/023), or generic extraction failure. | skip + WARN | raise |
 | `MieUnknownErrorCodeError` / `UnknownErrorCode` | An errored record (Type Word bit 14 set) carries an Error Word value outside the known DDC + decoder set (L2-ERR-004). | log WARN, emit row with the unknown code | raise |
