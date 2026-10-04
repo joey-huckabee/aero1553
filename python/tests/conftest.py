@@ -8,6 +8,8 @@ vendor-generated CSV output.
 from __future__ import annotations
 
 import logging
+import signal
+import threading
 from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,6 +45,26 @@ def _restore_package_logger_state() -> Iterator[None]:
         pkg_logger.handlers[:] = saved_handlers
         pkg_logger.setLevel(saved_level)
         pkg_logger.propagate = saved_propagate
+
+
+@pytest.fixture(autouse=True)
+def _restore_sigint_handler() -> Iterator[None]:
+    """Undo a test's change to the SIGINT handler.
+
+    ``cli.main_cli`` restores the operating system's default Ctrl-C handling,
+    as a process entry point should, and a test that calls it on the main
+    thread left that in place for every test after it. Python's own handler
+    was then gone for the rest of the run, so a later test that simulates
+    Ctrl-C with ``_thread.interrupt_main`` -- which does nothing unless Python
+    handles the signal -- saw no ``KeyboardInterrupt`` at all, but only when
+    run in the full suite.
+    """
+    saved = signal.getsignal(signal.SIGINT)
+    try:
+        yield
+    finally:
+        if threading.current_thread() is threading.main_thread() and saved is not None:
+            signal.signal(signal.SIGINT, saved)
 
 
 # Known-good record: RT15 SA11 Receive, Bus A, 30 data words

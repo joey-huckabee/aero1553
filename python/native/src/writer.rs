@@ -181,6 +181,7 @@ pub fn write_csv(
     logbridge::sync_level(py)?;
     let render = time_render(time_format, year, utc_offset_minutes)?;
     let (source, slot) = stream::source(messages)?;
+    let source = stream::interruptible(source, slot.clone());
     if let Ok(path) = output.extract::<PathBuf>() {
         let opts = WriteOptions {
             input_path,
@@ -212,7 +213,7 @@ pub fn write_csv(
 /// Stream rows to a Python text stream, returning how many were written (on a
 /// broken pipe, how many were written before it).
 fn to_stream(
-    source: stream::BoxedStream,
+    source: stream::Interruptible,
     sink_stream: Py<PyAny>,
     slot: &ErrorSlot,
     destination: &str,
@@ -299,6 +300,7 @@ pub fn write_csv_split(
         time_render: time_render(time_format, year, utc_offset_minutes)?,
     };
     let (source, slot) = stream::source(messages)?;
+    let source = stream::interruptible(source, slot.clone());
     py.detach(|| core::write_csv_split(source, &output, opts))
         .map(outcome)
         .map_err(|err| stream::raise(py, &slot, err))
