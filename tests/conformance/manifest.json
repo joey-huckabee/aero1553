@@ -1447,6 +1447,42 @@
       "expected": "expected/numeric-value-surrounding-whitespace.csv"
     },
     {
+      "name": "usage-error-tick-rate-inf",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "inf"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-tick-rate-overflow",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "1e400"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-tick-rate-hex",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "0x10"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-tick-rate-hex-float",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "0x1p4"
+      ],
+      "expected_exit": 4
+    },
+    {
       "name": "usage-error-numeric-value-nbsp",
       "input": "inputs/basic-multi-record.hex",
       "args": [

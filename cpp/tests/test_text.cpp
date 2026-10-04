@@ -124,6 +124,25 @@ TEST_CASE("integer parsing refuses overflow rather than saturating", "[text][L2-
     CHECK(u == 7);
 }
 
+TEST_CASE("float literals follow Rust's f64 grammar", "[text][L2-CLI-020]") {
+    // The gate in front of strtod, which also takes hexadecimal floats that
+    // Rust refuses. inf / infinity / nan are lexically valid in both (and then
+    // refused for not being finite by the caller that needs a finite value).
+    const char* const good[] = {"1",    "1.",   ".5",   "1.5", "+1",  "-1",        "1e3",  "1E3",
+                                "1e+3", "1e-3", ".5e1", "inf", "INF", "+Infinity", "-nan", "NaN"};
+    for (std::size_t i = 0; i < sizeof(good) / sizeof(good[0]); ++i) {
+        INFO(good[i]);
+        CHECK(mie::text::is_rust_float_literal(good[i]));
+    }
+    const char* const bad[] = {"",     "+",      ".",   "e3",    "1e",    "1e+",
+                               "0x10", "0x1p4",  "1_0", "1.2.3", " 1",    "1 ",
+                               "infx", "nan(1)", "in",  "--1",   "1e3.5", "1,5"};
+    for (std::size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        INFO(bad[i]);
+        CHECK_FALSE(mie::text::is_rust_float_literal(bad[i]));
+    }
+}
+
 TEST_CASE("signed decimal negates without undefined behaviour", "[text]") {
     CHECK(txt::decimal_signed(0) == "0");
     CHECK(txt::decimal_signed(-1) == "-1");

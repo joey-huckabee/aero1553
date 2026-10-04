@@ -203,6 +203,60 @@ bool parse_int64(const std::string& s, int64_t& out) {
     return true;
 }
 
+namespace {
+
+/// Case-insensitive ASCII equality of `s[at, at + word.size())` with `word`
+/// (lower-case), and nothing after it.
+bool ends_with_word(const std::string& s, std::size_t at, const char* word) {
+    std::size_t i = 0;
+    for (; word[i] != '\0'; ++i) {
+        if (at + i >= s.size() || ascii_lower(s[at + i]) != word[i]) {
+            return false;
+        }
+    }
+    return at + i == s.size();
+}
+
+}  // namespace
+
+bool is_rust_float_literal(const std::string& s) {
+    std::size_t at = (!s.empty() && (s[0] == '+' || s[0] == '-')) ? 1 : 0;
+    if (ends_with_word(s, at, "inf") || ends_with_word(s, at, "infinity") ||
+        ends_with_word(s, at, "nan")) {
+        return true;
+    }
+    std::size_t int_digits = 0;
+    while (at < s.size() && is_ascii_digit(s[at])) {
+        ++at;
+        ++int_digits;
+    }
+    std::size_t frac_digits = 0;
+    if (at < s.size() && s[at] == '.') {
+        ++at;
+        while (at < s.size() && is_ascii_digit(s[at])) {
+            ++at;
+            ++frac_digits;
+        }
+    }
+    if (int_digits == 0 && frac_digits == 0) {
+        return false;  // no digits at all: "", "+", ".", "e3"
+    }
+    if (at < s.size() && (s[at] == 'e' || s[at] == 'E')) {
+        ++at;
+        if (at < s.size() && (s[at] == '+' || s[at] == '-')) {
+            ++at;
+        }
+        const std::size_t exp_start = at;
+        while (at < s.size() && is_ascii_digit(s[at])) {
+            ++at;
+        }
+        if (at == exp_start) {
+            return false;  // "1e", "1e+"
+        }
+    }
+    return at == s.size();
+}
+
 bool parse_uint64(const std::string& s, uint64_t& out) {
     const std::size_t start = (!s.empty() && s[0] == '+') ? 1 : 0;
     return accumulate_digits(s, start, std::numeric_limits<uint64_t>::max(), out);

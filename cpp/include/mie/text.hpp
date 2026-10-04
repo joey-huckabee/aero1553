@@ -117,6 +117,19 @@ bool parse_int64(const std::string& s, int64_t& out);
 /// Rust's `u64::from_str` refuses it, and so is a value above 2^64 - 1.
 bool parse_uint64(const std::string& s, uint64_t& out);
 
+/// True when `s` is a float literal in the grammar of Rust's `f64::from_str`:
+///
+///     Float  ::= Sign? ( "inf" | "infinity" | "nan" | Number )   -- letters case-insensitive
+///     Number ::= ( Digit+ | Digit+ "." Digit* | Digit* "." Digit+ ) Exp?
+///     Exp    ::= ("e" | "E") Sign? Digit+
+///
+/// The gate in front of `strtod`, which ALSO accepts hexadecimal floats
+/// (`0x10`, `0x1p4`), `nan(...)` payloads and leading whitespace -- forms Rust
+/// refuses. A literal that passes converts through `strtod` to the value Rust
+/// computes: both round correctly, and the program never calls `setlocale`, so
+/// the decimal separator is `.`.
+bool is_rust_float_literal(const std::string& s);
+
 // --- Integer formatting ---------------------------------------------------
 
 /// Unsigned decimal, no padding.

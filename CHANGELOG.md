@@ -235,6 +235,13 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The C++ `--standard-tick-rate-hz` refuses `inf`, `1e400` and
+  hexadecimal values** (L2-CLI-020). It parsed with `strtod`, which also
+  reads hexadecimal floats, and checked only that the result was positive,
+  so `0x10`, `0x1p4`, `inf`, `Infinity` and `1e400` (which overflows to
+  infinity) were valid rates in C++ and usage errors in Rust. A grammar gate
+  matching Rust's `f64` parser now sits in front of `strtod`, and a
+  non-finite rate is refused as L2-CLI-012 requires.
 - **Numeric flag values follow one whitespace rule in every implementation**
   (new L2-CLI-020). Surrounding ASCII whitespace is ignored and nothing else
   is: `"5 "` was accepted by Rust and refused by C++, `" 2026"` was accepted

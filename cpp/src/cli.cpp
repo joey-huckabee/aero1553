@@ -4,6 +4,7 @@
 
 #include "mie/cli.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -412,15 +413,19 @@ double parse_tick_rate(const std::string& text) {
     if (text.empty()) {
         throw usage_error("--standard-tick-rate-hz requires a value");
     }
+    // Rust's f64 grammar first: strtod alone also takes hexadecimal floats
+    // (`0x10`, `0x1p4`) that Rust refuses.
     const std::string trimmed = text::trim_ascii_whitespace(text);
-    char* end = nullptr;
-    const double value = std::strtod(trimmed.c_str(), &end);
-    if (end == nullptr || *end != '\0') {
+    if (!text::is_rust_float_literal(trimmed)) {
         throw usage_error("--standard-tick-rate-hz requires a number, got \"" + text + "\"");
     }
-    if (!(value > 0.0)) {
-        // Also catches NaN, for which every comparison is false.
-        throw usage_error("--standard-tick-rate-hz must be greater than 0, got \"" + text + "\"");
+    const double value = std::strtod(trimmed.c_str(), nullptr);
+    // Finite AND positive, as L2-CLI-012 requires. `inf` and `1e400` (which
+    // overflows to infinity) used to pass the positivity test alone; NaN
+    // fails it, since every comparison with NaN is false.
+    if (!(value > 0.0) || !std::isfinite(value)) {
+        throw usage_error("--standard-tick-rate-hz must be a finite value greater than 0, got \"" +
+                          text + "\"");
     }
     return value;
 }
