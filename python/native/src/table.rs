@@ -627,6 +627,7 @@ pub fn columns<'py>(
         utc_offset_minutes,
     )?;
     let (source, slot) = stream::source(messages)?;
+    let source = stream::interruptible(source, slot.clone());
     let filled = py.detach(|| {
         let mut cols: Vec<Column> = spec
             .selected()

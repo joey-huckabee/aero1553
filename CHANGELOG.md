@@ -235,6 +235,15 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **Ctrl-C stops the Python library's `write_csv`, `write_csv_split` and
+  `columns`, and an interrupted write commits nothing** (new L3-PY-021).
+  These run in the compiled extension with the GIL released, and CPython
+  handles signals only between bytecodes, so `KeyboardInterrupt` waited for
+  the whole call -- by which time a file write had already renamed its output
+  over the destination, leaving a complete-looking file from a cancelled run.
+  The record stream now checks for a pending signal every 1024 records; on
+  one it stops, the writer abandons its temp file, and the
+  `KeyboardInterrupt` is raised.
 - **A file name that is not valid Unicode can be named on the command line**
   (all three implementations; new L2-CLI-021). The Rust binary collected
   `std::env::args()`, which panics on the first argument that is not UTF-8

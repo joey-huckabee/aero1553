@@ -49,6 +49,66 @@ fn parked() -> MieError {
     }
 }
 
+/// How many records pass between checks for a pending signal. A decode runs
+/// with the GIL released, so nothing else notices Ctrl-C until it returns; at
+/// a few million records a second this is a check every millisecond or so, at
+/// a cost that does not register against the decode itself.
+const SIGNAL_CHECK_EVERY: u32 = 1024;
+
+/// Wrap `stream` so a pending signal -- Ctrl-C's `KeyboardInterrupt` -- stops
+/// it.
+///
+/// A long-running call (`write_csv`, `write_csv_split`, `columns`) releases the
+/// GIL, and CPython runs its signal handlers only between bytecodes, so Ctrl-C
+/// used to wait for the whole call -- and a file destination was COMMITTED
+/// before the `KeyboardInterrupt` surfaced, leaving a complete-looking output
+/// from a run the user had cancelled. Every `SIGNAL_CHECK_EVERY` records this
+/// takes the GIL and asks Python whether a signal is pending; if one is, its
+/// exception is parked and the stream ends in an error, which every consumer
+/// treats as a failure: the writer abandons its temp file without committing,
+/// and the parked exception -- the `KeyboardInterrupt` itself -- is what the
+/// caller sees.
+///
+/// The wrapper is returned as its own type, not re-boxed: the consumers are
+/// generic over their iterator, so its `next` inlines into their loops and a
+/// record pays for a counter increment, not a second indirect call.
+pub fn interruptible(stream: BoxedStream, slot: ErrorSlot) -> Interruptible {
+    Interruptible {
+        inner: stream,
+        slot,
+        since_check: 0,
+        done: false,
+    }
+}
+
+pub struct Interruptible {
+    inner: BoxedStream,
+    slot: ErrorSlot,
+    since_check: u32,
+    done: bool,
+}
+
+impl Iterator for Interruptible {
+    type Item = Item;
+
+    #[inline]
+    fn next(&mut self) -> Option<Item> {
+        if self.done {
+            return None;
+        }
+        self.since_check += 1;
+        if self.since_check >= SIGNAL_CHECK_EVERY {
+            self.since_check = 0;
+            if let Err(err) = Python::attach(|py| py.check_signals()) {
+                self.done = true;
+                *self.slot.lock().unwrap_or_else(PoisonError::into_inner) = Some(err);
+                return Some(Err(parked()));
+            }
+        }
+        self.inner.next()
+    }
+}
+
 /// Turn a stream error into the exception to raise: the parked Python
 /// exception if there is one, otherwise the decoder error's own class.
 pub fn raise(py: Python<'_>, slot: &ErrorSlot, err: MieError) -> PyErr {
@@ -118,6 +178,7 @@ struct PySource {
 impl Iterator for PySource {
     type Item = Item;
 
+    #[inline]
     fn next(&mut self) -> Option<Item> {
         if self.done {
             return None;
