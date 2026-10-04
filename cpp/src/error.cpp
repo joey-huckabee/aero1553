@@ -198,7 +198,8 @@ MieError MieError::unrecoverable_sync_loss(uint64_t offset, uint64_t sync_losses
                "Unrecoverable mid-file sync loss at offset 0x" + text::hex_upper(offset, 1) +
                    " after " + text::decimal(sync_losses) +
                    " recovery attempt(s); the decoder could not reacquire sync within the scan "
-                   "window. Pass --allow-partial to keep what was decoded as a .partial file.");
+                   "window. Pass --allow-partial with an output file (-o) to keep what was "
+                   "decoded as a .partial file.");
     e.offset_ = offset;
     e.sync_losses_ = sync_losses;
     return e;

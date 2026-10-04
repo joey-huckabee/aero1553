@@ -2046,7 +2046,7 @@ fn classify_decode_exit(
             eprintln!("Error: {e}");
             log_info!(
                 "decode exit class: partial-unrecoverable (sync_losses={sync_losses}); \
-                 pass --allow-partial to preserve the rows decoded so far"
+                 pass --allow-partial with an output file (-o) to preserve the rows decoded so far"
             );
             exit_code::SYNC_LOSS
         }

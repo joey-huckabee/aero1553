@@ -361,7 +361,7 @@ TEST_CASE("the sync-loss message names the escape hatch", "[error][message]") {
     CHECK(msg ==
           "Unrecoverable mid-file sync loss at offset 0x1234 after 3 recovery attempt(s); "
           "the decoder could not reacquire sync within the scan window. Pass --allow-partial "
-          "to keep what was decoded as a .partial file.");
+          "with an output file (-o) to keep what was decoded as a .partial file.");
 }
 
 TEST_CASE("the merge-inputs-dropped message counts what was lost", "[error][message]") {

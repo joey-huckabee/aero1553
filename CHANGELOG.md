@@ -235,6 +235,12 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The sync-loss advice no longer tells you to pass a flag you passed**
+  (all three implementations). With `--allow-partial` and output to stdout
+  the decode exits 3, correctly, but the error and the exit-class line both
+  said "Pass --allow-partial to keep what was decoded". They now say to pass
+  it *with an output file (-o)*, which is true either way and names what was
+  missing.
 - **Ctrl-C stops the Python library's `write_csv`, `write_csv_split` and
   `columns`, and an interrupted write commits nothing** (new L3-PY-021).
   These run in the compiled extension with the GIL released, and CPython

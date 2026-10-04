@@ -491,6 +491,40 @@ fn merge_allow_partial_to_stdout_with_a_left_out_input_exits_3() {
     );
 }
 
+/// Requirements: L1-EXIT-004
+///
+/// Stdout cannot hold a `.partial`, so a sync loss there exits 3 with the rows
+/// before it printed, `--allow-partial` or not -- and the advice must not tell
+/// the operator to pass the flag they already passed: it names the output file
+/// that was missing.
+#[test]
+fn sync_loss_to_stdout_with_allow_partial_exits_3_and_asks_for_a_file() {
+    let tmp = TempDir::new();
+    let mut bytes = one_valid_record();
+    bytes.extend(one_valid_record());
+    bytes.extend(vec![0xFFu8; 70_000]); // >64 KB that never resyncs -> unrecoverable
+    let input = tmp.write("cut.mie", &bytes);
+
+    let out = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--allow-partial"),
+    ]);
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(exit_code(&out), 3, "{stderr}");
+    assert_eq!(
+        out.stdout
+            .split(|&b| b == b'\n')
+            .filter(|l| !l.is_empty())
+            .count(),
+        3
+    );
+    assert!(
+        stderr.contains("Pass --allow-partial with an output file (-o) to keep what was decoded"),
+        "{stderr}"
+    );
+}
+
 /// Requirements: L2-WRT-014
 #[test]
 fn no_clobber_refuses_to_overwrite_existing_output() {
