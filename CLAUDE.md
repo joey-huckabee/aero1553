@@ -233,8 +233,10 @@ All fallible APIs return `Result<T, MieError>`. `MieError` is a single enum (not
   it. Every commit target — destination, errors file, and the `.partial` of each — goes through an
   atomic **non-replacing** move under `--no-clobber` (`MoveFileExW` with no flags on Win32;
   `link(2)` plus an exclusive-create fallback everywhere else). Keep the pre-flight as an early,
-  friendlier report; don't mistake it for the guarantee, and don't pre-flight `.partial` targets (a
-  stale one must not refuse a run that was never going to write one).
+  friendlier report; don't mistake it for the guarantee. The pre-flight checks every path the
+  options *could* commit (`commit_targets`: destination, errors file with `--separate-errors`, and
+  the `.partial` of each with `--allow-partial`) without predicting which this run will write.
+  Without `--no-clobber`, never delete or warn about a stale file this run doesn't write.
 - **`commit` and `commit_partial` share one move routine** (`L3-WRT-005`), in all three trees. When
   each spelled the flush/close/move sequence out for itself, the two drifted in exactly the ways
   that shape predicts: a rule applied at one target and not the other, and error handling that

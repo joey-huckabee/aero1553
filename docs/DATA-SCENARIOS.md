@@ -373,7 +373,10 @@ over-collapses. See [`USER-GUIDE.md`](USER-GUIDE.md) for worked examples.
 
 Output is written atomically (via a temp file renamed into place), so a failed
 run never leaves a half-written CSV. `--no-clobber` refuses to overwrite an
-existing output (exit 1).
+existing output (exit 1): it refuses the run if any file the options could write
+is already there (the errors file with `--separate-errors`, the `.partial` names
+with `--allow-partial`). Without it, a file this run does not write -- an earlier
+run's `_errors.csv` after a clean run, say -- is left as it is, with no message.
 
 ### Row order (`L1-OUT-003`)
 

@@ -307,12 +307,12 @@ Controls whether the writer is allowed to overwrite an existing destination (L2-
 | `false` | Default. Overwriting an existing destination succeeds. Matches operator expectations for batch reruns. |
 | `true` | Refuses to overwrite. Surfaces `MieClobberRefusedError` / `MieError::ClobberRefused` and exits 1. Set this in pipelines where overwriting a possibly-newer result is unacceptable. |
 
-When `error_mode = "separate"`, the no-clobber check applies to both the main output AND the errors file — either existing triggers refusal.
+**What is checked before the decode starts.** Every path the options could commit: the `-o` destination always; `<stem>_errors<suffix>` only with `--separate-errors`; and, only with `--allow-partial`, the `.partial` of each. Any of them existing refuses the run, whether or not this run would have written it — the decoder does not predict whether there will be error rows or an early stop. Without `no_clobber`, a file of one of those names that this run does not write (an earlier run's `_errors.csv`, say) is left alone, with no message.
 
 **Where the refusal happens (L2-WRT-023).** At the **commit**, not at a pre-flight existence test. The distinction is observable in two ways:
 
 - **A destination created while the decode is running is still refused.** An `exists()` check before the output is opened answers a question about the past; between that answer and the rename, another process can create the file. Two concurrent runs of the same command would both pass such a check, and the second would silently overwrite the first's output. Under `no_clobber` the move itself is atomic and non-replacing, so the loser is told the name is taken.
-- **`<destination>.partial` is covered too.** Under `--allow-partial`, the `.partial` targets are commit targets like any other, and an existing one is refused rather than replaced. They are deliberately **not** pre-flighted — a stale `.partial` lying around must not refuse a run that was never going to write one — so the commit is the only thing guarding them.
+- **`<destination>.partial` is covered too.** Under `--allow-partial`, the `.partial` targets are commit targets like any other, and an existing one is refused rather than replaced — by the pre-flight when it was already there, and by the commit when it appears while the decode runs.
 
 Both cases surface the same `ClobberRefused` class as the pre-flight, naming the target that was taken, and leave that target's contents untouched. The pre-flight is kept purely as an *early* report: it fails before a temp file exists and before a whole recording is decoded.
 

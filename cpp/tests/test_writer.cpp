@@ -92,7 +92,18 @@ class VectorSource : public mie::MessageSource {
         error_ = error;
     }
 
+    /// Create `path` holding `contents` as the first record is pulled: after
+    /// the writer's pre-flight and before its commit, which is the window only
+    /// the commit-time check (L2-WRT-023) can close.
+    void plant_on_first(const std::string& path, const std::string& contents) {
+        plant_path_ = path;
+        plant_contents_ = contents;
+    }
+
     bool next(mie::MieMessage& out) override {
+        if (index_ == 0 && !plant_path_.empty()) {
+            write_raw(plant_path_, plant_contents_);
+        }
         if (index_ < messages_.size()) {
             out = messages_[index_++];
             return true;
@@ -111,6 +122,8 @@ class VectorSource : public mie::MessageSource {
     std::size_t index_;
     bool throws_;
     mie::MieError error_;
+    std::string plant_path_;
+    std::string plant_contents_;
 };
 
 std::vector<mie::MieMessage> one(const mie::MieMessage& message) {
@@ -589,8 +602,9 @@ TEST_CASE("split mode commits the MAIN .partial first",
     // `.partial` commit unwound -- an orphan forensic artifact with no main
     // output beside it.
     //
-    // The main commit is made to fail with --no-clobber and a pre-existing
-    // `<dest>.partial` rather than by planting a directory on the path. There is
+    // The main commit is made to fail with --no-clobber and a `<dest>.partial`
+    // that appears mid-run (a stale one is refused by the pre-flight, L2-WRT-017,
+    // before any commit happens) rather than by planting a directory on the path. There is
     // no mkdir in the platform layer and adding one for a test would widen the
     // surface `assert-platform-confined.sh` exists to keep narrow (the same
     // reasoning test_config.cpp records for its not-a-regular-file case). This
@@ -601,13 +615,13 @@ TEST_CASE("split mode commits the MAIN .partial first",
     const std::string errors_path = out.also_remove(mie::error_path_for(out.str()));
     const std::string main_partial = out.sibling(".partial");
     const std::string errors_partial = out.also_remove(errors_path + ".partial");
-    write_raw(main_partial, "EARLIER FORENSICS");
 
     std::vector<mie::MieMessage> messages;
     messages.push_back(sample(100));
     messages.push_back(errored());
     VectorSource source(messages);
     source.throw_at_end(mie::MieError::unrecoverable_sync_loss(0x99, 2));
+    source.plant_on_first(main_partial, "EARLIER FORENSICS");
 
     mie::WriteOptions options;
     options.no_clobber = true;
@@ -624,18 +638,19 @@ TEST_CASE("split mode leaves the main .partial when the errors .partial is refus
           "[writer][L2-WRT-016][L2-WRT-019][L2-WRT-023]") {
     // The mirror image. The main `.partial` commits, the errors one is refused,
     // and what is left on disk is the primary artifact -- which is the whole
-    // point of the order.
+    // point of the order. The errors `.partial` appears mid-run: a stale one is
+    // refused by the pre-flight (L2-WRT-017) before any commit happens.
     TempPath out("splitpartialorder2.csv");
     const std::string errors_path = out.also_remove(mie::error_path_for(out.str()));
     const std::string main_partial = out.sibling(".partial");
     const std::string errors_partial = out.also_remove(errors_path + ".partial");
-    write_raw(errors_partial, "EARLIER ERRORS");
 
     std::vector<mie::MieMessage> messages;
     messages.push_back(sample(100));
     messages.push_back(errored());
     VectorSource source(messages);
     source.throw_at_end(mie::MieError::unrecoverable_sync_loss(0x99, 2));
+    source.plant_on_first(errors_partial, "EARLIER ERRORS");
 
     mie::WriteOptions options;
     options.no_clobber = true;
@@ -701,4 +716,57 @@ TEST_CASE("split mode honours no-clobber on the errors path too",
     CHECK_THROWS_AS(mie::write_csv_split(source, out.str(), options), mie::MieError);
     CHECK(read_raw(errors_path) == "PREVIOUS ERRORS");
     CHECK_FALSE(exists(out.str()));
+}
+
+TEST_CASE("no-clobber pre-flights the .partial names only under allow-partial",
+          "[writer][L2-WRT-017]") {
+    // The pre-flight refuses every path these options could commit, without
+    // predicting which the run will -- so under --allow-partial a stale
+    // `.partial` refuses even a run that would never write one. Without
+    // --allow-partial no `.partial` can be written, so a stale one is not
+    // checked.
+    mie::WriteOptions options;
+    options.no_clobber = true;
+
+    SECTION("single file") {
+        TempPath out("preflightpartial.csv");
+        const std::string partial = out.sibling(".partial");
+        write_raw(partial, "STALE");
+
+        options.allow_partial = true;
+        VectorSource refused(one(sample()));
+        try {
+            (void)mie::write_csv(refused, to(out), options);
+            FAIL("a stale .partial must refuse an --allow-partial run");
+        } catch (const mie::MieError& error) {
+            CHECK(error.kind() == mie::KIND_CLOBBER_REFUSED);
+            CHECK(error.message().find(partial) != std::string::npos);
+        }
+        CHECK_FALSE(exists(out.str()));
+        CHECK(read_raw(partial) == "STALE");
+
+        options.allow_partial = false;
+        VectorSource accepted(one(sample()));
+        (void)mie::write_csv(accepted, to(out), options);
+        CHECK(exists(out.str()));
+    }
+
+    SECTION("split mode") {
+        TempPath out("preflightpartialsplit.csv");
+        const std::string errors_path = out.also_remove(mie::error_path_for(out.str()));
+        const std::string errors_partial = out.also_remove(errors_path + ".partial");
+        write_raw(errors_partial, "STALE ERRORS");
+
+        options.allow_partial = true;
+        VectorSource source(one(sample()));
+        try {
+            (void)mie::write_csv_split(source, out.str(), options);
+            FAIL("a stale errors .partial must refuse an --allow-partial run");
+        } catch (const mie::MieError& error) {
+            CHECK(error.kind() == mie::KIND_CLOBBER_REFUSED);
+            CHECK(error.message().find(errors_partial) != std::string::npos);
+        }
+        CHECK_FALSE(exists(out.str()));
+        CHECK(read_raw(errors_partial) == "STALE ERRORS");
+    }
 }

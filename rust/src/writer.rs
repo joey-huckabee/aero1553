@@ -725,9 +725,11 @@ pub struct PartialCommit {
 /// the past, and between the answer and the rename any other process may create
 /// the destination. What this test buys is an *early* refusal, before a temp
 /// file exists and before a whole file is decoded, with the destination named.
-/// It covers only the two paths a run definitely creates: `.partial` targets are
-/// deliberately left to the commit, so a stale `<dest>.partial` lying around
-/// does not refuse a run that was never going to write one.
+/// It covers every path the options say this run **could** commit -- the
+/// same [`commit_targets`] the collision test uses -- without predicting which
+/// it will: `<stem>_errors<suffix>` only under `--separate-errors`, and the
+/// `.partial` names only under `--allow-partial`. A stale file of any of those
+/// names refuses the run, even one that would never have written it.
 fn preflight_output(output: &Path, split_errors: bool, opts: &WriteOptions) -> MieResult<()> {
     // L2-WRT-014, over every path this run could commit -- not just `output`.
     if let Some(input) = &opts.input_path {
@@ -737,17 +739,11 @@ fn preflight_output(output: &Path, split_errors: bool, opts: &WriteOptions) -> M
             }
         }
     }
-    // L2-WRT-017, over the destinations that get created.
+    // L2-WRT-017, over the same set: every path these options could commit.
     if opts.no_clobber {
-        if output.exists() {
-            return Err(MieError::ClobberRefused {
-                path: output.to_path_buf(),
-            });
-        }
-        if split_errors {
-            let error_path = error_path_for(output);
-            if error_path.exists() {
-                return Err(MieError::ClobberRefused { path: error_path });
+        for target in commit_targets(output, split_errors, opts.allow_partial) {
+            if target.exists() {
+                return Err(MieError::ClobberRefused { path: target });
             }
         }
     }
@@ -1923,6 +1919,49 @@ mod tests {
         // Main dest must not have been created.
         assert!(!dest.exists());
         let _ = std::fs::remove_file(&err_dest);
+    }
+
+    /// Requirements: L2-WRT-017
+    ///
+    /// Under `--no-clobber` the pre-flight refuses every path these options
+    /// could commit, without predicting which the run will: with
+    /// `--allow-partial` that includes the `.partial` names, even for a run
+    /// that would never have written one. Without `--allow-partial` no
+    /// `.partial` can be written, so a stale one is not checked.
+    #[test]
+    fn no_clobber_preflight_covers_partial_names_only_under_allow_partial() {
+        let opts = |allow_partial| WriteOptions {
+            input_path: None,
+            no_clobber: true,
+            allow_partial,
+            time_render: TimeRender::doy(),
+        };
+
+        // Single file: a stale `<dest>.partial`.
+        let dest = unique_path(".csv");
+        let partial = partial_path_for(&dest);
+        std::fs::write(&partial, b"stale\n").unwrap();
+        match write_csv(std::iter::empty(), Some(&dest), opts(true)) {
+            Err(MieError::ClobberRefused { path }) => assert_eq!(path, partial),
+            other => panic!("expected ClobberRefused on the .partial, got {other:?}"),
+        }
+        assert!(!dest.exists());
+        write_csv(std::iter::empty(), Some(&dest), opts(false))
+            .expect("without --allow-partial a .partial is not this run's to check");
+        assert!(dest.exists());
+        let _ = std::fs::remove_file(&dest);
+        let _ = std::fs::remove_file(&partial);
+
+        // Split mode: a stale `<stem>_errors<suffix>.partial`.
+        let dest = unique_path(".csv");
+        let errors_partial = partial_path_for(&error_path_for(&dest));
+        std::fs::write(&errors_partial, b"stale\n").unwrap();
+        match write_csv_split(std::iter::empty(), &dest, opts(true)) {
+            Err(MieError::ClobberRefused { path }) => assert_eq!(path, errors_partial),
+            other => panic!("expected ClobberRefused on the errors .partial, got {other:?}"),
+        }
+        assert!(!dest.exists());
+        let _ = std::fs::remove_file(&errors_partial);
     }
 
     /// Requirements: L2-WRT-019, L2-WRT-015

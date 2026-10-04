@@ -519,6 +519,43 @@ fn no_clobber_refuses_to_overwrite_existing_output() {
     );
 }
 
+/// Requirements: L2-WRT-017
+///
+/// `--no-clobber` checks the files the options could write, not the ones this
+/// run will: with `--allow-partial` a stale `out.csv.partial` refuses a clean
+/// run before it decodes, and without `--allow-partial` it is not looked at.
+#[test]
+fn no_clobber_with_allow_partial_refuses_a_stale_partial() {
+    let tmp = TempDir::new();
+    let input = tmp.write("rec.mie", &one_valid_record());
+    let partial = tmp.write("out.csv.partial", b"STALE");
+    let output = tmp.path().join("out.csv");
+
+    let refused = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--no-clobber"),
+        std::ffi::OsStr::new("--allow-partial"),
+        std::ffi::OsStr::new("-o"),
+        output.as_os_str(),
+    ]);
+    let stderr = String::from_utf8_lossy(&refused.stderr);
+    assert_eq!(exit_code(&refused), 1, "{stderr}");
+    assert!(stderr.contains("out.csv.partial"), "{stderr}");
+    assert!(!output.exists());
+    assert_eq!(std::fs::read(&partial).unwrap(), b"STALE");
+
+    let accepted = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--no-clobber"),
+        std::ffi::OsStr::new("-o"),
+        output.as_os_str(),
+    ]);
+    assert_eq!(exit_code(&accepted), 0);
+    assert!(output.exists());
+}
+
 /// Requirements: L2-WRT-016
 #[test]
 fn rejects_input_equal_to_output_path() {
