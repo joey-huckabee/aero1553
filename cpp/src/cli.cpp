@@ -477,15 +477,17 @@ Bus parse_bus_flag(const std::string& text, const char* flag) {
     }
 }
 
-/// A flag value that must be a non-negative integer.
+/// A flag value that must be a non-negative integer, in decimal or as `0x...`.
 ///
 /// Unbounded above but for the type: a byte offset into a recording and a
 /// record count are both as large as the file allows, so there is no ceiling to
 /// impose that would not be arbitrary. The type is uint64_t, as Rust's is, so
-/// everything up to 2^64 - 1 is accepted and anything beyond it refused.
+/// everything up to 2^64 - 1 is accepted and anything beyond it refused. The
+/// hexadecimal form is for offsets read off a hex dump (L2-CLI-020).
 uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
+    const std::string trimmed = text::trim_ascii_whitespace(text_value);
     uint64_t value = 0;
-    if (text::parse_uint64(text::trim_ascii_whitespace(text_value), value)) {
+    if (text::parse_uint64(trimmed, value) || text::parse_hex_uint64(trimmed, value)) {
         return value;
     }
     // Not an unsigned number: a negative one gets the specific complaint.
@@ -494,12 +496,13 @@ uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
                       text::decimal_signed(signed_value));
 }
 
-/// A filter list element that must be a 0-31 wire field.
+/// A filter list element that must be a 0-31 wire field, in decimal or as
+/// `0x...` -- Rust has always taken both here (L2-CLI-020).
 uint8_t parse_small(const std::string& text, const char* flag) {
-    const int64_t value = parse_integer(text, flag);
-    if (value < 0 || value > 31) {
+    const uint64_t value = parse_non_negative(text, flag);
+    if (value > 31) {
         throw usage_error(std::string(flag) + " values must be in [0, 31], got " +
-                          text::decimal_signed(value));
+                          text::decimal(value));
     }
     return static_cast<uint8_t>(value);
 }

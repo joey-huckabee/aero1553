@@ -117,6 +117,11 @@ bool parse_int64(const std::string& s, int64_t& out);
 /// Rust's `u64::from_str` refuses it, and so is a value above 2^64 - 1.
 bool parse_uint64(const std::string& s, uint64_t& out);
 
+/// `0x` or `0X` followed by one or more hex digits -- no sign anywhere --
+/// into uint64_t, refusing a value above 2^64 - 1. The hexadecimal form the
+/// dump offsets and the RT/subaddress filters accept (L2-CLI-020).
+bool parse_hex_uint64(const std::string& s, uint64_t& out);
+
 /// True when `s` is a float literal in the grammar of Rust's `f64::from_str`:
 ///
 ///     Float  ::= Sign? ( "inf" | "infinity" | "nan" | Number )   -- letters case-insensitive

@@ -761,14 +761,23 @@ impl Arg {
     }
 }
 
+/// A non-negative integer flag value, in decimal or as `0x` / `0X` followed by
+/// hex digits (L2-CLI-020).
+///
+/// The digits are checked before `from_str_radix`, which also accepts a sign
+/// after the prefix: `0x+1` parsed as 1 here, and nowhere else.
 fn parse_int_value(s: &str, name: &str) -> Result<usize, String> {
     let s = s.trim_ascii();
     let parsed = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        usize::from_str_radix(hex, 16)
+        if hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            usize::from_str_radix(hex, 16).ok()
+        } else {
+            None
+        }
     } else {
-        s.parse::<usize>()
+        s.parse::<usize>().ok()
     };
-    parsed.map_err(|_| format!("{name} expected integer, got {s:?}"))
+    parsed.ok_or_else(|| format!("{name} expected integer, got {s:?}"))
 }
 
 /// Parse a MIL-STD-1553 RT address or subaddress filter value: [0, 31].
@@ -2017,6 +2026,21 @@ mod tests {
             assert!(parse_int_value(&bad, "--offset").is_err(), "{bad:?}");
         }
         assert_eq!(split_csv(" 3 ,\t15\t"), vec!["3", "15"]);
+    }
+
+    /// The hexadecimal form taken by the dump offsets and the RT/subaddress
+    /// filters: `0x` / `0X` and hex digits, nothing else. `from_str_radix`
+    /// also accepts a sign after the prefix, so `0x+1` parsed as 1.
+    /// Requirements: L2-CLI-020
+    #[test]
+    fn hex_flag_values_take_digits_only_after_the_prefix() {
+        assert_eq!(parse_int_value("0x10", "--offset"), Ok(16));
+        assert_eq!(parse_int_value("0XfF", "--offset"), Ok(255));
+        assert_eq!(parse_rt_sa_value("0x1F", "--include-rts"), Ok(31));
+        for bad in ["0x", "0x+1", "0x-1", "-0x1", "0xg", "0x10000000000000000"] {
+            assert!(parse_int_value(bad, "--offset").is_err(), "{bad:?}");
+        }
+        assert!(parse_rt_sa_value("0x20", "--include-rts").is_err());
     }
 
     fn args(values: &[&str]) -> ArgIter<'static> {

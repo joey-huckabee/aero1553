@@ -235,6 +235,12 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The C++ CLI accepts the `0x...` form where Rust does** (L2-CLI-020).
+  `dump --offset/--length/--records` are documented to take hexadecimal, and
+  Rust also takes it on the RT and subaddress filters (`--include-rts 0x0F`);
+  the C++ CLI refused both. It now takes `0x` or `0X` followed by hex digits
+  on exactly those flags. Rust, for its part, no longer accepts a sign after
+  the prefix: `from_str_radix` read `0x+1` as 1.
 - **The C++ `--standard-tick-rate-hz` refuses `inf`, `1e400` and
   hexadecimal values** (L2-CLI-020). It parsed with `strtod`, which also
   reads hexadecimal floats, and checked only that the result was positive,

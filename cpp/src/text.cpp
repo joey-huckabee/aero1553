@@ -257,6 +257,25 @@ bool is_rust_float_literal(const std::string& s) {
     return at == s.size();
 }
 
+bool parse_hex_uint64(const std::string& s, uint64_t& out) {
+    if (s.size() < 3 || s[0] != '0' || (s[1] != 'x' && s[1] != 'X')) {
+        return false;
+    }
+    uint64_t value = 0;
+    for (std::size_t i = 2; i < s.size(); ++i) {
+        const int digit = ascii_hex_value(s[i]);
+        if (digit < 0) {
+            return false;
+        }
+        if (value > (std::numeric_limits<uint64_t>::max() >> 4)) {
+            return false;
+        }
+        value = (value << 4) | static_cast<uint64_t>(digit);
+    }
+    out = value;
+    return true;
+}
+
 bool parse_uint64(const std::string& s, uint64_t& out) {
     const std::size_t start = (!s.empty() && s[0] == '+') ? 1 : 0;
     return accumulate_digits(s, start, std::numeric_limits<uint64_t>::max(), out);

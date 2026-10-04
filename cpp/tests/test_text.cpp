@@ -124,6 +124,26 @@ TEST_CASE("integer parsing refuses overflow rather than saturating", "[text][L2-
     CHECK(u == 7);
 }
 
+TEST_CASE("hex integers take a 0x prefix and hex digits only", "[text][L2-CLI-020]") {
+    uint64_t v = 7;
+    CHECK(mie::text::parse_hex_uint64("0x10", v));
+    CHECK(v == 16);
+    CHECK(mie::text::parse_hex_uint64("0XfF", v));
+    CHECK(v == 255);
+    CHECK(mie::text::parse_hex_uint64("0xFFFFFFFFFFFFFFFF", v));
+    CHECK(v == std::numeric_limits<uint64_t>::max());
+    v = 7;
+    // No digits, a sign after the prefix (which Rust's from_str_radix once
+    // let through), a non-hex digit, a missing prefix, and one digit too many.
+    const char* const bad[] = {
+        "0x", "0X", "0x+1", "0x-1", "-0x1", "0xg", "10", "x10", "0x10000000000000000"};
+    for (std::size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
+        INFO(bad[i]);
+        CHECK_FALSE(mie::text::parse_hex_uint64(bad[i], v));
+    }
+    CHECK(v == 7);
+}
+
 TEST_CASE("float literals follow Rust's f64 grammar", "[text][L2-CLI-020]") {
     // The gate in front of strtod, which also takes hexadecimal floats that
     // Rust refuses. inf / infinity / nan are lexically valid in both (and then

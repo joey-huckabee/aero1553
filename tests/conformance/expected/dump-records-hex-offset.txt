@@ -1,0 +1,15 @@
+File: dump-records-hex-offset-in0.mie (178 bytes)
+Record dump starting at offset 0x00000048
+
+------------------------------------------------------------------------
+  Record #0  @  0x00000048  (34 bytes, 17 words)
+  Type:   0x1102  ->  BC->RT (Receive)  Bus A  error flag (bit 14): clear
+  Format: RECEIVE
+  Time:   192:15:54:50.456504
+  Cmd:    0x7ACB  ->  RT15 SA22 R WC=11
+    00000048  02 11 0F 18 26 DB 38 F7 CB 7A 00 10 00 00 07 00   |....&.8..z......|
+    00000058  00 08 00 00 00 00 00 00 00 00 00 00 C8 80 E8 03   |................|
+    00000068  00 78                                             |.x|
+
+------------------------------------------------------------------------
+1 records dumped.

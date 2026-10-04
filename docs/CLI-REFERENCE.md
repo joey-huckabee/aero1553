@@ -119,7 +119,10 @@ count back from the end), and 2^64 - 1 for `dump --offset`, `--length` and
 anything outside it. `--standard-tick-rate-hz` takes a decimal number with an
 optional fraction and exponent (`1e6`, `.5`); hexadecimal forms such as `0x10`
 are refused, and so is any value that is not finite, including `inf` and one
-that overflows, such as `1e400`. (`L2-CLI-020`)
+that overflows, such as `1e400`. `dump --offset`, `--length` and `--records`,
+and each value of the RT and subaddress filters, also take hexadecimal: `0x`
+or `0X` followed by hex digits (`--offset 0x48`, `--include-rts 0x0F`), with
+no sign. (`L2-CLI-020`)
 
 ### `--`: everything after this is a file name
 
