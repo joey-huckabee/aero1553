@@ -83,6 +83,47 @@ TEST_CASE("decimal formatting handles zero and the boundaries", "[text]") {
     CHECK(txt::decimal(18446744073709551615ull) == "18446744073709551615");
 }
 
+TEST_CASE("integer parsing refuses overflow rather than saturating", "[text]") {
+    // The grammar and range of Rust's i64 / u64 from_str: [+-]?[0-9]+, nothing
+    // else, and a value outside the type is an error -- never the nearest
+    // bound, which is what strtoll returned.
+    int64_t s = 7;
+    CHECK(mie::text::parse_int64("0", s));
+    CHECK(s == 0);
+    CHECK(mie::text::parse_int64("+42", s));
+    CHECK(s == 42);
+    CHECK(mie::text::parse_int64("-42", s));
+    CHECK(s == -42);
+    CHECK(mie::text::parse_int64("9223372036854775807", s));
+    CHECK(s == std::numeric_limits<int64_t>::max());
+    CHECK(mie::text::parse_int64("-9223372036854775808", s));
+    CHECK(s == std::numeric_limits<int64_t>::min());
+    s = 7;
+    CHECK_FALSE(mie::text::parse_int64("9223372036854775808", s));
+    CHECK_FALSE(mie::text::parse_int64("-9223372036854775809", s));
+    CHECK_FALSE(mie::text::parse_int64("99999999999999999999", s));
+    CHECK(s == 7);  // untouched on failure
+
+    const char* const malformed[] = {"", "+", "-", " 5", "5 ", "0x10", "1_000", "1e3", "--5"};
+    for (std::size_t i = 0; i < sizeof(malformed) / sizeof(malformed[0]); ++i) {
+        INFO(malformed[i]);
+        CHECK_FALSE(mie::text::parse_int64(malformed[i], s));
+    }
+    // Arabic-Indic four: a digit to a Unicode-aware classifier, not to ASCII.
+    CHECK_FALSE(mie::text::parse_int64("\xD9\xA4", s));
+
+    uint64_t u = 7;
+    CHECK(mie::text::parse_uint64("18446744073709551615", u));
+    CHECK(u == std::numeric_limits<uint64_t>::max());
+    CHECK(mie::text::parse_uint64("+1", u));
+    CHECK(u == 1);
+    u = 7;
+    CHECK_FALSE(mie::text::parse_uint64("18446744073709551616", u));
+    CHECK_FALSE(mie::text::parse_uint64("-0", u));
+    CHECK_FALSE(mie::text::parse_uint64("-1", u));
+    CHECK(u == 7);
+}
+
 TEST_CASE("signed decimal negates without undefined behaviour", "[text]") {
     CHECK(txt::decimal_signed(0) == "0");
     CHECK(txt::decimal_signed(-1) == "-1");

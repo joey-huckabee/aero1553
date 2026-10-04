@@ -1,0 +1,6 @@
+# Conformance fixture: an integer literal too large for a signed 64-bit value
+# must be a CONFIG error (exit 5) in every implementation. The C++ loader once
+# parsed it with `strtoll`, which saturates on overflow, and accepted the
+# window as 9223372036854775807; Rust and Python refuse it.
+[merge]
+collapse_window_us = 99999999999999999999

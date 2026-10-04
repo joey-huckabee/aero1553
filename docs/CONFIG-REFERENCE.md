@@ -410,7 +410,7 @@ Separator the file's basename is split on. **Validation:** must be a non-empty s
 
 **Type:** int · **Default:** `4` · **CLI:** `--mux-field`
 
-0-based index of the field used as the MUX value; a **negative** index counts from the end (e.g. `-1` is the last field). An out-of-range index, an empty selected field, or a `false` `enabled` leaves MUX empty. **Validation:** TOML integer only (any value accepted; out-of-range simply yields empty MUX).
+0-based index of the field used as the MUX value; a **negative** index counts from the end (e.g. `-1` is the last field). An out-of-range index, an empty selected field, or a `false` `enabled` leaves MUX empty. **Validation:** TOML integer only, within the signed 64-bit range (a literal outside it is rejected at load time, never clamped); any index in that range is accepted, and one past either end of the file name simply yields empty MUX.
 
 ---
 
@@ -449,7 +449,7 @@ Enable cross-recorder duplicate collapsing.
 
 **Type:** int · **Default:** `0` · **CLI:** `--collapse-window-us`
 
-Timestamp tolerance in microseconds: two recorders' copies of the same event collapse when their timestamps differ by at most this much. `0` requires an exact-microsecond match (the safest setting — never over-collapses); widen it for recorders whose IRIG clocks are not perfectly synced. **Validation:** non-negative integer (a negative value is rejected at load time).
+Timestamp tolerance in microseconds: two recorders' copies of the same event collapse when their timestamps differ by at most this much. `0` requires an exact-microsecond match (the safest setting — never over-collapses); widen it for recorders whose IRIG clocks are not perfectly synced. **Validation:** non-negative integer no larger than 9223372036854775807 (2^63 - 1); a negative value, or a literal too large for that range, is rejected at load time rather than clamped.
 
 ### `max_collapse_survivors`
 

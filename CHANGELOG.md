@@ -235,6 +235,18 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The C++ implementation refuses an integer too large for its type**
+  instead of clamping it. The CLI and the TOML loader parsed integers with
+  `strtoll`, which saturates on overflow and reports it only through `errno`,
+  which neither checked. On the values with no upper bound --
+  `--collapse-window-us` / `[merge] collapse_window_us`, `--mux-field` /
+  `[mux] field`, and `dump --offset/--length/--records` -- a value such as
+  `99999999999999999999` was accepted as 9223372036854775807 where Rust and
+  Python reject it (exit 4 on the CLI, 5 in a config). Both now use one
+  overflow-checked parser with Rust's grammar and ranges: signed 64-bit, and
+  unsigned 64-bit for `dump`, whose offsets Rust takes up to 2^64 - 1. The
+  config fuzzer's palette gains the 64-bit boundary literals and the two keys
+  it lacked, so this class of divergence is caught automatically.
 - **A recording cut off inside its last record is no longer reported as a
   sync loss** (all three implementations; L2-RDR-002 amended). Lenient mode
   logged `sync lost ... scanning forward` for a truncated final record of 8

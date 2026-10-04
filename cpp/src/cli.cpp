@@ -358,17 +358,28 @@ class ArgReader {
 // Value parsers
 // ---------------------------------------------------------------------------
 
-/// A bounded integer flag value. Rejects trailing junk, which `atoi` accepts.
+/// Leading blanks are skipped, as `strtoll` skipped them before this parser
+/// replaced it.
+std::string skip_leading_blanks(const std::string& text) {
+    std::size_t at = 0;
+    while (at < text.size() && text::is_ascii_blank(text[at])) {
+        at += 1;
+    }
+    return text.substr(at);
+}
+
+/// An integer flag value. Rejects trailing junk, which `atoi` accepts, and a
+/// value outside int64_t, which `strtoll` saturated to the nearest bound and
+/// accepted (Rust refuses it).
 int64_t parse_integer(const std::string& text, const char* flag) {
     if (text.empty()) {
         throw usage_error(std::string(flag) + " requires a number, got an empty value");
     }
-    char* end = nullptr;
-    const long long value = std::strtoll(text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0') {
+    int64_t value = 0;
+    if (!text::parse_int64(skip_leading_blanks(text), value)) {
         throw usage_error(std::string(flag) + " requires a number, got \"" + text + "\"");
     }
-    return static_cast<int64_t>(value);
+    return value;
 }
 
 std::size_t parse_ranged(const std::string& text, const char* flag, std::size_t lo,
@@ -471,16 +482,19 @@ Bus parse_bus_flag(const std::string& text, const char* flag) {
 
 /// A flag value that must be a non-negative integer.
 ///
-/// Unbounded above: a byte offset into a recording and a record count are both
-/// as large as the file allows, so there is no ceiling to impose that would not
-/// be arbitrary.
-int64_t parse_non_negative(const std::string& text_value, const char* flag) {
-    const int64_t value = parse_integer(text_value, flag);
-    if (value < 0) {
-        throw usage_error(std::string(flag) + " must be non-negative, got " +
-                          text::decimal_signed(value));
+/// Unbounded above but for the type: a byte offset into a recording and a
+/// record count are both as large as the file allows, so there is no ceiling to
+/// impose that would not be arbitrary. The type is uint64_t, as Rust's is, so
+/// everything up to 2^64 - 1 is accepted and anything beyond it refused.
+uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
+    uint64_t value = 0;
+    if (text::parse_uint64(skip_leading_blanks(text_value), value)) {
+        return value;
     }
-    return value;
+    // Not an unsigned number: a negative one gets the specific complaint.
+    const int64_t signed_value = parse_integer(text_value, flag);
+    throw usage_error(std::string(flag) + " must be non-negative, got " +
+                      text::decimal_signed(signed_value));
 }
 
 /// A filter list element that must be a 0-31 wire field.
@@ -767,7 +781,7 @@ DumpArgs parse_dump(ArgReader& reader) {
         } else if (reader.take_value("--length", value)) {
             args.length = static_cast<std::size_t>(parse_non_negative(value, "--length"));
         } else if (reader.take_value("--records", value)) {
-            args.records = static_cast<uint64_t>(parse_non_negative(value, "--records"));
+            args.records = parse_non_negative(value, "--records");
         } else if (!token.empty() && token[0] == '-' && token != "-") {
             throw usage_error("unknown dump option: " + token);
         } else if (input_seen) {

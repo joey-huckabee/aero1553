@@ -91,6 +91,23 @@ std::string trim_ascii_blank(const std::string& s);
 /// one here would only defer the failure.
 bool is_valid_utf8(const std::string& s);
 
+// --- Integer parsing ------------------------------------------------------
+
+/// Parse exactly `[+-]?[0-9]+` -- ASCII digits only, no whitespace, no prefix,
+/// no digit separators -- into `out`. False on anything else, AND on a value
+/// outside int64_t: an overflow is refused, never saturated.
+///
+/// Written out rather than delegated to `strtoll`, which saturates on overflow
+/// (reporting it only through `errno`, which both callers ignored), skips
+/// leading whitespace, and is locale-aware about what counts as a space. The
+/// grammar and the range are those of Rust's `i64::from_str`, which is what
+/// the other two implementations parse with.
+bool parse_int64(const std::string& s, int64_t& out);
+
+/// As parse_int64 for `[+]?[0-9]+` into uint64_t: a `-` sign is refused, as
+/// Rust's `u64::from_str` refuses it, and so is a value above 2^64 - 1.
+bool parse_uint64(const std::string& s, uint64_t& out);
+
 // --- Integer formatting ---------------------------------------------------
 
 /// Unsigned decimal, no padding.

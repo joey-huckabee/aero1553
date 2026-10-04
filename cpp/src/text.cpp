@@ -4,6 +4,7 @@
 
 #include <cmath>
 #include <cstdio>
+#include <limits>
 
 namespace mie {
 namespace text {
@@ -142,6 +143,57 @@ bool is_valid_utf8(const std::string& s) {
         i += width;
     }
     return true;
+}
+
+namespace {
+
+/// Accumulate the ASCII digits of `s` from `at` into `out`, refusing a value
+/// above `limit`. False on an empty digit run or a non-digit.
+bool accumulate_digits(const std::string& s, std::size_t at, uint64_t limit, uint64_t& out) {
+    if (at >= s.size()) {
+        return false;
+    }
+    uint64_t value = 0;
+    for (std::size_t i = at; i < s.size(); ++i) {
+        if (!is_ascii_digit(s[i])) {
+            return false;
+        }
+        const uint64_t digit = static_cast<uint64_t>(s[i] - '0');
+        // value * 10 + digit <= limit, without computing anything that wraps.
+        if (value > (limit - digit) / 10) {
+            return false;
+        }
+        value = value * 10 + digit;
+    }
+    out = value;
+    return true;
+}
+
+}  // namespace
+
+bool parse_int64(const std::string& s, int64_t& out) {
+    const bool negative = !s.empty() && s[0] == '-';
+    const std::size_t start = (!s.empty() && (s[0] == '-' || s[0] == '+')) ? 1 : 0;
+    // The magnitude of INT64_MIN is one more than INT64_MAX.
+    const uint64_t max_positive = static_cast<uint64_t>(std::numeric_limits<int64_t>::max());
+    const uint64_t limit = negative ? max_positive + 1 : max_positive;
+    uint64_t magnitude = 0;
+    if (!accumulate_digits(s, start, limit, magnitude)) {
+        return false;
+    }
+    if (!negative) {
+        out = static_cast<int64_t>(magnitude);
+    } else if (magnitude == max_positive + 1) {
+        out = std::numeric_limits<int64_t>::min();
+    } else {
+        out = -static_cast<int64_t>(magnitude);
+    }
+    return true;
+}
+
+bool parse_uint64(const std::string& s, uint64_t& out) {
+    const std::size_t start = (!s.empty() && s[0] == '+') ? 1 : 0;
+    return accumulate_digits(s, start, std::numeric_limits<uint64_t>::max(), out);
 }
 
 std::string decimal(uint64_t value) { return render_unsigned(value, 10, 0); }
