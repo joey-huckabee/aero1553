@@ -44,6 +44,8 @@
 #include <io.h>
 #include <stdio.h>
 
+#include "mie/text.hpp"
+
 namespace mie {
 namespace platform {
 
@@ -659,32 +661,18 @@ uint64_t process_id() { return static_cast<uint64_t>(::GetCurrentProcessId()); }
 // codepage, and it is why Windows can be a shipping target rather than a
 // development convenience.
 
+// WTF-8 rather than UTF-8 (text::utf16_to_wtf8). A Windows file name may hold
+// an unpaired surrogate; MultiByteToWideChar / WideCharToMultiByte, which these
+// used to call, replace it with U+FFFD, so such a name named a different file
+// -- usually one that does not exist -- where Rust opened it (L2-CLI-021).
+
 std::wstring to_wide(const std::string& utf8) {
-    if (utf8.empty()) {
-        return std::wstring();
-    }
-    const int source_len = static_cast<int>(utf8.size());
-    const int needed = ::MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), source_len, 0, 0);
-    if (needed <= 0) {
-        return std::wstring();
-    }
-    std::wstring out(static_cast<std::size_t>(needed), L'\0');
-    ::MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), source_len, &out[0], needed);
-    return out;
+    const std::u16string units = text::wtf8_to_utf16(utf8);
+    return std::wstring(units.begin(), units.end());
 }
 
 std::string from_wide(const std::wstring& wide) {
-    if (wide.empty()) {
-        return std::string();
-    }
-    const int source_len = static_cast<int>(wide.size());
-    const int needed = ::WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), source_len, 0, 0, 0, 0);
-    if (needed <= 0) {
-        return std::string();
-    }
-    std::string out(static_cast<std::size_t>(needed), '\0');
-    ::WideCharToMultiByte(CP_UTF8, 0, wide.c_str(), source_len, &out[0], needed, 0, 0);
-    return out;
+    return text::utf16_to_wtf8(std::u16string(wide.begin(), wide.end()));
 }
 
 }  // namespace platform

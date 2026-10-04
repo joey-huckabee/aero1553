@@ -124,6 +124,15 @@ and each value of the RT and subaddress filters, also take hexadecimal: `0x`
 or `0X` followed by hex digits (`--offset 0x48`, `--include-rts 0x0F`), with
 no sign. (`L2-CLI-020`)
 
+### File names that are not valid Unicode
+
+A file name is whatever the operating system allows: any byte string on Linux,
+and on Windows any UTF-16, including an unpaired surrogate. Such a name may be
+given wherever a file is named -- an input, `--output`, `--config`,
+`--manifest` -- and the file is used under exactly that name. Any other value
+that is not valid Unicode is a usage error (exit `4`), and a message that
+quotes one shows it escaped in ASCII (`in\xFF.mie`). (`L2-CLI-021`)
+
 ### `--`: everything after this is a file name
 
 A file whose name begins with a dash cannot be passed as an ordinary argument —

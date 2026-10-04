@@ -100,6 +100,26 @@ std::string trim_ascii_whitespace(const std::string& s);
 /// one here would only defer the failure.
 bool is_valid_utf8(const std::string& s);
 
+// --- UTF-16 <-> WTF-8 -----------------------------------------------------
+//
+// WTF-8 is UTF-8 extended to carry an UNPAIRED surrogate, encoded exactly as
+// UTF-8 would encode its code point (three bytes, 0xED 0xA0..0xBF ...). A
+// Windows file name is any sequence of UTF-16 units, paired or not; WTF-8 is
+// how such a name travels through this program's narrow strings and comes back
+// out unchanged. It is also what Rust's OsString holds on Windows, so the two
+// implementations agree on which file a name refers to (L2-CLI-021).
+
+/// Encode UTF-16 units as WTF-8: a valid surrogate pair as its 4-byte UTF-8
+/// code point, an unpaired surrogate as 3 bytes, everything else as UTF-8.
+std::string utf16_to_wtf8(const std::u16string& units);
+
+/// Decode WTF-8 back to UTF-16 units, the exact inverse of utf16_to_wtf8. A
+/// byte sequence that is not well-formed WTF-8 (a stray continuation byte, an
+/// overlong form, a truncated sequence, a value above U+10FFFF) decodes to
+/// U+FFFD, one per offending lead byte -- as the Win32 conversion this replaced
+/// did with invalid input.
+std::u16string wtf8_to_utf16(const std::string& wtf8);
+
 // --- Integer parsing ------------------------------------------------------
 
 /// Parse exactly `[+-]?[0-9]+` -- ASCII digits only, no whitespace, no prefix,

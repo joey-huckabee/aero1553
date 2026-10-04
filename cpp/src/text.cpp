@@ -183,6 +183,109 @@ bool accumulate_digits(const std::string& s, std::size_t at, uint64_t limit, uin
 
 }  // namespace
 
+namespace {
+
+/// Append `cp` (at most U+10FFFF) in UTF-8 form. Surrogate code points are
+/// encoded like any other three-byte value, which is what makes this WTF-8.
+void append_utf8(std::string& out, uint32_t cp) {
+    if (cp < 0x80) {
+        out += static_cast<char>(cp);
+    } else if (cp < 0x800) {
+        out += static_cast<char>(0xC0 | (cp >> 6));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else if (cp < 0x10000) {
+        out += static_cast<char>(0xE0 | (cp >> 12));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    } else {
+        out += static_cast<char>(0xF0 | (cp >> 18));
+        out += static_cast<char>(0x80 | ((cp >> 12) & 0x3F));
+        out += static_cast<char>(0x80 | ((cp >> 6) & 0x3F));
+        out += static_cast<char>(0x80 | (cp & 0x3F));
+    }
+}
+
+bool is_high_surrogate(uint32_t u) { return u >= 0xD800 && u <= 0xDBFF; }
+bool is_low_surrogate(uint32_t u) { return u >= 0xDC00 && u <= 0xDFFF; }
+
+/// One WTF-8 sequence at `at`: its code point and length, or false when the
+/// bytes there are not a well-formed sequence.
+bool decode_wtf8_at(const std::string& s, std::size_t at, uint32_t& cp, std::size_t& len) {
+    const uint32_t lead = static_cast<unsigned char>(s[at]);
+    if (lead < 0x80) {
+        cp = lead;
+        len = 1;
+        return true;
+    }
+    uint32_t min = 0;
+    if (lead >= 0xC2 && lead <= 0xDF) {
+        cp = lead & 0x1F;
+        len = 2;
+        min = 0x80;
+    } else if (lead >= 0xE0 && lead <= 0xEF) {
+        cp = lead & 0x0F;
+        len = 3;
+        min = 0x800;
+    } else if (lead >= 0xF0 && lead <= 0xF4) {
+        cp = lead & 0x07;
+        len = 4;
+        min = 0x10000;
+    } else {
+        return false;
+    }
+    if (at + len > s.size()) {
+        return false;
+    }
+    for (std::size_t k = 1; k < len; ++k) {
+        const uint32_t b = static_cast<unsigned char>(s[at + k]);
+        if ((b & 0xC0) != 0x80) {
+            return false;
+        }
+        cp = (cp << 6) | (b & 0x3F);
+    }
+    return cp >= min && cp <= 0x10FFFF;
+}
+
+}  // namespace
+
+std::string utf16_to_wtf8(const std::u16string& units) {
+    std::string out;
+    out.reserve(units.size());
+    for (std::size_t i = 0; i < units.size(); ++i) {
+        uint32_t cp = units[i];
+        if (is_high_surrogate(cp) && i + 1 < units.size() && is_low_surrogate(units[i + 1])) {
+            cp = 0x10000 + ((cp - 0xD800) << 10) + (static_cast<uint32_t>(units[i + 1]) - 0xDC00);
+            ++i;
+        }
+        append_utf8(out, cp);
+    }
+    return out;
+}
+
+std::u16string wtf8_to_utf16(const std::string& wtf8) {
+    std::u16string out;
+    out.reserve(wtf8.size());
+    std::size_t at = 0;
+    while (at < wtf8.size()) {
+        uint32_t cp = 0;
+        std::size_t len = 0;
+        if (!decode_wtf8_at(wtf8, at, cp, len)) {
+            out += static_cast<char16_t>(0xFFFD);
+            at += 1;
+            continue;
+        }
+        if (cp >= 0x10000) {
+            cp -= 0x10000;
+            out += static_cast<char16_t>(0xD800 + (cp >> 10));
+            out += static_cast<char16_t>(0xDC00 + (cp & 0x3FF));
+        } else {
+            out += static_cast<char16_t>(cp);
+        }
+        at += len;
+    }
+    return out;
+}
+
 bool parse_int64(const std::string& s, int64_t& out) {
     const bool negative = !s.empty() && s[0] == '-';
     const std::size_t start = (!s.empty() && (s[0] == '-' || s[0] == '+')) ? 1 : 0;
