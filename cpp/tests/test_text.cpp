@@ -83,7 +83,7 @@ TEST_CASE("decimal formatting handles zero and the boundaries", "[text]") {
     CHECK(txt::decimal(18446744073709551615ull) == "18446744073709551615");
 }
 
-TEST_CASE("integer parsing refuses overflow rather than saturating", "[text]") {
+TEST_CASE("integer parsing refuses overflow rather than saturating", "[text][L2-CLI-020]") {
     // The grammar and range of Rust's i64 / u64 from_str: [+-]?[0-9]+, nothing
     // else, and a value outside the type is an error -- never the nearest
     // bound, which is what strtoll returned.

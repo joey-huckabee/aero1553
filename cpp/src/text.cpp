@@ -90,6 +90,18 @@ std::string trim_ascii_blank(const std::string& s) {
     return s.substr(begin, end - begin);
 }
 
+std::string trim_ascii_whitespace(const std::string& s) {
+    std::size_t begin = 0;
+    while (begin < s.size() && is_ascii_whitespace(s[begin])) {
+        ++begin;
+    }
+    std::size_t end = s.size();
+    while (end > begin && is_ascii_whitespace(s[end - 1])) {
+        --end;
+    }
+    return s.substr(begin, end - begin);
+}
+
 bool is_valid_utf8(const std::string& s) {
     std::size_t i = 0;
     while (i < s.size()) {

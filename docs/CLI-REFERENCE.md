@@ -103,6 +103,21 @@ rather than a way to spell "on".
 > tests — `cli-surface-parity` compares flag *names*, which cannot see how a
 > value is attached to one.
 
+### Numeric values
+
+A numeric value may be surrounded by ASCII whitespace (space, tab, newline,
+vertical tab, form feed, carriage return), which is ignored: `--year " 2026 "`
+is `--year 2026`. Whitespace inside the number, or a non-ASCII space around it,
+is a usage error. The same applies to each element of a comma-separated list
+such as `--include-rts 3,15`.
+
+Integers are decimal digits with an optional sign. A value too large for the
+flag is a usage error, never clamped to the largest one that fits: the limit is
+2^63 - 1 for `--collapse-window-us` and `--mux-field` (whose negative values
+count back from the end), and 2^64 - 1 for `dump --offset`, `--length` and
+`--records`. Flags with a documented range, such as `--detect-records`, refuse
+anything outside it. (`L2-CLI-020`)
+
 ### `--`: everything after this is a file name
 
 A file whose name begins with a dash cannot be passed as an ordinary argument —

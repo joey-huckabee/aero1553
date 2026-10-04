@@ -235,6 +235,16 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **Numeric flag values follow one whitespace rule in every implementation**
+  (new L2-CLI-020). Surrounding ASCII whitespace is ignored and nothing else
+  is: `"5 "` was accepted by Rust and refused by C++, `" 2026"` was accepted
+  by C++ and refused by Rust's `--year` (the one Rust numeric flag that
+  trimmed nothing), and Rust's other flags trimmed any Unicode whitespace.
+  Now every numeric flag, and each element of a numeric list such as
+  `--include-rts`, trims space, tab, `\n`, `\v`, `\f` and `\r` in both, and
+  refuses whitespace inside the number or a non-ASCII space such as U+00A0
+  around it. **Behaviour change:** Rust now refuses a value padded with a
+  non-ASCII space, and `--year` accepts surrounding whitespace.
 - **The C++ implementation refuses an integer too large for its type**
   instead of clamping it. The CLI and the TOML loader parsed integers with
   `strtoll`, which saturates on overflow and reports it only through `errno`,

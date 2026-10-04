@@ -358,25 +358,16 @@ class ArgReader {
 // Value parsers
 // ---------------------------------------------------------------------------
 
-/// Leading blanks are skipped, as `strtoll` skipped them before this parser
-/// replaced it.
-std::string skip_leading_blanks(const std::string& text) {
-    std::size_t at = 0;
-    while (at < text.size() && text::is_ascii_blank(text[at])) {
-        at += 1;
-    }
-    return text.substr(at);
-}
-
-/// An integer flag value. Rejects trailing junk, which `atoi` accepts, and a
-/// value outside int64_t, which `strtoll` saturated to the nearest bound and
-/// accepted (Rust refuses it).
+/// An integer flag value. Surrounding ASCII whitespace is ignored, on every
+/// numeric flag and in both implementations (Rust trims with `trim_ascii`).
+/// Rejects trailing junk, which `atoi` accepts, and a value outside int64_t,
+/// which `strtoll` saturated to the nearest bound and accepted.
 int64_t parse_integer(const std::string& text, const char* flag) {
     if (text.empty()) {
         throw usage_error(std::string(flag) + " requires a number, got an empty value");
     }
     int64_t value = 0;
-    if (!text::parse_int64(skip_leading_blanks(text), value)) {
+    if (!text::parse_int64(text::trim_ascii_whitespace(text), value)) {
         throw usage_error(std::string(flag) + " requires a number, got \"" + text + "\"");
     }
     return value;
@@ -421,8 +412,9 @@ double parse_tick_rate(const std::string& text) {
     if (text.empty()) {
         throw usage_error("--standard-tick-rate-hz requires a value");
     }
+    const std::string trimmed = text::trim_ascii_whitespace(text);
     char* end = nullptr;
-    const double value = std::strtod(text.c_str(), &end);
+    const double value = std::strtod(trimmed.c_str(), &end);
     if (end == nullptr || *end != '\0') {
         throw usage_error("--standard-tick-rate-hz requires a number, got \"" + text + "\"");
     }
@@ -440,7 +432,7 @@ std::vector<std::string> split_csv(const std::string& text) {
     std::string current;
     for (std::size_t i = 0; i < text.size(); ++i) {
         if (text[i] == ',') {
-            const std::string piece = text::trim_ascii_blank(current);
+            const std::string piece = text::trim_ascii_whitespace(current);
             if (!piece.empty()) {
                 out.push_back(piece);
             }
@@ -449,7 +441,7 @@ std::vector<std::string> split_csv(const std::string& text) {
             current += text[i];
         }
     }
-    const std::string piece = text::trim_ascii_blank(current);
+    const std::string piece = text::trim_ascii_whitespace(current);
     if (!piece.empty()) {
         out.push_back(piece);
     }
@@ -488,7 +480,7 @@ Bus parse_bus_flag(const std::string& text, const char* flag) {
 /// everything up to 2^64 - 1 is accepted and anything beyond it refused.
 uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
     uint64_t value = 0;
-    if (text::parse_uint64(skip_leading_blanks(text_value), value)) {
+    if (text::parse_uint64(text::trim_ascii_whitespace(text_value), value)) {
         return value;
     }
     // Not an unsigned number: a negative one gets the specific complaint.

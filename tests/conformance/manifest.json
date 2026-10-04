@@ -1436,6 +1436,35 @@
       "expected_exit": 4
     },
     {
+      "name": "numeric-value-surrounding-whitespace",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--detect-records",
+        "\t5 ",
+        "--year",
+        " 2026\r\n"
+      ],
+      "expected": "expected/numeric-value-surrounding-whitespace.csv"
+    },
+    {
+      "name": "usage-error-numeric-value-nbsp",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--detect-records",
+        "\u00a05"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-numeric-value-inner-space",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--year",
+        "20 26"
+      ],
+      "expected_exit": 4
+    },
+    {
       "name": "usage-error-dump-offset-overflow",
       "mode": "dump",
       "input": "inputs/basic-multi-record.hex",

@@ -53,6 +53,10 @@ inline bool is_ascii_alnum(char c) { return is_ascii_alpha(c) || is_ascii_digit(
 /// includes '\n' turns a missing terminator into a silently joined line.
 inline bool is_ascii_blank(char c) { return c == ' ' || c == '\t'; }
 
+/// The six ASCII whitespace bytes: space, tab, newline, vertical tab, form
+/// feed and carriage return -- exactly what Rust's `str::trim_ascii` strips.
+inline bool is_ascii_whitespace(char c) { return c == ' ' || (c >= '\t' && c <= '\r'); }
+
 inline char ascii_lower(char c) { return is_ascii_upper(c) ? static_cast<char>(c - 'A' + 'a') : c; }
 inline char ascii_upper(char c) { return is_ascii_lower(c) ? static_cast<char>(c - 'a' + 'A') : c; }
 
@@ -75,6 +79,11 @@ bool equals_ignoring_ascii_case(const std::string& a, const std::string& b);
 
 /// Remove leading and trailing spaces and tabs.
 std::string trim_ascii_blank(const std::string& s);
+
+/// Trim ASCII whitespace (is_ascii_whitespace) from both ends: the rule for a
+/// command-line value, matching Rust's `str::trim_ascii`. Unicode spaces such
+/// as U+00A0 are NOT whitespace here, in either implementation.
+std::string trim_ascii_whitespace(const std::string& s);
 
 /// Whether `s` is well-formed UTF-8.
 ///
