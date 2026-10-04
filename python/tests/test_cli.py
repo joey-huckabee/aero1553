@@ -75,6 +75,39 @@ class TestEntryPoints:
         assert "USAGE:" in result.out
         assert result.err == ""
 
+    @pytest.mark.requirement("L2-CLI-021")
+    def test_a_file_name_that_is_not_utf8_is_used_as_given(self, tmp_path: Path) -> None:
+        """A recording whose name is not valid Unicode decodes like any other.
+
+        ``sys.argv`` carries such a name as a surrogate-escaped ``str`` (POSIX)
+        or with an unpaired surrogate (Windows). The CLI used to pass it to the
+        native layer as a ``String``, which raised ``UnicodeEncodeError``
+        before anything ran; the Rust binary panicked on the same argument.
+        """
+        stem = os.fsdecode(b"in\xff") if os.name == "posix" else "in\ud800"
+        source = tmp_path / f"{stem}.mie"
+        source.write_bytes(conformance_input("basic-multi-record"))
+        output = tmp_path / f"{stem}.csv"
+
+        assert cli.main(["decode", str(source), "-o", str(output)]) == EXIT_OK
+        assert len(output.read_bytes().splitlines()) == 4  # header + 3 records
+        assert cli.main(["count", str(source)]) == EXIT_OK
+
+    @pytest.mark.requirement("L2-CLI-021")
+    def test_a_non_path_value_that_is_not_utf8_is_a_usage_error(
+        self, tmp_path: Path, capfd: pytest.CaptureFixture[str]
+    ) -> None:
+        """Only a path may be non-UTF-8; any other such value is exit 4, with an
+        ASCII diagnostic (L2-CLI-014)."""
+        source = tmp_path / "rec.mie"
+        source.write_bytes(conformance_input("basic-multi-record"))
+        bad = os.fsdecode(b"x\xff") if os.name == "posix" else "x\ud800"
+
+        assert cli.main(["decode", str(source), "--glob", bad]) == EXIT_USAGE
+        _, err = capfd.readouterr()
+        assert err.isascii()
+        assert "requires a UTF-8 value" in err
+
     def test_no_argv_reads_sys_argv(self, run_cli: RunCli, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr(sys, "argv", ["aero1553", "--version"])
         assert cli.main() == EXIT_OK

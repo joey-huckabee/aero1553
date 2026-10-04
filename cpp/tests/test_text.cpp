@@ -83,6 +83,43 @@ TEST_CASE("decimal formatting handles zero and the boundaries", "[text]") {
     CHECK(txt::decimal(18446744073709551615ull) == "18446744073709551615");
 }
 
+TEST_CASE("WTF-8 round-trips every UTF-16 sequence, paired or not", "[text][L2-CLI-021]") {
+    // A Windows file name is any sequence of UTF-16 units. Each of these must
+    // come back unchanged -- including the unpaired surrogates the Win32 UTF-8
+    // conversion used to replace with U+FFFD.
+    const char16_t ascii[] = {u'a', u'.', u'm', u'i', u'e'};
+    const char16_t accented[] = {u'a', 0x00F1, u'o'};  // a, n with tilde, o
+    const char16_t pair[] = {0xD83D, 0xDE00};          // one supplementary character
+    const char16_t lone_high[] = {u'x', 0xD800, u'.'};
+    const char16_t lone_low[] = {0xDC00, u'x'};
+    const char16_t reversed[] = {0xDC00, 0xD800};  // a low then a high: two lone units
+    const std::u16string cases[] = {std::u16string(),
+                                    std::u16string(ascii, ascii + 5),
+                                    std::u16string(accented, accented + 3),
+                                    std::u16string(pair, pair + 2),
+                                    std::u16string(lone_high, lone_high + 3),
+                                    std::u16string(lone_low, lone_low + 2),
+                                    std::u16string(reversed, reversed + 2)};
+    for (std::size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        INFO("case " << i);
+        CHECK(mie::text::wtf8_to_utf16(mie::text::utf16_to_wtf8(cases[i])) == cases[i]);
+    }
+    // The encodings themselves: a pair is the 4-byte UTF-8 form, a lone
+    // surrogate the 3-byte form of its code point.
+    CHECK(mie::text::utf16_to_wtf8(std::u16string(pair, pair + 2)) == "\xF0\x9F\x98\x80");
+    CHECK(mie::text::utf16_to_wtf8(std::u16string(1, char16_t(0xD800))) == "\xED\xA0\x80");
+    CHECK(mie::text::utf16_to_wtf8(std::u16string(accented, accented + 3)) == "a\xC3\xB1o");
+}
+
+TEST_CASE("WTF-8 decoding turns malformed input into U+FFFD", "[text][L2-CLI-021]") {
+    const std::u16string replacement(1, char16_t(0xFFFD));
+    CHECK(mie::text::wtf8_to_utf16("\x80") == replacement);                    // stray continuation
+    CHECK(mie::text::wtf8_to_utf16("\xC0\xAF") == replacement + replacement);  // overlong
+    CHECK(mie::text::wtf8_to_utf16("\xE2\x82") == replacement + replacement);  // truncated
+    CHECK(mie::text::wtf8_to_utf16("\xF4\x90\x80\x80").size() == 4u);          // above U+10FFFF
+    CHECK(mie::text::wtf8_to_utf16("\xFF") == replacement);
+}
+
 TEST_CASE("integer parsing refuses overflow rather than saturating", "[text][L2-CLI-020]") {
     // The grammar and range of Rust's i64 / u64 from_str: [+-]?[0-9]+, nothing
     // else, and a value outside the type is an error -- never the nearest

@@ -376,7 +376,9 @@ std::string path_join(const std::string& dir, const std::string& name);
 //
 // Declared unconditionally so the round-trip property is stated in one place,
 // but only the Win32 backend does real work: the POSIX build passes bytes
-// through, since POSIX paths are opaque byte strings.
+// through, since POSIX paths are opaque byte strings. On Windows the narrow
+// form is WTF-8 (text::utf16_to_wtf8), so a file name holding an unpaired
+// surrogate survives the round trip (L2-CLI-021).
 
 std::wstring to_wide(const std::string& utf8);
 std::string from_wide(const std::wstring& wide);

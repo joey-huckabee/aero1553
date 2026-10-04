@@ -235,6 +235,17 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **A file name that is not valid Unicode can be named on the command line**
+  (all three implementations; new L2-CLI-021). The Rust binary collected
+  `std::env::args()`, which panics on the first argument that is not UTF-8
+  (exit 101); the Python CLI raised an uncaught `UnicodeEncodeError` on the
+  same argument; and the C++ CLI on Windows turned an unpaired surrogate into
+  U+FFFD and so looked for a different file. Rust now parses `args_os`
+  (`cli::run_os`, with `run` kept for `String` arguments), Python hands the
+  CLI OS strings, and C++ on Windows carries paths as WTF-8. An input,
+  `--output`, `--config` or `--manifest` may now be any name the platform
+  allows and is used as given; any other value that is not valid Unicode is a
+  usage error (exit 4), quoted in escaped ASCII.
 - **The C++ CLI on Windows no longer refuses an output at a drive root as
   "the same file as the input"**. The parent of `C:\a.mie` came back as `C:`,
   which Windows reads as the current directory on drive C, not its root; so

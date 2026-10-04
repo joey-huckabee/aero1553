@@ -2112,3 +2112,138 @@ fn day_of_year_advisory_escalates_under_a_calendar_rendering() {
         "the opt-out must suppress it at every level and rendering\n{opted_out_err}"
     );
 }
+
+/// A file name that is not valid Unicode: a lone `0xFF` byte on POSIX, an
+/// unpaired surrogate on Windows. Both are legal names on their platform, and
+/// neither survives conversion to a Rust `String`.
+fn non_utf8_name(stem: &str, ext: &str) -> std::ffi::OsString {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStringExt;
+        let mut bytes = stem.as_bytes().to_vec();
+        bytes.push(0xFF);
+        bytes.extend_from_slice(ext.as_bytes());
+        std::ffi::OsString::from_vec(bytes)
+    }
+    #[cfg(windows)]
+    {
+        use std::os::windows::ffi::OsStringExt;
+        let mut wide: Vec<u16> = stem.encode_utf16().collect();
+        wide.push(0xD800);
+        wide.extend(ext.encode_utf16());
+        std::ffi::OsString::from_wide(&wide)
+    }
+}
+
+/// Requirements: L2-CLI-021
+///
+/// A recording, an output and a config whose names are not UTF-8 are named
+/// on the command line and used as given -- `decode`, `count` and `dump`,
+/// with `--output` both space-separated and `=`-joined. `main` used to collect
+/// `std::env::args()`, which panics (exit 101) on the first such argument; the
+/// C++ CLI decoded the same file.
+#[test]
+fn non_utf8_path_arguments_are_used_as_given() {
+    let tmp = TempDir::new();
+    let mut bytes = one_valid_record();
+    bytes.extend(one_valid_record());
+    let input = tmp.path().join(non_utf8_name("in", ".mie"));
+    std::fs::write(&input, &bytes).unwrap();
+    let config = tmp.path().join(non_utf8_name("cfg", ".toml"));
+    std::fs::write(&config, b"[decode]\nstrict = false\n").unwrap();
+
+    let output = tmp.path().join(non_utf8_name("out", ".csv"));
+    let out = run([
+        std::ffi::OsStr::new("--config"),
+        config.as_os_str(),
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("-o"),
+        output.as_os_str(),
+    ]);
+    assert_eq!(exit_code(&out), 0);
+    let text = std::fs::read_to_string(&output).expect("the output is written under its own name");
+    assert_eq!(csv_rt_msg(&text).len(), 2);
+
+    let joined = tmp.path().join(non_utf8_name("joined", ".csv"));
+    let mut flag = std::ffi::OsString::from("--output=");
+    flag.push(joined.as_os_str());
+    let out = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        flag.as_os_str(),
+    ]);
+    assert_eq!(exit_code(&out), 0);
+    assert!(
+        joined.exists(),
+        "the =-joined form keeps the name's bytes too"
+    );
+
+    let out = run([std::ffi::OsStr::new("count"), input.as_os_str()]);
+    assert_eq!(exit_code(&out), 0);
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "2");
+
+    let out = run([
+        std::ffi::OsStr::new("dump"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--records"),
+        std::ffi::OsStr::new("1"),
+    ]);
+    assert_eq!(exit_code(&out), 0);
+    assert!(
+        String::from_utf8_lossy(&out.stdout).contains("Record #0"),
+        "dump reads the file it was given"
+    );
+}
+
+/// Requirements: L2-CLI-014, L2-CLI-021
+///
+/// Only a path may be non-UTF-8. Any other value that is not is a usage error
+/// -- not a panic, and not the escaped text silently used as a pattern or a
+/// delimiter -- and every message that quotes such an argument is ASCII.
+#[test]
+fn non_utf8_non_path_values_are_usage_errors() {
+    let tmp = TempDir::new();
+    let input = tmp.write("rec.mie", &one_valid_record());
+    let bad = non_utf8_name("x", "");
+    for flag in ["--glob", "--mux-delimiter", "--year", "--log-level"] {
+        let out = if flag == "--log-level" {
+            run([
+                std::ffi::OsStr::new(flag),
+                bad.as_os_str(),
+                std::ffi::OsStr::new("count"),
+                input.as_os_str(),
+            ])
+        } else {
+            run([
+                std::ffi::OsStr::new("decode"),
+                input.as_os_str(),
+                std::ffi::OsStr::new(flag),
+                bad.as_os_str(),
+            ])
+        };
+        assert_eq!(exit_code(&out), 4, "{flag}");
+        assert!(out.stderr.is_ascii(), "{flag}: stderr must be ASCII");
+    }
+
+    // A non-UTF-8 token where a subcommand is expected is quoted in its
+    // escaped, ASCII form.
+    let out = run([bad.as_os_str()]);
+    assert_eq!(exit_code(&out), 4);
+    assert!(out.stderr.is_ascii());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    #[cfg(unix)]
+    assert!(stderr.contains("xFF"), "{stderr}");
+    #[cfg(windows)]
+    assert!(stderr.contains("u{d800}"), "{stderr}");
+
+    // As a positional it is a path: a missing file is the ordinary runtime
+    // failure (exit 1), not a panic.
+    let out = run([
+        std::ffi::OsStr::new("decode"),
+        bad.as_os_str(),
+        std::ffi::OsStr::new("-o"),
+        tmp.path().join("out.csv").as_os_str(),
+    ]);
+    assert_eq!(exit_code(&out), 1);
+}

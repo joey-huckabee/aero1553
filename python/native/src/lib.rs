@@ -33,9 +33,12 @@ mod writer;
 /// holding the interpreter lock that long would stall every other Python
 /// thread for no reason, since nothing here touches a Python object.
 #[pyfunction]
-fn run_cli(py: Python<'_>, argv: Vec<String>) -> u8 {
+fn run_cli(py: Python<'_>, argv: Vec<std::ffi::OsString>) -> u8 {
+    // OS strings, not `String`s: `sys.argv` carries a non-UTF-8 file name as a
+    // surrogate-escaped `str`, which a `String` cannot hold -- the call raised
+    // `UnicodeEncodeError` before the CLI ran (L2-CLI-021).
     py.detach(|| {
-        let code = aero1553::cli::run_to_code(argv);
+        let code = aero1553::cli::run_os_to_code(argv);
         // Rust's stdout is line-buffered: a `print!` without a newline (the
         // help text's last line, a partial CSV row) can still be sitting in
         // its buffer. A standalone binary flushes at exit; an embedded call

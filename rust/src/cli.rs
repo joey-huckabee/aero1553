@@ -8,6 +8,9 @@
 //!
 //! Commands: `decode`, `count`, `dump`.
 
+use std::cell::RefCell;
+use std::collections::HashMap;
+use std::ffi::{OsStr, OsString};
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 
@@ -314,6 +317,150 @@ impl CliError {
 
 // ── Top-level entry ───────────────────────────────────────────────────
 
+// ── Arguments that are not UTF-8 ───────────────────────────────────────
+
+thread_local! {
+    /// The arguments of the current run that were not valid UTF-8, keyed by the
+    /// ASCII stand-in the parser sees in their place (see [`stand_in_args`]).
+    /// Set and cleared by [`run_os_to_code`]; empty for [`run`], whose
+    /// arguments are `String`s already.
+    static NON_UTF8_ARGS: RefCell<HashMap<String, OsString>> = RefCell::new(HashMap::new());
+}
+
+/// An OS string rendered as ASCII: printable ASCII as-is, everything else
+/// escaped -- `\xFF` for a byte that is not UTF-8 (POSIX), `\u{d800}` for an
+/// unpaired surrogate (Windows), and `\u{e9}` for any other non-ASCII
+/// character. Every message that quotes such an argument therefore stays ASCII
+/// (L2-CLI-014).
+#[allow(
+    clippy::unnecessary_debug_formatting,
+    reason = "Debug is the escaping: it renders a non-UTF-8 byte as an escape where Display substitutes U+FFFD"
+)]
+fn escape_os(os: &OsStr) -> String {
+    use std::fmt::Write as _;
+    let debug = format!("{os:?}");
+    let inner = debug
+        .strip_prefix('"')
+        .and_then(|s| s.strip_suffix('"'))
+        .unwrap_or(&debug);
+    let mut out = String::with_capacity(inner.len());
+    for c in inner.chars() {
+        if c.is_ascii() {
+            out.push(c);
+        } else {
+            let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
+        }
+    }
+    out
+}
+
+/// Split `--flag=<value>` whose value is not UTF-8 into the ASCII `--flag=`
+/// and the value's own OS string. `None` when the token is not of that shape.
+fn split_inline_os(os: &OsStr) -> Option<(String, OsString)> {
+    let lossy = os.to_string_lossy();
+    let at = lossy.find('=')?;
+    let name = &lossy[..at];
+    if !lossy.starts_with("--") || !name.is_ascii() {
+        return None;
+    }
+    // `--flag=` is ASCII, so it is `at + 1` bytes (or UTF-16 units) in the
+    // platform's own encoding too: the split falls on a character boundary.
+    #[cfg(unix)]
+    let value = {
+        use std::os::unix::ffi::OsStrExt;
+        OsStr::from_bytes(&os.as_bytes()[at + 1..]).to_os_string()
+    };
+    #[cfg(windows)]
+    let value = {
+        use std::os::windows::ffi::{OsStrExt, OsStringExt};
+        let wide: Vec<u16> = os.encode_wide().collect();
+        OsString::from_wide(&wide[at + 1..])
+    };
+    Some((format!("{name}="), value))
+}
+
+/// Stand in for every non-UTF-8 argument with an ASCII string the parser can
+/// handle, and return the table that maps each stand-in back to the original.
+///
+/// Flag names are ASCII, so the parser itself never needs the original bytes:
+/// only a PATH value does (an input, `--output`, `--config`, `--manifest`),
+/// and [`path_arg`] looks those up. A stand-in that reaches any other value is
+/// refused by [`Arg::value`] as not UTF-8. Before this, `main` collected
+/// `std::env::args()`, which panics on the first such argument (exit 101) --
+/// on Linux, where a file name is any byte string, a perfectly good recording
+/// could not be named on the command line at all.
+fn stand_in_args(argv: Vec<OsString>) -> (Vec<String>, HashMap<String, OsString>) {
+    let mut table: HashMap<String, OsString> = HashMap::new();
+    let mut out: Vec<String> = Vec::with_capacity(argv.len());
+    let valid: Vec<String> = argv
+        .iter()
+        .filter_map(|a| a.to_str().map(str::to_string))
+        .collect();
+    let stand_in_for = |os: OsString, table: &mut HashMap<String, OsString>| -> String {
+        // The escaped form is what a message shows. In the absurd case that a
+        // valid argument spells the same text, or two different originals
+        // escape alike, a suffix keeps every stand-in unique.
+        let mut key = escape_os(&os);
+        while valid.contains(&key) || table.get(&key).is_some_and(|o| *o != os) {
+            key.push('~');
+        }
+        table.insert(key.clone(), os);
+        key
+    };
+    for arg in argv {
+        match arg.into_string() {
+            Ok(s) => out.push(s),
+            Err(os) => match split_inline_os(&os) {
+                Some((prefix, value)) => match value.into_string() {
+                    Ok(v) => out.push(format!("{prefix}{v}")),
+                    Err(value) => {
+                        let key = stand_in_for(value, &mut table);
+                        out.push(format!("{prefix}{key}"));
+                    }
+                },
+                None => out.push(stand_in_for(os, &mut table)),
+            },
+        }
+    }
+    (out, table)
+}
+
+/// The path a command-line value names: the original OS string when the value
+/// is a stand-in for a non-UTF-8 argument, otherwise the value itself.
+fn path_arg(value: String) -> PathBuf {
+    NON_UTF8_ARGS
+        .with(|t| t.borrow().get(&value).cloned())
+        .map_or_else(|| PathBuf::from(value), PathBuf::from)
+}
+
+/// True when `value` stands in for an argument that was not UTF-8.
+fn is_non_utf8_stand_in(value: &str) -> bool {
+    NON_UTF8_ARGS.with(|t| t.borrow().contains_key(value))
+}
+
+/// Run the CLI over OS-native arguments, which need not be UTF-8.
+///
+/// What `main` calls, with `std::env::args_os()`. A path argument -- an input,
+/// `--output`, `--config`, `--manifest` -- may be any string the platform can
+/// name a file with; every other value must be UTF-8 and is a usage error
+/// (exit `4`) when it is not. [`run`] is this function for arguments that are
+/// already `String`s.
+#[must_use]
+pub fn run_os(argv: Vec<OsString>) -> ExitCode {
+    ExitCode::from(run_os_to_code(argv))
+}
+
+/// [`run_os`], returning the exit status as a number -- what the Python
+/// package's `aero1553.cli.main()` calls.
+#[must_use]
+pub fn run_os_to_code(argv: Vec<OsString>) -> u8 {
+    let (args, table) = stand_in_args(argv);
+    NON_UTF8_ARGS.with(|t| *t.borrow_mut() = table);
+    let code = run_to_code(args);
+    NON_UTF8_ARGS.with(|t| t.borrow_mut().clear());
+    code
+}
+
 /// Run the CLI and return the process exit status.
 ///
 /// `argv[0]` is the program name and is skipped, as in `std::env::args()`.
@@ -461,7 +608,7 @@ fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Resul
                 iter.next(); // the flag token itself
                 match a.value("--log-level", iter) {
                     Ok(v) => globals.log_level = Some(v),
-                    Err(_) => return Err(die("--log-level requires a value")),
+                    Err(message) => return Err(die(&message)),
                 }
             }
             // Value-less, so `bare()` declines the `=value` spelling rather
@@ -472,9 +619,9 @@ fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Resul
             }
             "--config" => {
                 iter.next();
-                match a.value("--config", iter) {
+                match a.path_value("--config", iter) {
                     // Its own message: a path, not a generic value.
-                    Ok(v) => globals.config = Some(PathBuf::from(v)),
+                    Ok(v) => globals.config = Some(v),
                     Err(_) => return Err(die("--config requires a path")),
                 }
             }
@@ -746,6 +893,20 @@ impl Arg {
     /// value" message names the long form even when the short one was used
     /// (`-o` reports `--output`), which is what the message did before.
     fn value(&self, name: &str, iter: &mut ArgIter<'_>) -> Result<String, String> {
+        let value = self.raw_value(name, iter)?;
+        if is_non_utf8_stand_in(&value) {
+            return Err(format!("{name} requires a UTF-8 value, got {value}"));
+        }
+        Ok(value)
+    }
+
+    /// The value for a flag that names a FILE: as [`Self::value`], except that
+    /// it need not be UTF-8 -- a path is whatever the platform allows.
+    fn path_value(&self, name: &str, iter: &mut ArgIter<'_>) -> Result<PathBuf, String> {
+        self.raw_value(name, iter).map(path_arg)
+    }
+
+    fn raw_value(&self, name: &str, iter: &mut ArgIter<'_>) -> Result<String, String> {
         match &self.inline {
             Some(v) => Ok(v.clone()),
             None => next_value(name, iter),
@@ -842,7 +1003,7 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
 
     while let Some(token) = iter.next() {
         if end_of_options {
-            args.inputs.push(PathBuf::from(token));
+            args.inputs.push(path_arg(token));
             continue;
         }
         if token == "--" {
@@ -854,7 +1015,7 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
         let a = Arg::split(token);
         match a.name.as_str() {
             "-o" | "--output" => {
-                args.output = Some(PathBuf::from(a.value("--output", iter)?));
+                args.output = Some(a.path_value("--output", iter)?);
             }
             // Value-less flags decline a joined value rather than discard it;
             // `--no-mux=true` falls through to the unknown-option arm.
@@ -931,7 +1092,7 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
                 )?);
             }
             "--manifest" => {
-                args.manifest = Some(PathBuf::from(a.value("--manifest", iter)?));
+                args.manifest = Some(a.path_value("--manifest", iter)?);
             }
             "--glob" => args.glob = Some(a.value("--glob", iter)?),
             // Filter flags: each takes ONE value. Multiple values either
@@ -989,7 +1150,7 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             }
             // Positional input path(s). One or more is accepted; more than one
             // resolved input triggers the time-sorted merge (L2-MRG-001).
-            _ => args.inputs.push(PathBuf::from(a.raw)),
+            _ => args.inputs.push(path_arg(a.raw)),
         }
     }
 
@@ -1026,7 +1187,7 @@ fn parse_count(iter: &mut ArgIter<'_>) -> Result<PathBuf, ParseError> {
             if path.is_some() {
                 return Err(format!("unexpected positional argument: {token}").into());
             }
-            path = Some(PathBuf::from(token));
+            path = Some(path_arg(token));
             continue;
         }
         // `count` has no value-taking flag today, but it goes through the same
@@ -1041,7 +1202,7 @@ fn parse_count(iter: &mut ArgIter<'_>) -> Result<PathBuf, ParseError> {
                 if path.is_some() {
                     return Err(format!("unexpected positional argument: {}", a.raw).into());
                 }
-                path = Some(PathBuf::from(a.raw));
+                path = Some(path_arg(a.raw));
             }
         }
     }
@@ -1062,7 +1223,7 @@ fn parse_dump(iter: &mut ArgIter<'_>) -> Result<DumpArgs, ParseError> {
             if input_seen {
                 return Err(format!("unexpected positional argument: {token}").into());
             }
-            args.input = PathBuf::from(token);
+            args.input = path_arg(token);
             input_seen = true;
             continue;
         }
@@ -1087,7 +1248,7 @@ fn parse_dump(iter: &mut ArgIter<'_>) -> Result<DumpArgs, ParseError> {
                 if input_seen {
                     return Err(format!("unexpected positional argument: {}", a.raw).into());
                 }
-                args.input = PathBuf::from(a.raw);
+                args.input = path_arg(a.raw);
                 input_seen = true;
             }
         }
@@ -2026,6 +2187,64 @@ mod tests {
             assert!(parse_int_value(&bad, "--offset").is_err(), "{bad:?}");
         }
         assert_eq!(split_csv(" 3 ,\t15\t"), vec!["3", "15"]);
+    }
+
+    /// An argument that is not valid Unicode, built per platform: a lone 0xFF
+    /// byte on POSIX, an unpaired surrogate on Windows.
+    fn not_unicode(prefix: &str) -> OsString {
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let mut bytes = prefix.as_bytes().to_vec();
+            bytes.push(0xFF);
+            OsString::from_vec(bytes)
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::ffi::OsStringExt;
+            let mut wide: Vec<u16> = prefix.encode_utf16().collect();
+            wide.push(0xD800);
+            OsString::from_wide(&wide)
+        }
+    }
+
+    /// Each argument that is not UTF-8 is replaced by an ASCII stand-in that
+    /// maps back to the original; `--flag=<value>` keeps its flag and stands in
+    /// for the value alone; and a stand-in never collides with a real argument.
+    /// Requirements: L2-CLI-014, L2-CLI-021
+    #[test]
+    fn stand_ins_are_ascii_unique_and_reversible() {
+        let bad = not_unicode("in");
+        let escaped = escape_os(&bad);
+        assert!(escaped.is_ascii(), "{escaped}");
+        assert!(escaped.starts_with("in\\"), "{escaped}");
+
+        let mut joined = OsString::from("--output=");
+        joined.push(&bad);
+        // A real argument that happens to spell the stand-in's text.
+        let (args, table) = stand_in_args(vec![
+            OsString::from("aero1553"),
+            bad.clone(),
+            joined,
+            OsString::from(escaped.clone()),
+            OsString::from("--year=2026"),
+        ]);
+        assert_eq!(args[0], "aero1553");
+        assert_eq!(args[3], escaped, "the real argument is untouched");
+        assert_ne!(args[1], escaped, "the stand-in steps around it");
+        assert_eq!(table.get(&args[1]), Some(&bad));
+        let value = args[2]
+            .strip_prefix("--output=")
+            .expect("the flag survives");
+        assert_eq!(table.get(value), Some(&bad));
+        assert_eq!(args[4], "--year=2026");
+        assert!(args.iter().all(|a| a.is_ascii()));
+
+        // A non-UTF-8 flag NAME is not split: the whole token stands in.
+        let mut bad_name = not_unicode("--out");
+        bad_name.push("=x");
+        let (args, table) = stand_in_args(vec![OsString::from("p"), bad_name.clone()]);
+        assert_eq!(table.get(&args[1]), Some(&bad_name));
     }
 
     /// The hexadecimal form taken by the dump offsets and the RT/subaddress

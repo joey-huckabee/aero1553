@@ -14,6 +14,7 @@
 
 #include <catch2/catch.hpp>
 
+#include <algorithm>
 #include <cstdio>
 #include <string>
 #include <vector>
@@ -522,6 +523,69 @@ TEST_CASE("numeric flags reject trailing junk", "[cli][L3-CPP-014]") {
                 mie::cli::EXIT_USAGE);
     }
 }
+
+#if !defined(_WIN32)
+TEST_CASE("a file name that is not UTF-8 is used as given", "[cli][L2-CLI-021]") {
+    // On POSIX a file name is any byte string. This CLI always decoded such a
+    // file -- it is the behaviour the Rust CLI was brought up to, where the
+    // same argument used to panic -- and this keeps it that way.
+    const TempFile input("mie-cli-not-utf8-\xFF.mie", valid_recording());
+    TempPath output("mie-cli-not-utf8-\xFE.csv");
+
+    std::string out;
+    std::string err;
+    REQUIRE(run_capturing(args("decode", input.str(), "-o", output.str()), out, err) ==
+            mie::cli::EXIT_OK);
+    std::string csv;
+    REQUIRE(mie_test::read_file(output.str(), csv));
+    CHECK(std::count(csv.begin(), csv.end(), '\n') == 3);  // header + 2 records
+}
+#else
+TEST_CASE("a file name holding an unpaired surrogate is used as given", "[cli][L2-CLI-021]") {
+    // A Windows file name is any UTF-16, paired or not. Paths travel through
+    // this program as WTF-8 (text::utf16_to_wtf8), so "\xED\xA0\x80" below is
+    // the unpaired U+D800. The Win32 UTF-8 conversion this replaced turned it
+    // into U+FFFD, which named a different file. Created and removed through
+    // the platform layer: the narrow fopen behind TempFile reads its argument
+    // in the ANSI codepage and could not name this file at all.
+    const std::string stem = mie_test::TempPath("mie-cli-lone-surrogate").str();
+    const std::string input = stem + "-\xED\xA0\x80.mie";
+    const std::string output = stem + "-\xED\xA0\x80.csv";
+    struct RemoveOnExit {
+        std::string a;
+        std::string b;
+        ~RemoveOnExit() {
+            mie::platform::OsError ignored;
+            (void)mie::platform::remove_file(a, ignored);
+            (void)mie::platform::remove_file(b, ignored);
+        }
+    };
+    const RemoveOnExit cleanup = {input, output};
+
+    const std::vector<uint8_t> bytes = valid_recording();
+    mie::platform::AtomicFile file;
+    mie::platform::OsError err;
+    REQUIRE(file.create(input, err));
+    REQUIRE(file.write(reinterpret_cast<const char*>(&bytes[0]), bytes.size(), err));
+    REQUIRE(file.commit(err) == mie::platform::COMMIT_DONE);
+
+    // The name the OS stored must BE the unpaired surrogate. Creating and
+    // opening through one conversion proves nothing on its own: a conversion
+    // that mangled the name would mangle it the same way both times and the
+    // decode would still succeed. Listing the directory reads the OS's own
+    // UTF-16 back, which is what a command-line argument naming this file
+    // carries.
+    std::vector<std::string> names;
+    REQUIRE(mie::platform::list_directory(mie::platform::path_parent(input), names, err));
+    CHECK(std::find(names.begin(), names.end(), mie::platform::path_filename(input)) !=
+          names.end());
+
+    std::string out;
+    std::string err_text;
+    REQUIRE(run_capturing(args("decode", input, "-o", output), out, err_text) == mie::cli::EXIT_OK);
+    CHECK(mie::platform::path_exists(output));
+}
+#endif
 
 TEST_CASE("numeric flags ignore surrounding ASCII whitespace", "[cli][L2-CLI-020]") {
     // One rule on every numeric flag, in both implementations: surrounding
