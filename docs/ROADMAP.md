@@ -369,9 +369,12 @@ keep the two parsers byte-for-byte aligned via the parity corpus.
 
 A review of all three implementations in September 2026 found six
 high-severity defects; those were fixed in #136 and are recorded in
-`CHANGELOG.md` under `[Unreleased]`. Its medium- and lower-severity findings
-are still to be triaged against the current code. Two follow-ups are already
-known:
+`CHANGELOG.md` under `[Unreleased]`. Its medium-severity findings have since
+been fixed or decided (#139 to #153, each recorded in `CHANGELOG.md`) apart from
+three Python stream items -- Ctrl-C during `write_csv`, `allow_partial` on a
+stream destination, and CRLF on Windows `sys.stdout` -- which are next. The
+lower-severity findings are still to be triaged against the current code. Two
+follow-ups are already known:
 
 - **Python long paths on Windows -- untested.** #136 made the C++ build accept
   paths longer than 260 characters by adding the `\\?\` prefix itself, as Rust's
@@ -404,6 +407,67 @@ known:
 
   The working rule that goes with both, already followed in #136: a bug fixed in
   one implementation still gets a shared test that runs against all three.
+
+## Non-ASCII text in output (deferred, needs direction)
+
+Found while fixing non-UTF-8 command-line arguments (#153). `L2-CLI-014` says
+every byte written to stdout or stderr is ASCII, and that holds for the
+program's own text -- but text taken from outside (file names, operating-system
+error messages) is written as it comes. Parked on 2026-10-04 pending the C++
+direction below, since several of the fixes are C++ work.
+
+**What is wrong today**
+
+| | Where | Rust (and the Python CLI, which is Rust) | C++ | Effect |
+|---|---|---|---|---|
+| A | File names in diagnostics and log lines ("MIE file not found: ...", "opened ...", writer and merge messages) | about 47 `path.display()` sites: UTF-8 as-is, invalid bytes as U+FFFD | about 25 sites: raw bytes | non-ASCII on stderr; `café.mie` reads as `cafÃ©.mie` on a code-page-437 Windows console |
+| B | `dump`'s `File:` line (stdout payload) | `to_string_lossy` (U+FFFD) | raw bytes | not ASCII, and not byte-identical across implementations as `L2-CLI-014` requires |
+| C | Operating-system error text inside messages | localized by Windows | localized | non-ASCII on any non-English Windows |
+| D | The `_errors` file name under `--separate-errors` | built from a lossy stem: `out<FF>.csv` yields `out<U+FFFD>_errors.csv` | byte-exact | **a wrong file name** (a correctness bug, reachable since #153) |
+| E | The `MUX` column, derived from the input file name | lossy | raw bytes | CSV differs between implementations for a name that is not UTF-8 |
+
+**Proposed fix (not started)**
+
+1. One ASCII rendering rule for anything printed, identical in every
+   implementation: printable ASCII as-is (backslash included, so Windows paths
+   read normally); any other valid character as `\u{e9}`; a byte that is not
+   UTF-8 as `\xFF`; an unpaired surrogate as `\u{d800}`; control characters
+   escaped, so a file name holding a newline cannot forge log lines. The #153
+   argument stand-ins move to it (they use Rust's `Debug` form today, which
+   doubles every backslash in a Windows path).
+2. Apply it at every site in A and B; build the `_errors` name from the raw OS
+   name (D).
+3. Tests: one table of names and expected renderings run against both
+   renderers; conformance cases for `dump` and a "not found" message on a
+   non-ASCII name (the runner needs a field to name a case's input file).
+
+**Open decisions**
+
+- **`MUX` data (E).** *Always escaped*: the column, stdout and the Python
+  library all show `caf\u{e9}`; the CSV becomes pure ASCII and byte-identical
+  across implementations for any name, and Excel or Windows PowerShell 5.1
+  cannot mangle it -- but an analyst matching on `MUX` must use the escaped
+  form, the escape is not strictly reversible, and it changes output for anyone
+  already using non-ASCII names. *Verbatim UTF-8*: natural to match on, but the
+  CSV is no longer guaranteed ASCII. The vendor diff is unaffected either way
+  (the vendor tool leaves `MUX` empty; `--no-mux` is the vendor-exact mode).
+- **Printed text (A-C).** *ASCII plus escaping* keeps `L2-CLI-014`, with a final
+  ASCII guard on diagnostics and log lines to catch localized OS text: correct
+  on every console, pipe and server. *Unicode output* replaces the rule with
+  UTF-8 and `WriteConsoleW` for Windows consoles; Rust's standard library
+  already writes to a console that way, so this is mainly C++ platform work,
+  and Windows pipes and non-UTF-8 server locales would still garble.
+
+## C++ implementation: deprecation after v4.0.0 (planned)
+
+The C++ implementation is to be deprecated after the v4.0.0 release. The
+maintainer will set out the details -- timing, what deprecation means for the
+SLES 12 SP5 deployment it exists to serve, and the fate of its CI tiers and of
+the shared conformance and fuzz gates that currently require all three
+implementations -- before any of it is acted on. Until then it remains a
+maintained implementation and the parity rules in `CLAUDE.md` apply to it.
+
+Decisions that depend on it: the C++ work in "Non-ASCII text in output" above.
 
 ## Shared Commitments
 
