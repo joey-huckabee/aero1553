@@ -120,6 +120,19 @@ TEST_CASE("path_parent and path_filename split at the final separator", "[platfo
         // which silently breaks the single-filesystem rename guarantee.
         CHECK(plat::path_parent("/x") == "/");
     }
+
+#if defined(_WIN32)
+    SECTION("a drive's root separator survives too") {
+        // "C:" alone is the current directory ON drive C, not its root. Parenting
+        // "C:\x" as "C:" resolved a drive-root output against the working
+        // directory, so `-o C:\a.mie` collided with a.mie in that directory.
+        CHECK(plat::path_parent("C:\\x.csv") == "C:\\");
+        CHECK(plat::path_parent("q:/x.csv") == "q:/");
+        CHECK(plat::path_parent("C:\\dir\\x.csv") == "C:\\dir");
+        CHECK(plat::path_join(plat::path_parent("C:\\x.csv"), "x_errors.csv") ==
+              "C:\\x_errors.csv");
+    }
+#endif
 }
 
 TEST_CASE("is_separator treats backslash as platform-specific", "[platform][path]") {
@@ -567,6 +580,43 @@ TEST_CASE("paths_same_file tolerates an output that does not exist yet",
     REQUIRE(plat::paths_same_file(input.str(), output.str(), same, err));
     CHECK_FALSE(same);
 }
+
+#if defined(_WIN32)
+TEST_CASE("an output at a drive root is not the input in the working directory",
+          "[platform][identity][L2-WRT-014][L3-CPP-008]") {
+    // The output's parent used to come back as "C:" -- the current directory on
+    // drive C -- so `-o C:\a.mie` resolved to <cwd>\a.mie and was refused as the
+    // same file as an input a.mie in the working directory. Nothing is written
+    // to the root: the output does not exist, which is the branch that resolves
+    // its parent directory.
+    struct RemoveOnExit {
+        std::string path;
+        ~RemoveOnExit() { (void)std::remove(path.c_str()); }
+    };
+    const RemoveOnExit input = {plat::path_filename(mie_test::TempPath("driveroot.mie").str())};
+    write_raw(input.path, std::string("data"));
+
+    std::string cwd;
+    plat::OsError err;
+    REQUIRE(plat::canonical_path(".", cwd, err));
+    const std::string long_prefix = "\\\\?\\";
+    if (cwd.compare(0, long_prefix.size(), long_prefix) == 0) {
+        cwd.erase(0, long_prefix.size());
+    }
+    REQUIRE(cwd.size() >= 3);
+    REQUIRE(cwd[1] == ':');
+    const std::string root = cwd.substr(0, 3);
+    if (cwd.size() == 3) {
+        SUCCEED("the working directory is a drive root; nothing to distinguish");
+        return;
+    }
+    REQUIRE_FALSE(plat::path_exists(root + input.path));
+
+    bool same = true;
+    REQUIRE(plat::paths_same_file(input.path, root + input.path, same, err));
+    CHECK_FALSE(same);
+}
+#endif
 
 TEST_CASE("paths_same_file fails when the input cannot be resolved",
           "[platform][identity][L2-WRT-014][L3-CPP-008]") {
