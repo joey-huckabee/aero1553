@@ -235,6 +235,41 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The C++ CLI accepts the `0x...` form where Rust does** (L2-CLI-020).
+  `dump --offset/--length/--records` are documented to take hexadecimal, and
+  Rust also takes it on the RT and subaddress filters (`--include-rts 0x0F`);
+  the C++ CLI refused both. It now takes `0x` or `0X` followed by hex digits
+  on exactly those flags. Rust, for its part, no longer accepts a sign after
+  the prefix: `from_str_radix` read `0x+1` as 1.
+- **The C++ `--standard-tick-rate-hz` refuses `inf`, `1e400` and
+  hexadecimal values** (L2-CLI-020). It parsed with `strtod`, which also
+  reads hexadecimal floats, and checked only that the result was positive,
+  so `0x10`, `0x1p4`, `inf`, `Infinity` and `1e400` (which overflows to
+  infinity) were valid rates in C++ and usage errors in Rust. A grammar gate
+  matching Rust's `f64` parser now sits in front of `strtod`, and a
+  non-finite rate is refused as L2-CLI-012 requires.
+- **Numeric flag values follow one whitespace rule in every implementation**
+  (new L2-CLI-020). Surrounding ASCII whitespace is ignored and nothing else
+  is: `"5 "` was accepted by Rust and refused by C++, `" 2026"` was accepted
+  by C++ and refused by Rust's `--year` (the one Rust numeric flag that
+  trimmed nothing), and Rust's other flags trimmed any Unicode whitespace.
+  Now every numeric flag, and each element of a numeric list such as
+  `--include-rts`, trims space, tab, `\n`, `\v`, `\f` and `\r` in both, and
+  refuses whitespace inside the number or a non-ASCII space such as U+00A0
+  around it. **Behaviour change:** Rust now refuses a value padded with a
+  non-ASCII space, and `--year` accepts surrounding whitespace.
+- **The C++ implementation refuses an integer too large for its type**
+  instead of clamping it. The CLI and the TOML loader parsed integers with
+  `strtoll`, which saturates on overflow and reports it only through `errno`,
+  which neither checked. On the values with no upper bound --
+  `--collapse-window-us` / `[merge] collapse_window_us`, `--mux-field` /
+  `[mux] field`, and `dump --offset/--length/--records` -- a value such as
+  `99999999999999999999` was accepted as 9223372036854775807 where Rust and
+  Python reject it (exit 4 on the CLI, 5 in a config). Both now use one
+  overflow-checked parser with Rust's grammar and ranges: signed 64-bit, and
+  unsigned 64-bit for `dump`, whose offsets Rust takes up to 2^64 - 1. The
+  config fuzzer's palette gains the 64-bit boundary literals and the two keys
+  it lacked, so this class of divergence is caught automatically.
 - **A recording cut off inside its last record is no longer reported as a
   sync loss** (all three implementations; L2-RDR-002 amended). Lenient mode
   logged `sync lost ... scanning forward` for a truncated final record of 8

@@ -58,10 +58,12 @@ _KEYS = [
     "utc_offset",
     "error_mode",
     "detect_records",
+    "lookahead_records",
     "standard_tick_rate_hz",
     "no_clobber",
     "max_sort_group",
     "max_collapse_survivors",
+    "collapse_window_us",
     "delta_scope",
     "enabled",
     "delimiter",
@@ -122,6 +124,14 @@ _VALUES = [
     "1_000",
     "+.5",
     "00",
+    # 64-bit boundaries. The C++ loader parsed integers with `strtoll`, which
+    # saturates on overflow, and accepted these on the keys with no upper bound
+    # (`collapse_window_us`, `field`) as 9223372036854775807; Rust and Python
+    # refuse them. The palette had no literal past 2^63, so it never noticed.
+    "99999999999999999999",
+    "9223372036854775808",
+    "9223372036854775807",
+    "-9223372036854775809",
     # edge strings
     '"\\""',
     '"\\r"',

@@ -514,11 +514,28 @@ TEST_CASE("help outranks a deferred diagnostic but not a missing value",
 TEST_CASE("numeric flags reject trailing junk", "[cli][L3-CPP-014]") {
     // `strtoll` stops at the first non-digit and reports success, so "4x" would
     // silently become 4. A typo must be refused, not rounded off.
-    const char* const bad[] = {"4x", "", "  ", "0x4", "4.5", "--", "1e3", "4 "};
+    // Whitespace INSIDE the number, or a non-ASCII space around it, is junk too.
+    const char* const bad[] = {"4x", "", "  ", "0x4", "4.5", "--", "1e3", "4 4", "4\xC2\xA0"};
     for (std::size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); ++i) {
         INFO(bad[i]);
         REQUIRE(mie::cli::run(args("decode", "in.mie", "--detect-records", bad[i])) ==
                 mie::cli::EXIT_USAGE);
+    }
+}
+
+TEST_CASE("numeric flags ignore surrounding ASCII whitespace", "[cli][L2-CLI-020]") {
+    // One rule on every numeric flag, in both implementations: surrounding
+    // ASCII whitespace is trimmed (Rust's `str::trim_ascii`). C++ used to skip
+    // only LEADING blanks, as strtoll did, and Rust's --year trimmed nothing.
+    // Only parsing is in question here, so the missing input is the failure
+    // that should remain: exit 1, not the usage error a bad value gives.
+    const char* const padded[] = {" 4", "4 ", "\t4\t", "\r\n4"};
+    for (std::size_t i = 0; i < sizeof(padded) / sizeof(padded[0]); ++i) {
+        INFO(padded[i]);
+        CHECK(mie::cli::run(args("decode", "no-such.mie", "--detect-records", padded[i])) ==
+              mie::cli::EXIT_RUNTIME);
+        CHECK(mie::cli::run(args("decode", "no-such.mie", "--year", padded[i])) ==
+              mie::cli::EXIT_RUNTIME);
     }
 }
 

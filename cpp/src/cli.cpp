@@ -4,6 +4,7 @@
 
 #include "mie/cli.hpp"
 
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <memory>
@@ -358,17 +359,19 @@ class ArgReader {
 // Value parsers
 // ---------------------------------------------------------------------------
 
-/// A bounded integer flag value. Rejects trailing junk, which `atoi` accepts.
+/// An integer flag value. Surrounding ASCII whitespace is ignored, on every
+/// numeric flag and in both implementations (Rust trims with `trim_ascii`).
+/// Rejects trailing junk, which `atoi` accepts, and a value outside int64_t,
+/// which `strtoll` saturated to the nearest bound and accepted.
 int64_t parse_integer(const std::string& text, const char* flag) {
     if (text.empty()) {
         throw usage_error(std::string(flag) + " requires a number, got an empty value");
     }
-    char* end = nullptr;
-    const long long value = std::strtoll(text.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0') {
+    int64_t value = 0;
+    if (!text::parse_int64(text::trim_ascii_whitespace(text), value)) {
         throw usage_error(std::string(flag) + " requires a number, got \"" + text + "\"");
     }
-    return static_cast<int64_t>(value);
+    return value;
 }
 
 std::size_t parse_ranged(const std::string& text, const char* flag, std::size_t lo,
@@ -410,14 +413,19 @@ double parse_tick_rate(const std::string& text) {
     if (text.empty()) {
         throw usage_error("--standard-tick-rate-hz requires a value");
     }
-    char* end = nullptr;
-    const double value = std::strtod(text.c_str(), &end);
-    if (end == nullptr || *end != '\0') {
+    // Rust's f64 grammar first: strtod alone also takes hexadecimal floats
+    // (`0x10`, `0x1p4`) that Rust refuses.
+    const std::string trimmed = text::trim_ascii_whitespace(text);
+    if (!text::is_rust_float_literal(trimmed)) {
         throw usage_error("--standard-tick-rate-hz requires a number, got \"" + text + "\"");
     }
-    if (!(value > 0.0)) {
-        // Also catches NaN, for which every comparison is false.
-        throw usage_error("--standard-tick-rate-hz must be greater than 0, got \"" + text + "\"");
+    const double value = std::strtod(trimmed.c_str(), nullptr);
+    // Finite AND positive, as L2-CLI-012 requires. `inf` and `1e400` (which
+    // overflows to infinity) used to pass the positivity test alone; NaN
+    // fails it, since every comparison with NaN is false.
+    if (!(value > 0.0) || !std::isfinite(value)) {
+        throw usage_error("--standard-tick-rate-hz must be a finite value greater than 0, got \"" +
+                          text + "\"");
     }
     return value;
 }
@@ -429,7 +437,7 @@ std::vector<std::string> split_csv(const std::string& text) {
     std::string current;
     for (std::size_t i = 0; i < text.size(); ++i) {
         if (text[i] == ',') {
-            const std::string piece = text::trim_ascii_blank(current);
+            const std::string piece = text::trim_ascii_whitespace(current);
             if (!piece.empty()) {
                 out.push_back(piece);
             }
@@ -438,7 +446,7 @@ std::vector<std::string> split_csv(const std::string& text) {
             current += text[i];
         }
     }
-    const std::string piece = text::trim_ascii_blank(current);
+    const std::string piece = text::trim_ascii_whitespace(current);
     if (!piece.empty()) {
         out.push_back(piece);
     }
@@ -469,26 +477,32 @@ Bus parse_bus_flag(const std::string& text, const char* flag) {
     }
 }
 
-/// A flag value that must be a non-negative integer.
+/// A flag value that must be a non-negative integer, in decimal or as `0x...`.
 ///
-/// Unbounded above: a byte offset into a recording and a record count are both
-/// as large as the file allows, so there is no ceiling to impose that would not
-/// be arbitrary.
-int64_t parse_non_negative(const std::string& text_value, const char* flag) {
-    const int64_t value = parse_integer(text_value, flag);
-    if (value < 0) {
-        throw usage_error(std::string(flag) + " must be non-negative, got " +
-                          text::decimal_signed(value));
+/// Unbounded above but for the type: a byte offset into a recording and a
+/// record count are both as large as the file allows, so there is no ceiling to
+/// impose that would not be arbitrary. The type is uint64_t, as Rust's is, so
+/// everything up to 2^64 - 1 is accepted and anything beyond it refused. The
+/// hexadecimal form is for offsets read off a hex dump (L2-CLI-020).
+uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
+    const std::string trimmed = text::trim_ascii_whitespace(text_value);
+    uint64_t value = 0;
+    if (text::parse_uint64(trimmed, value) || text::parse_hex_uint64(trimmed, value)) {
+        return value;
     }
-    return value;
+    // Not an unsigned number: a negative one gets the specific complaint.
+    const int64_t signed_value = parse_integer(text_value, flag);
+    throw usage_error(std::string(flag) + " must be non-negative, got " +
+                      text::decimal_signed(signed_value));
 }
 
-/// A filter list element that must be a 0-31 wire field.
+/// A filter list element that must be a 0-31 wire field, in decimal or as
+/// `0x...` -- Rust has always taken both here (L2-CLI-020).
 uint8_t parse_small(const std::string& text, const char* flag) {
-    const int64_t value = parse_integer(text, flag);
-    if (value < 0 || value > 31) {
+    const uint64_t value = parse_non_negative(text, flag);
+    if (value > 31) {
         throw usage_error(std::string(flag) + " values must be in [0, 31], got " +
-                          text::decimal_signed(value));
+                          text::decimal(value));
     }
     return static_cast<uint8_t>(value);
 }
@@ -767,7 +781,7 @@ DumpArgs parse_dump(ArgReader& reader) {
         } else if (reader.take_value("--length", value)) {
             args.length = static_cast<std::size_t>(parse_non_negative(value, "--length"));
         } else if (reader.take_value("--records", value)) {
-            args.records = static_cast<uint64_t>(parse_non_negative(value, "--records"));
+            args.records = parse_non_negative(value, "--records");
         } else if (!token.empty() && token[0] == '-' && token != "-") {
             throw usage_error("unknown dump option: " + token);
         } else if (input_seen) {

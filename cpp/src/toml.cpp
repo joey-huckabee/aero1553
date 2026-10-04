@@ -369,15 +369,14 @@ bool parse_number(const std::string& s, std::size_t line, Value& out, ParseError
         out = Value::of_float(std::strtod(s.c_str(), nullptr));
         return true;
     }
-    // strtoll rather than atoll: atoll cannot report the overflow that a
-    // 20-digit literal produces, and silently saturating a record count is
-    // worse than refusing it.
-    char* end = nullptr;
-    const long long value = std::strtoll(s.c_str(), &end, 10);
-    if (end == nullptr || *end != '\0') {
+    // An overflow is refused, not saturated: a 20-digit literal is an error, as
+    // it is in Rust and Python. (`strtoll`, which this replaced, saturated and
+    // reported the overflow only through `errno`, which went unchecked.)
+    int64_t value = 0;
+    if (!text::parse_int64(s, value)) {
         return fail(error, line, "invalid integer " + quoted(s));
     }
-    out = Value::of_integer(static_cast<int64_t>(value));
+    out = Value::of_integer(value);
     return true;
 }
 

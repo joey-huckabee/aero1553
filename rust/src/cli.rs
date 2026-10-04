@@ -761,14 +761,23 @@ impl Arg {
     }
 }
 
+/// A non-negative integer flag value, in decimal or as `0x` / `0X` followed by
+/// hex digits (L2-CLI-020).
+///
+/// The digits are checked before `from_str_radix`, which also accepts a sign
+/// after the prefix: `0x+1` parsed as 1 here, and nowhere else.
 fn parse_int_value(s: &str, name: &str) -> Result<usize, String> {
-    let s = s.trim();
+    let s = s.trim_ascii();
     let parsed = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
-        usize::from_str_radix(hex, 16)
+        if hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+            usize::from_str_radix(hex, 16).ok()
+        } else {
+            None
+        }
     } else {
-        s.parse::<usize>()
+        s.parse::<usize>().ok()
     };
-    parsed.map_err(|_| format!("{name} expected integer, got {s:?}"))
+    parsed.ok_or_else(|| format!("{name} expected integer, got {s:?}"))
 }
 
 /// Parse a MIL-STD-1553 RT address or subaddress filter value: [0, 31].
@@ -795,7 +804,7 @@ fn parse_rt_sa_value(s: &str, name: &str) -> Result<u8, String> {
 /// (`--include-rts 15 --include-rts 31`).
 fn split_csv(s: &str) -> Vec<String> {
     s.split(',')
-        .map(|t| t.trim().to_string())
+        .map(|t| t.trim_ascii().to_string())
         .filter(|t| !t.is_empty())
         .collect()
 }
@@ -1106,7 +1115,7 @@ fn parse_year_arg(s: &str) -> Result<u16, String> {
     let invalid = || format!("invalid --year: {s:?}; valid range: [{YEAR_MIN}, {YEAR_MAX}]");
     // Parsed as `u32` first so that an out-of-range four-plus-digit year
     // reports the range rather than an integer-overflow message.
-    let value: u32 = s.parse().map_err(|_| invalid())?;
+    let value: u32 = s.trim_ascii().parse().map_err(|_| invalid())?;
     match u16::try_from(value) {
         Ok(y) if (YEAR_MIN..=YEAR_MAX).contains(&y) => Ok(y),
         _ => Err(invalid()),
@@ -1162,7 +1171,7 @@ fn parse_output_format_arg(s: &str) -> Result<String, String> {
 /// clear error before the config layer is even consulted.
 fn parse_detect_records(s: &str) -> Result<usize, String> {
     let n: usize = s
-        .trim()
+        .trim_ascii()
         .parse()
         .map_err(|_| format!("invalid --detect-records: {s:?}; must be an integer"))?;
     if !(crate::config::DETECT_RECORDS_MIN..=crate::config::DETECT_RECORDS_MAX).contains(&n) {
@@ -1179,7 +1188,7 @@ fn parse_detect_records(s: &str) -> Result<usize, String> {
 /// `[1, 32]`. Same shape as `parse_detect_records`.
 fn parse_lookahead_records(s: &str) -> Result<usize, String> {
     let n: usize = s
-        .trim()
+        .trim_ascii()
         .parse()
         .map_err(|_| format!("invalid --lookahead-records: {s:?}; must be an integer"))?;
     if !(crate::config::LOOKAHEAD_RECORDS_MIN..=crate::config::LOOKAHEAD_RECORDS_MAX).contains(&n) {
@@ -1199,7 +1208,7 @@ fn parse_lookahead_records(s: &str) -> Result<usize, String> {
 /// strictly-positive frequency.
 fn parse_standard_tick_rate_hz(s: &str) -> Result<f64, String> {
     let hz: f64 = s
-        .trim()
+        .trim_ascii()
         .parse()
         .map_err(|_| format!("invalid --standard-tick-rate-hz: {s:?}; must be a number"))?;
     if !hz.is_finite() || hz <= 0.0 {
@@ -1218,7 +1227,7 @@ fn parse_mux_delimiter(s: &str) -> Result<String, String> {
 }
 
 fn parse_mux_field(s: &str) -> Result<i64, String> {
-    s.trim()
+    s.trim_ascii()
         .parse::<i64>()
         .map_err(|_| format!("invalid --mux-field: {s:?}; must be an integer"))
 }
@@ -1228,7 +1237,7 @@ fn parse_mux_field(s: &str) -> Result<i64, String> {
 /// silent clamp, mirroring `--detect-records`.
 fn parse_max_sort_group(s: &str) -> Result<usize, String> {
     let n: usize = s
-        .trim()
+        .trim_ascii()
         .parse()
         .map_err(|_| format!("invalid --max-sort-group: {s:?}; must be an integer"))?;
     if !(crate::order::MAX_SORT_GROUP_MIN..=crate::order::MAX_SORT_GROUP_MAX).contains(&n) {
@@ -1246,7 +1255,7 @@ fn parse_max_sort_group(s: &str) -> Result<usize, String> {
 /// a silent clamp, mirroring `--max-sort-group`.
 fn parse_max_collapse_survivors(s: &str) -> Result<usize, String> {
     let n: usize = s
-        .trim()
+        .trim_ascii()
         .parse()
         .map_err(|_| format!("invalid --max-collapse-survivors: {s:?}; must be an integer"))?;
     if !(crate::merge::MAX_COLLAPSE_SURVIVORS_MIN..=crate::merge::MAX_COLLAPSE_SURVIVORS_MAX)
@@ -1269,7 +1278,7 @@ fn parse_delta_scope(s: &str) -> Result<crate::models::DeltaScope, String> {
 }
 
 fn parse_collapse_window_us(s: &str) -> Result<i64, String> {
-    match s.trim().parse::<i64>() {
+    match s.trim_ascii().parse::<i64>() {
         Ok(n) if n >= 0 => Ok(n),
         _ => Err(format!(
             "invalid --collapse-window-us: {s:?}; must be a non-negative integer"
@@ -1989,6 +1998,50 @@ fn format_mie_error(e: MieError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// One whitespace rule on every numeric flag, shared with the C++ CLI:
+    /// surrounding ASCII whitespace is trimmed (`str::trim_ascii`); whitespace
+    /// inside the number, or a non-ASCII space around it, is refused. `--year`
+    /// used to trim nothing, while every other numeric flag trimmed all Unicode
+    /// whitespace -- and C++ trimmed only leading blanks.
+    /// Requirements: L2-CLI-020
+    #[test]
+    fn numeric_flags_trim_surrounding_ascii_whitespace() {
+        for padded in [" 2026", "2026 ", "\t2026\t", "\r\n2026"] {
+            assert_eq!(parse_year_arg(padded), Ok(2026), "{padded:?}");
+            assert_eq!(parse_mux_field(padded), Ok(2026), "{padded:?}");
+            assert_eq!(parse_int_value(padded, "--offset"), Ok(2026), "{padded:?}");
+        }
+        // The non-ASCII spaces are built at run time: a source literal holding
+        // one would trip the shipped-literal ASCII gate (L2-CLI-014).
+        let nbsp = char::from_u32(0xA0).unwrap();
+        let ideographic = char::from_u32(0x3000).unwrap();
+        for bad in [
+            "20 26".to_string(),
+            format!("{nbsp}2026"),
+            format!("2026{ideographic}"),
+        ] {
+            assert!(parse_year_arg(&bad).is_err(), "{bad:?}");
+            assert!(parse_mux_field(&bad).is_err(), "{bad:?}");
+            assert!(parse_int_value(&bad, "--offset").is_err(), "{bad:?}");
+        }
+        assert_eq!(split_csv(" 3 ,\t15\t"), vec!["3", "15"]);
+    }
+
+    /// The hexadecimal form taken by the dump offsets and the RT/subaddress
+    /// filters: `0x` / `0X` and hex digits, nothing else. `from_str_radix`
+    /// also accepts a sign after the prefix, so `0x+1` parsed as 1.
+    /// Requirements: L2-CLI-020
+    #[test]
+    fn hex_flag_values_take_digits_only_after_the_prefix() {
+        assert_eq!(parse_int_value("0x10", "--offset"), Ok(16));
+        assert_eq!(parse_int_value("0XfF", "--offset"), Ok(255));
+        assert_eq!(parse_rt_sa_value("0x1F", "--include-rts"), Ok(31));
+        for bad in ["0x", "0x+1", "0x-1", "-0x1", "0xg", "0x10000000000000000"] {
+            assert!(parse_int_value(bad, "--offset").is_err(), "{bad:?}");
+        }
+        assert!(parse_rt_sa_value("0x20", "--include-rts").is_err());
+    }
 
     fn args(values: &[&str]) -> ArgIter<'static> {
         let v: Vec<String> = values.iter().map(|s| (*s).to_string()).collect();

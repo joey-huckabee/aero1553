@@ -1126,6 +1126,20 @@ Keeping all four on `decode` follows the existing division rather than inventing
 But this is a rename, not a removal, and the two deserve different diagnostics. `--inline-errors` had no successor to point at, so the generic "unknown option" message lost nothing. Here the operator's intent is still fully expressible and the only open question is *which* of two flags they meant — the one question the generic message cannot answer, and the one an operator hitting this at 2am most needs answered. Naming both replacements and what each does turns a lookup in the changelog into a fix on the spot. This is new machinery in all three parsers, which is why it is specified rather than left to each implementation's unknown-option arm.
 **Verification Method**: Test (T)
 
+#### L2-CLI-020
+
+**Parent**: L1-CLI-001
+**Statement**: Every implementation SHALL parse a numeric command-line value by one rule:
+
+1. **Whitespace.** Surrounding ASCII whitespace (space, tab, `\n`, `\v`, `\f`, `\r`) SHALL be ignored. Whitespace inside the number, and any non-ASCII space around it (for example U+00A0), SHALL make the value invalid. The rule applies to every numeric flag and to each element of a comma-separated numeric list.
+2. **Integers** SHALL be ASCII decimal digits with an optional leading sign, and SHALL be refused, never clamped, when the value lies outside the flag's type: signed 64-bit for `--collapse-window-us` and `--mux-field`, and unsigned 64-bit for `dump --offset`, `--length` and `--records`.
+3. **Floats** (`--standard-tick-rate-hz`) SHALL follow the grammar of Rust's `f64::from_str`: an optional sign, then decimal digits with an optional `.` and an optional `e`/`E` exponent, or one of `inf`, `infinity`, `nan` (case-insensitive). Hexadecimal forms (`0x10`, `0x1p4`) SHALL be invalid. A value that is not finite -- including one written in decimal that overflows to infinity, such as `1e400` -- SHALL be refused per L2-CLI-012.
+4. **Hexadecimal integers** SHALL be accepted by `dump --offset`, `--length` and `--records` and by each RT and subaddress filter value (`--exclude-rts`, `--include-rts`, `--exclude-subaddresses`, `--include-subaddresses`), and by no other numeric flag: `0x` or `0X` followed by one or more hex digits, with no sign anywhere, subject to the same type limit and range as the decimal form.
+
+An invalid value SHALL be a usage error (exit `4`). The same overflow rule applies to integer literals in a configuration file, where it is a config error (exit `5`).
+**Rationale**: Nothing stated this, and the implementations drifted three ways. The C++ CLI and TOML loader parsed integers with `strtoll`, which saturates on overflow and reports it only through an unchecked `errno`, so `99999999999999999999` became 9223372036854775807 on every flag without an upper bound, where Rust refused it. Rust trimmed all Unicode whitespace from most numeric flags and none from `--year`, while C++ skipped only leading blanks, so `"5 "` was valid in one implementation and not the other. ASCII whitespace is the rule because it is what both can state exactly and identically: Rust's `str::trim_ascii` and a six-byte C++ predicate. For floats the C++ CLI used `strtod`, which also reads hexadecimal floats, and checked only that the result was positive, so `0x10`, `inf` and `1e400` were valid tick rates there and usage errors in Rust; a grammar gate in front of `strtod` and a finiteness check close both. The hexadecimal form had the reverse gap: Rust accepted it on the dump offsets (which CLI-REFERENCE documented) and on the RT/subaddress filters, the C++ CLI on neither; and Rust's `from_str_radix` also took a sign after the prefix, so `0x+1` was a valid offset there alone.
+**Verification Method**: Test (T)
+
 ---
 
 ## L2-MRG: Multi-file time-sorted merge

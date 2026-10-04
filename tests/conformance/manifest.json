@@ -1400,6 +1400,161 @@
       "expected_exit": 5
     },
     {
+      "name": "config-error-collapse-window-overflow",
+      "inputs": [
+        "inputs/merge-a.hex",
+        "inputs/merge-b.hex"
+      ],
+      "config": "configs/overflow-collapse-window.toml",
+      "expected_exit": 5
+    },
+    {
+      "name": "config-error-mux-field-overflow",
+      "input": "inputs/basic-multi-record.hex",
+      "config": "configs/overflow-mux-field.toml",
+      "expected_exit": 5
+    },
+    {
+      "name": "usage-error-collapse-window-overflow",
+      "inputs": [
+        "inputs/merge-a.hex",
+        "inputs/merge-b.hex"
+      ],
+      "args": [
+        "--collapse-window-us",
+        "99999999999999999999"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-mux-field-overflow",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-field",
+        "9223372036854775808"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "numeric-value-surrounding-whitespace",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--detect-records",
+        "\t5 ",
+        "--year",
+        " 2026\r\n"
+      ],
+      "expected": "expected/numeric-value-surrounding-whitespace.csv"
+    },
+    {
+      "name": "usage-error-tick-rate-inf",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "inf"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-tick-rate-overflow",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "1e400"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-tick-rate-hex",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "0x10"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-tick-rate-hex-float",
+      "input": "inputs/standard-timestamps.hex",
+      "args": [
+        "--standard-tick-rate-hz",
+        "0x1p4"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-numeric-value-nbsp",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--detect-records",
+        "\u00a05"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-numeric-value-inner-space",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--year",
+        "20 26"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "dump-records-hex-offset",
+      "mode": "dump",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--offset",
+        "0x48",
+        "--records",
+        "0X1"
+      ],
+      "expected": "expected/dump-records-hex-offset.txt"
+    },
+    {
+      "name": "dump-raw-hex-window",
+      "mode": "dump",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--raw",
+        "--offset",
+        "0x10",
+        "--length",
+        "0x20"
+      ],
+      "expected": "expected/dump-raw-hex-window.txt"
+    },
+    {
+      "name": "filter-include-rts-hex",
+      "input": "inputs/tie-cap-overflow.hex",
+      "args": [
+        "--include-rts",
+        "0x15"
+      ],
+      "expected": "expected/filter-include-rts-hex.csv"
+    },
+    {
+      "name": "usage-error-dump-offset-signed-hex",
+      "mode": "dump",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--offset",
+        "0x+1"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-dump-offset-overflow",
+      "mode": "dump",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--offset",
+        "18446744073709551616"
+      ],
+      "expected_exit": 4
+    },
+    {
       "name": "output-time-format-doy-explicit",
       "input": "inputs/basic-multi-record.hex",
       "expected": "expected/basic-multi-record.csv",

@@ -53,6 +53,10 @@ inline bool is_ascii_alnum(char c) { return is_ascii_alpha(c) || is_ascii_digit(
 /// includes '\n' turns a missing terminator into a silently joined line.
 inline bool is_ascii_blank(char c) { return c == ' ' || c == '\t'; }
 
+/// The six ASCII whitespace bytes: space, tab, newline, vertical tab, form
+/// feed and carriage return -- exactly what Rust's `str::trim_ascii` strips.
+inline bool is_ascii_whitespace(char c) { return c == ' ' || (c >= '\t' && c <= '\r'); }
+
 inline char ascii_lower(char c) { return is_ascii_upper(c) ? static_cast<char>(c - 'A' + 'a') : c; }
 inline char ascii_upper(char c) { return is_ascii_lower(c) ? static_cast<char>(c - 'a' + 'A') : c; }
 
@@ -76,6 +80,11 @@ bool equals_ignoring_ascii_case(const std::string& a, const std::string& b);
 /// Remove leading and trailing spaces and tabs.
 std::string trim_ascii_blank(const std::string& s);
 
+/// Trim ASCII whitespace (is_ascii_whitespace) from both ends: the rule for a
+/// command-line value, matching Rust's `str::trim_ascii`. Unicode spaces such
+/// as U+00A0 are NOT whitespace here, in either implementation.
+std::string trim_ascii_whitespace(const std::string& s);
+
 /// Whether `s` is well-formed UTF-8.
 ///
 /// Exists because a `std::string` is a byte sequence and the other two
@@ -90,6 +99,41 @@ std::string trim_ascii_blank(const std::string& s);
 /// A path that is not valid UTF-8 cannot round-trip to Windows, so accepting
 /// one here would only defer the failure.
 bool is_valid_utf8(const std::string& s);
+
+// --- Integer parsing ------------------------------------------------------
+
+/// Parse exactly `[+-]?[0-9]+` -- ASCII digits only, no whitespace, no prefix,
+/// no digit separators -- into `out`. False on anything else, AND on a value
+/// outside int64_t: an overflow is refused, never saturated.
+///
+/// Written out rather than delegated to `strtoll`, which saturates on overflow
+/// (reporting it only through `errno`, which both callers ignored), skips
+/// leading whitespace, and is locale-aware about what counts as a space. The
+/// grammar and the range are those of Rust's `i64::from_str`, which is what
+/// the other two implementations parse with.
+bool parse_int64(const std::string& s, int64_t& out);
+
+/// As parse_int64 for `[+]?[0-9]+` into uint64_t: a `-` sign is refused, as
+/// Rust's `u64::from_str` refuses it, and so is a value above 2^64 - 1.
+bool parse_uint64(const std::string& s, uint64_t& out);
+
+/// `0x` or `0X` followed by one or more hex digits -- no sign anywhere --
+/// into uint64_t, refusing a value above 2^64 - 1. The hexadecimal form the
+/// dump offsets and the RT/subaddress filters accept (L2-CLI-020).
+bool parse_hex_uint64(const std::string& s, uint64_t& out);
+
+/// True when `s` is a float literal in the grammar of Rust's `f64::from_str`:
+///
+///     Float  ::= Sign? ( "inf" | "infinity" | "nan" | Number )   -- letters case-insensitive
+///     Number ::= ( Digit+ | Digit+ "." Digit* | Digit* "." Digit+ ) Exp?
+///     Exp    ::= ("e" | "E") Sign? Digit+
+///
+/// The gate in front of `strtod`, which ALSO accepts hexadecimal floats
+/// (`0x10`, `0x1p4`), `nan(...)` payloads and leading whitespace -- forms Rust
+/// refuses. A literal that passes converts through `strtod` to the value Rust
+/// computes: both round correctly, and the program never calls `setlocale`, so
+/// the decimal separator is `.`.
+bool is_rust_float_literal(const std::string& s);
 
 // --- Integer formatting ---------------------------------------------------
 

@@ -1,0 +1,6 @@
+# Conformance fixture: 2^63, one past the largest signed 64-bit value, must be a
+# CONFIG error (exit 5) in every implementation rather than being saturated to
+# 9223372036854775807. `field` is signed (a negative index counts back from the
+# end of the file name), so this is the exact boundary of its type.
+[mux]
+field = 9223372036854775808
