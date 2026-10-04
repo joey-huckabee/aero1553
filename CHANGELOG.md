@@ -126,6 +126,17 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **`--no-clobber --allow-partial` refuses a run when a `.partial` file is
+  already there** (all three implementations; L2-WRT-017 amended). The
+  pre-flight now checks every file the options could write -- the `-o` file,
+  its `_errors` file with `--separate-errors`, and the `.partial` of each with
+  `--allow-partial` -- whether or not this run would write it. Until now a
+  stale `.partial` was deliberately not checked, so the run decoded the whole
+  file and only failed at the commit. **Behaviour change:** a pipeline that
+  runs `--no-clobber --allow-partial` into a location holding an old
+  `.partial` now exits 1 before decoding. Without `--no-clobber` nothing
+  changes: a file this run does not write, such as an earlier run's
+  `_errors.csv`, is left alone with no message (L2-WRT-017 now says so).
 - **`max_sort_group` defaults to 65536, and `--max-sort-group 1` is silent**
   (all three implementations; L2-WRT-022 amended, `docs/DATAFLOW.md` decision
   4). The cap on one buffered run of same-`TIME_STAMP` records rises from

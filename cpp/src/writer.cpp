@@ -399,13 +399,15 @@ namespace {
 /// about the past, and between the answer and the rename any other process may
 /// create the destination. What this test buys is an EARLY refusal, before a
 /// temp file exists and before a whole file is decoded, with the destination
-/// named. It covers only the two paths a run definitely creates: `.partial`
-/// targets are deliberately left to the commit, so a stale `<dest>.partial`
-/// lying around does not refuse a run that was never going to write one.
+/// named. It covers every path the options say this run COULD commit -- the
+/// same commit_targets() the collision test uses -- without predicting which it
+/// will: `<stem>_errors<suffix>` only under --separate-errors, and the
+/// `.partial` names only under --allow-partial. A stale file of any of those
+/// names refuses the run, even one that would never have written it.
 void preflight_output(const std::string& output, bool split_errors, const WriteOptions& options) {
+    const std::vector<std::string> targets =
+        commit_targets(output, split_errors, options.allow_partial);
     if (options.input_path.has_value()) {
-        const std::vector<std::string> targets =
-            commit_targets(output, split_errors, options.allow_partial);
         for (std::size_t i = 0; i < targets.size(); ++i) {
             bool same = false;
             platform::OsError err;
@@ -418,14 +420,11 @@ void preflight_output(const std::string& output, bool split_errors, const WriteO
             }
         }
     }
+    // L2-WRT-017, over the same set: every path these options could commit.
     if (options.no_clobber) {
-        if (platform::path_exists(output)) {
-            throw MieError::clobber_refused(output);
-        }
-        if (split_errors) {
-            const std::string errors = error_path_for(output);
-            if (platform::path_exists(errors)) {
-                throw MieError::clobber_refused(errors);
+        for (std::size_t i = 0; i < targets.size(); ++i) {
+            if (platform::path_exists(targets[i])) {
+                throw MieError::clobber_refused(targets[i]);
             }
         }
     }
