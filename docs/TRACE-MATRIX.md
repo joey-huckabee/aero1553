@@ -393,7 +393,8 @@ The countable requirement set is every L2 and L3 requirement plus the 6 Test-ver
 
 ### Marker reference check
 
-* Markers referencing unknown requirement ids: **2**
+* Markers referencing unknown requirement ids: **3**
 
 * `L2-CFG-002` — referenced by 5 test(s)
 * `L3-CPP-015` — referenced by 1 test(s)
+* `L3-PY-022` — referenced by 3 test(s)

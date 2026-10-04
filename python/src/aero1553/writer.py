@@ -432,7 +432,9 @@ def write_csv(
         opts: Output safety options. When ``output`` is a file path, the
             L2-WRT-014 input/output collision check, L2-WRT-017 no-clobber
             check, and L1-EXIT-004 allow_partial handling are applied. Stream
-            destinations ignore these (no on-disk identity, no partial).
+            destinations ignore these (no on-disk identity, no partial): on
+            a stream a sync loss raises after the rows decoded before it
+            have been written, whatever ``allow_partial`` says.
 
     Returns:
         A WriteOutcome capturing counts and optional PartialCommit info.
@@ -441,7 +443,8 @@ def write_csv(
         MieInputOutputCollisionError: Output path resolves to the same file as the input.
         MieClobberRefusedError: Output exists and ``opts.no_clobber`` is True.
         MieUnrecoverableSyncLossError: Lenient-mode mid-file sync loss
-            exhausted recovery and ``opts.allow_partial`` is False.
+            exhausted recovery, and either ``opts.allow_partial`` is False or
+            ``output`` is a stream.
         MieWriterError: If an I/O error occurs during writing.
     """
     if opts is None:

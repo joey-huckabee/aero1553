@@ -401,7 +401,7 @@ print(sorted(p.name for p in Path(".").glob("clean*.csv")))
 | Field | CLI flag | Meaning |
 |---|---|---|
 | `no_clobber` | `--no-clobber` | refuse to replace an existing file -- checked at the moment of the rename, not just beforehand |
-| `allow_partial` | `--allow-partial` | on unrecoverable corruption, keep what was decoded as `<name>.partial` rather than nothing |
+| `allow_partial` | `--allow-partial` | on unrecoverable corruption, keep what was decoded as `<name>.partial` rather than nothing. File destinations only: a stream has no `.partial`, so there the error is raised after the rows before it |
 | `time_render` | `--output-time-format`, `--year`, `--utc-offset` | how `TIME_STAMP` is written |
 
 ```python

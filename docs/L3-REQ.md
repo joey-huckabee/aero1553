@@ -154,6 +154,9 @@ The Python package SHALL expose decoded records in tabular form through one sche
 **L3-PY-021** · Parent: L2-WRT-015 · Verification: T
 A Python call that runs in the compiled extension with the GIL released over a whole record stream -- `write_csv`, `write_csv_split` and `columns` -- SHALL check for a pending signal at least once every 1024 records and, when one is pending, SHALL stop and raise its exception (Ctrl-C's `KeyboardInterrupt`). A file destination interrupted that way SHALL NOT be committed, and its temporary file SHALL be removed. CPython runs signal handlers only between bytecodes, so before this a `KeyboardInterrupt` waited for the whole call -- and a file write had already renamed its output over the destination by the time it surfaced, leaving a complete-looking file from a run the user had cancelled.
 
+**L3-PY-022** · Parent: L1-EXIT-004 · Verification: T
+When the Python `write_csv` writes to a stream rather than a file path, `allow_partial` SHALL NOT apply: an unrecoverable sync loss SHALL raise `MieUnrecoverableSyncLossError` after the rows decoded before it have been written to the stream, whether `allow_partial` is set or not -- the library counterpart of the CLI's stdout output, which exits `3` with those rows printed. `allow_partial` downgrades the failure only by keeping a `.partial` file (L1-EXIT-004), and a stream cannot hold one. Before this, a stream write with `allow_partial` stopped at the loss and returned the `WriteOutcome` of a complete decode, so the caller could not tell the recording had been cut short.
+
 ## L3-RS: Rust implementation technology
 
 **L3-RS-001** · Parent: L2-CONF-005 · Verification: I
