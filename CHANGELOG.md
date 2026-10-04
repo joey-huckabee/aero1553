@@ -235,6 +235,14 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The C++ CLI on Windows no longer refuses an output at a drive root as
+  "the same file as the input"**. The parent of `C:\a.mie` came back as `C:`,
+  which Windows reads as the current directory on drive C, not its root; so
+  when the output did not exist yet, the input/output identity check resolved
+  `-o C:\a.mie` to `<working directory>\a.mie` and refused the run whenever
+  the input was `a.mie` in the working directory on that drive. The parent of
+  a drive-root path now keeps its separator (`C:\`), as the parent of `/x` on
+  POSIX is `/`. Rust and Python were not affected.
 - **The C++ CLI accepts the `0x...` form where Rust does** (L2-CLI-020).
   `dump --offset/--length/--records` are documented to take hexadecimal, and
   Rust also takes it on the RT and subaddress filters (`--include-rts 0x0F`);

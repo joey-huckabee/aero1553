@@ -123,6 +123,20 @@ std::string path_parent(const std::string& utf8_path) {
             if (i == 1) {
                 return utf8_path.substr(0, 1);
             }
+#if defined(_WIN32)
+            // Likewise the parent of "C:\x" is "C:\", the drive's root -- not
+            // "C:", which Windows reads as the CURRENT DIRECTORY on drive C.
+            // Returning "C:" made the input/output identity check resolve an
+            // output at a drive root against the working directory, and refuse
+            // `-o C:\a.mie` as "the same file as the input" whenever the input
+            // was a.mie in the working directory on that drive.
+            const char drive = utf8_path[0];
+            const bool drive_letter =
+                (drive >= 'A' && drive <= 'Z') || (drive >= 'a' && drive <= 'z');
+            if (i == 3 && utf8_path[1] == ':' && drive_letter) {
+                return utf8_path.substr(0, 3);
+            }
+#endif
             return utf8_path.substr(0, i - 1);
         }
     }
