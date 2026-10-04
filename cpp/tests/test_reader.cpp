@@ -1283,9 +1283,35 @@ TEST_CASE("a truncated tail ends the walk cleanly rather than as an error",
     push_irig(words);
     words.push_back(command_word(3, mie::DIRECTION_RECEIVE, 5, 2));
 
+    const LogCapture capture(mie::log::LEVEL_WARN);
     const Walk walk = walk_words(words, mie::ReaderOptions());
     CHECK_FALSE(walk.threw);
     CHECK(walk.messages.size() == 2);
+    // A truncated final record, named as one -- not a sync loss (L2-RDR-002).
+    CHECK(walk.sync_losses == 0);
+    CHECK(capture.count_containing("do not hold a complete record") == 1);
+    CHECK(capture.count_containing("sync lost") == 0);
+}
+
+TEST_CASE("corruption that runs past EOF before a whole record is still a sync loss",
+          "[reader][L2-RDR-002][L2-SYN-010]") {
+    // Lenient mode scans before it narrates. A Type Word declaring 126 bytes
+    // with a whole 16-byte record behind it runs past EOF, yet it is not the
+    // recording's final record: the scan recovers the record behind it.
+    std::vector<uint16_t> words = bc_to_rt(3, 5, 2, 0);
+    words += bc_to_rt(3, 5, 2, 100);
+    words.push_back(type_word(mie::MESSAGE_TYPE_BC_TO_RT, 63));
+    words += bc_to_rt(3, 5, 2, 200);
+
+    mie::ReaderOptions options;
+    options.input_time_format = mie::TIMESTAMP_IRIG;
+    const LogCapture capture(mie::log::LEVEL_WARN);
+    const Walk walk = walk_words(words, options);
+    CHECK_FALSE(walk.threw);
+    CHECK(walk.messages.size() == 3);
+    CHECK(walk.sync_losses == 1);
+    CHECK(capture.count_containing("sync lost") == 1);
+    CHECK(capture.count_containing("do not hold a complete record") == 0);
 }
 
 TEST_CASE("a truncated final record is an error in strict mode", "[reader][L2-RDR-003]") {

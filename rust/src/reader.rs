@@ -782,13 +782,7 @@ impl RecordIter<'_> {
             };
             if !(self.strict && tail.is_some()) {
                 if let Some(raw) = tail {
-                    log_warn!(
-                        "{} trailing byte(s) at 0x{:X} do not hold a complete record \
-                         (Type Word 0x{:04X}); stopping",
-                        remaining,
-                        self.offset,
-                        raw
-                    );
+                    self.warn_truncated_tail(raw);
                 }
                 self.done = true;
                 self.log_complete();
@@ -894,10 +888,9 @@ impl RecordIter<'_> {
         tw: TypeWord,
         record_bytes: usize,
     ) -> Step {
-        self.sync_losses += 1;
-        self.sync_losses_atomic.fetch_add(1, Ordering::Relaxed);
         log_validation_context(&self.data, self.offset);
         if self.strict {
+            self.count_sync_loss();
             let err = match failure {
                 ValidationFailure::UnknownMessageType => MieError::UnknownTypeWord {
                     offset: self.offset as u64,
@@ -923,20 +916,38 @@ impl RecordIter<'_> {
             return Step::Yield(Err(err));
         }
 
-        log_warn!(
-            "sync lost at 0x{:X} (type=0x{:02X} wc={}); scanning forward",
-            self.offset,
-            tw.message_type,
-            tw.word_count
-        );
-        match recover_sync(
+        // Lenient: scan first, narrate after. A plausible Type Word whose record
+        // runs past EOF is either the recording's truncated final record or
+        // corruption with whole records still behind it, and only the scan can
+        // tell which. Narrating before the scan called every truncated tail a
+        // sync loss -- "sync lost", "1 sync recoveries", partial-recovered --
+        // for a file in which nothing was lost or recovered.
+        let scan = recover_sync(
             &self.data,
             self.offset,
             self.file_len,
             Some(self.resolved_format),
             MAX_SCAN_BYTES,
             self.lookahead_records,
-        ) {
+        );
+        if scan.is_none() && matches!(failure, ValidationFailure::RecordTruncated) {
+            // Nothing decodable follows and the record runs past EOF: the file
+            // ends inside it. A truncated final record (L2-RDR-002), reported
+            // exactly as a tail too short to hold a record is.
+            self.warn_truncated_tail(type_raw);
+            self.done = true;
+            self.log_complete();
+            return Step::Stop;
+        }
+
+        self.count_sync_loss();
+        log_warn!(
+            "sync lost at 0x{:X} (type=0x{:02X} wc={}); scanning forward",
+            self.offset,
+            tw.message_type,
+            tw.word_count
+        );
+        match scan {
             Some(hit) => {
                 log_info!(
                     "sync recovered at 0x{:X} (skipped {} bytes from 0x{:X})",
@@ -1264,6 +1275,26 @@ impl RecordIter<'_> {
         }
 
         Step::Yield(Ok(msg))
+    }
+
+    /// Record one sync loss, in this reader's count and the shared counter.
+    fn count_sync_loss(&mut self) {
+        self.sync_losses += 1;
+        self.sync_losses_atomic.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The lenient-mode WARN for a recording that ends inside a record
+    /// (L2-RDR-002): the bytes from the current offset to EOF are dropped. One
+    /// wording for every length of tail, whether it was too short to hold a
+    /// record or a whole Type Word whose record runs past EOF.
+    fn warn_truncated_tail(&self, type_raw: u16) {
+        log_warn!(
+            "{} trailing byte(s) at 0x{:X} do not hold a complete record \
+             (Type Word 0x{:04X}); stopping",
+            self.file_len.saturating_sub(self.offset),
+            self.offset,
+            type_raw
+        );
     }
 
     fn advance_after_yield(&mut self, record_bytes: usize) {
@@ -1662,6 +1693,54 @@ mod tests {
             }
         }
         (rows, None)
+    }
+
+    /// Lenient mode, then the reader's sync-loss count afterwards.
+    fn lenient_rows_and_sync_losses(data: &[u8]) -> (usize, u64) {
+        let f = write_temp(data);
+        let reader = MieFileReader::with_options(
+            f.path(),
+            ReaderOptions {
+                input_time_format: TimestampFormat::Irig,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let rows = reader.iter().flatten().count();
+        (rows, reader.sync_losses())
+    }
+
+    /// Lenient mode scans before it narrates. A whole Type Word whose record
+    /// runs past EOF, with nothing decodable after it, is the recording's
+    /// truncated final record: no sync loss is counted, however long the tail
+    /// (L2-RDR-002). A Type Word that runs past EOF with a whole record still
+    /// behind it is corruption, and the scan recovers the record -- a sync
+    /// loss, as before.
+    /// Requirements: L2-RDR-002, L2-SYN-010
+    #[test]
+    fn lenient_names_a_truncated_tail_and_still_recovers_past_corruption() {
+        // 10 bytes of a 72-byte record: truncated, nothing after it.
+        let mut cut = rt15_sa11_rcv();
+        cut.truncate(10);
+        let (rows, losses) = lenient_rows_and_sync_losses(&two_records_then(&cut));
+        assert_eq!(
+            (rows, losses),
+            (2, 0),
+            "a truncated tail is not a sync loss"
+        );
+
+        // Type Word 0x3F02 declares 126 bytes; only a 72-byte record follows,
+        // so it runs past EOF -- but the record behind it is whole and decodes.
+        let mut corrupt = vec![0x02, 0x3F];
+        let mut third = rt15_sa11_rcv();
+        third[6] = 0x23; // later than both leading records
+        corrupt.extend(third);
+        let (rows, losses) = lenient_rows_and_sync_losses(&two_records_then(&corrupt));
+        assert_eq!(
+            (rows, losses),
+            (3, 1),
+            "corruption before a whole record is a sync loss"
+        );
     }
 
     /// A tail of 2-7 bytes after the last whole record holds a readable Type

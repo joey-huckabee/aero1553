@@ -1,0 +1,29 @@
+# basic-multi-record followed by the first 10 bytes of a 72-byte record:
+# a whole Type Word whose record runs past the end of the file. Lenient mode
+# names it a truncated final record, not a sync loss (L2-RDR-002).
+
+# RT15 SA11 Receive, Bus A, 30 data words
+02240F1826DB21F6
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000
+71C7 0078
+
+# RT15 SA22 Receive, Bus A, 11 data words
+02110F1826DB38F7
+CB7A
+0010 0000 0700 0008 0000 0000 0000 0000 0000 C880 E803
+0078
+
+# RT15 SA22 Transmit, Bus A, 30 data words
+04240F1826DBE3F9
+DE7E 0078
+2010 8241 0000 0815 0000 0000 0000 0000
+00FE 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0300 0000 0000 0000 0000 0000
+0000 0020 0000 0000 0000 0000
+
+# Truncated tail: Type Word, IRIG timestamp, Command Word.
+02240F1826DB21F6 7E79

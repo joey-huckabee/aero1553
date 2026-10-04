@@ -292,6 +292,12 @@
       "expected_stderr_contains": "4 trailing byte(s) at 0xB2 do not hold a complete record (Type Word 0x2402); stopping"
     },
     {
+      "name": "truncated-tail-long-lenient",
+      "input": "inputs/truncated-tail-long.hex",
+      "expected": "expected/truncated-tail-long-lenient.csv",
+      "expected_stderr_contains": "10 trailing byte(s) at 0xB2 do not hold a complete record (Type Word 0x2402); stopping"
+    },
+    {
       "name": "count-multi-record-then-terminator",
       "mode": "count",
       "input": "inputs/multi-record-then-terminator.hex",
