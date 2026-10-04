@@ -766,11 +766,28 @@ impl RecordIter<'_> {
     /// proceed. All the original loop-body paths are preserved exactly; only the
     /// control flow is expressed via [`Step`] so the work can live in helpers.
     fn decode_one(&mut self) -> Step {
-        // Need at least a Type Word + minimum-format payload.
-        if self.offset + MIN_RECORD_BYTES_STANDARD > self.file_len {
-            self.done = true;
-            self.log_complete();
-            return Step::Stop;
+        // Need at least a Type Word + minimum-format payload. A tail of 2-7
+        // bytes still holds a readable Type Word, and unless it is the null
+        // terminator it is a record cut short. Strict mode falls through so the
+        // validator reports it (L2-RDR-003): no valid record fits in fewer than
+        // 8 bytes, so validation fails before a byte past the Type Word is
+        // read. Lenient mode stops cleanly (L2-RDR-002) and says what it
+        // dropped, as it does for every other byte it discards.
+        let remaining = self.file_len.saturating_sub(self.offset);
+        if remaining < MIN_RECORD_BYTES_STANDARD {
+            let tail = if remaining >= 2 {
+                read_u16(&self.data, self.offset).filter(|&raw| !is_terminator_type_word(raw))
+            } else {
+                None
+            };
+            if !(self.strict && tail.is_some()) {
+                if let Some(raw) = tail {
+                    self.warn_truncated_tail(raw);
+                }
+                self.done = true;
+                self.log_complete();
+                return Step::Stop;
+            }
         }
         let Some(type_raw) = read_u16(&self.data, self.offset) else {
             self.done = true;
@@ -871,10 +888,9 @@ impl RecordIter<'_> {
         tw: TypeWord,
         record_bytes: usize,
     ) -> Step {
-        self.sync_losses += 1;
-        self.sync_losses_atomic.fetch_add(1, Ordering::Relaxed);
         log_validation_context(&self.data, self.offset);
         if self.strict {
+            self.count_sync_loss();
             let err = match failure {
                 ValidationFailure::UnknownMessageType => MieError::UnknownTypeWord {
                     offset: self.offset as u64,
@@ -900,20 +916,38 @@ impl RecordIter<'_> {
             return Step::Yield(Err(err));
         }
 
-        log_warn!(
-            "sync lost at 0x{:X} (type=0x{:02X} wc={}); scanning forward",
-            self.offset,
-            tw.message_type,
-            tw.word_count
-        );
-        match recover_sync(
+        // Lenient: scan first, narrate after. A plausible Type Word whose record
+        // runs past EOF is either the recording's truncated final record or
+        // corruption with whole records still behind it, and only the scan can
+        // tell which. Narrating before the scan called every truncated tail a
+        // sync loss -- "sync lost", "1 sync recoveries", partial-recovered --
+        // for a file in which nothing was lost or recovered.
+        let scan = recover_sync(
             &self.data,
             self.offset,
             self.file_len,
             Some(self.resolved_format),
             MAX_SCAN_BYTES,
             self.lookahead_records,
-        ) {
+        );
+        if scan.is_none() && matches!(failure, ValidationFailure::RecordTruncated) {
+            // Nothing decodable follows and the record runs past EOF: the file
+            // ends inside it. A truncated final record (L2-RDR-002), reported
+            // exactly as a tail too short to hold a record is.
+            self.warn_truncated_tail(type_raw);
+            self.done = true;
+            self.log_complete();
+            return Step::Stop;
+        }
+
+        self.count_sync_loss();
+        log_warn!(
+            "sync lost at 0x{:X} (type=0x{:02X} wc={}); scanning forward",
+            self.offset,
+            tw.message_type,
+            tw.word_count
+        );
+        match scan {
             Some(hit) => {
                 log_info!(
                     "sync recovered at 0x{:X} (skipped {} bytes from 0x{:X})",
@@ -1241,6 +1275,26 @@ impl RecordIter<'_> {
         }
 
         Step::Yield(Ok(msg))
+    }
+
+    /// Record one sync loss, in this reader's count and the shared counter.
+    fn count_sync_loss(&mut self) {
+        self.sync_losses += 1;
+        self.sync_losses_atomic.fetch_add(1, Ordering::Relaxed);
+    }
+
+    /// The lenient-mode WARN for a recording that ends inside a record
+    /// (L2-RDR-002): the bytes from the current offset to EOF are dropped. One
+    /// wording for every length of tail, whether it was too short to hold a
+    /// record or a whole Type Word whose record runs past EOF.
+    fn warn_truncated_tail(&self, type_raw: u16) {
+        log_warn!(
+            "{} trailing byte(s) at 0x{:X} do not hold a complete record \
+             (Type Word 0x{:04X}); stopping",
+            self.file_len.saturating_sub(self.offset),
+            self.offset,
+            type_raw
+        );
     }
 
     fn advance_after_yield(&mut self, record_bytes: usize) {
@@ -1605,6 +1659,140 @@ mod tests {
         // Subsequent calls: None forever.
         assert!(it.next().is_none());
         assert!(it.next().is_none());
+    }
+
+    /// Two clean records, then `tail`. The second record is re-timed and its
+    /// first data word changed, so the pair is not a homogeneous pad.
+    fn two_records_then(tail: &[u8]) -> Vec<u8> {
+        let mut second = rt15_sa11_rcv();
+        second[6] = 0x22; // a later IRIG timestamp
+        second[10] ^= 0x01; // a different first data word
+        let mut data = rt15_sa11_rcv();
+        data.extend(second);
+        data.extend_from_slice(tail);
+        data
+    }
+
+    /// Decode `data` to completion, returning the rows and the terminal error.
+    fn decode_tail(data: &[u8], strict: bool) -> (usize, Option<MieError>) {
+        let f = write_temp(data);
+        let reader = MieFileReader::with_options(
+            f.path(),
+            ReaderOptions {
+                strict,
+                input_time_format: TimestampFormat::Irig,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let mut rows = 0;
+        for item in &reader {
+            match item {
+                Ok(_) => rows += 1,
+                Err(e) => return (rows, Some(e)),
+            }
+        }
+        (rows, None)
+    }
+
+    /// Lenient mode, then the reader's sync-loss count afterwards.
+    fn lenient_rows_and_sync_losses(data: &[u8]) -> (usize, u64) {
+        let f = write_temp(data);
+        let reader = MieFileReader::with_options(
+            f.path(),
+            ReaderOptions {
+                input_time_format: TimestampFormat::Irig,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let rows = reader.iter().flatten().count();
+        (rows, reader.sync_losses())
+    }
+
+    /// Lenient mode scans before it narrates. A whole Type Word whose record
+    /// runs past EOF, with nothing decodable after it, is the recording's
+    /// truncated final record: no sync loss is counted, however long the tail
+    /// (L2-RDR-002). A Type Word that runs past EOF with a whole record still
+    /// behind it is corruption, and the scan recovers the record -- a sync
+    /// loss, as before.
+    /// Requirements: L2-RDR-002, L2-SYN-010
+    #[test]
+    fn lenient_names_a_truncated_tail_and_still_recovers_past_corruption() {
+        // 10 bytes of a 72-byte record: truncated, nothing after it.
+        let mut cut = rt15_sa11_rcv();
+        cut.truncate(10);
+        let (rows, losses) = lenient_rows_and_sync_losses(&two_records_then(&cut));
+        assert_eq!(
+            (rows, losses),
+            (2, 0),
+            "a truncated tail is not a sync loss"
+        );
+
+        // Type Word 0x3F02 declares 126 bytes; only a 72-byte record follows,
+        // so it runs past EOF -- but the record behind it is whole and decodes.
+        let mut corrupt = vec![0x02, 0x3F];
+        let mut third = rt15_sa11_rcv();
+        third[6] = 0x23; // later than both leading records
+        corrupt.extend(third);
+        let (rows, losses) = lenient_rows_and_sync_losses(&two_records_then(&corrupt));
+        assert_eq!(
+            (rows, losses),
+            (3, 1),
+            "corruption before a whole record is a sync loss"
+        );
+    }
+
+    /// A tail of 2-7 bytes after the last whole record holds a readable Type
+    /// Word, so strict mode reports it like any longer truncated tail
+    /// (L2-RDR-003): `RecordTruncated` for a plausible Type Word, and the
+    /// Type-Word classes for an implausible one. A null Type Word is the
+    /// terminator and a single byte holds no Type Word; both end cleanly.
+    /// Lenient mode keeps every whole record either way (L2-RDR-002).
+    /// Requirements: L2-RDR-002, L2-RDR-003
+    #[test]
+    fn strict_reports_a_truncated_tail_of_two_to_seven_bytes() {
+        use crate::error::MieErrorKind;
+        let cases: [(&[u8], Option<MieErrorKind>); 7] = [
+            (&[0x02, 0x24], Some(MieErrorKind::RecordTruncated)),
+            (
+                &[0x02, 0x24, 0xAA, 0xAA],
+                Some(MieErrorKind::RecordTruncated),
+            ),
+            (
+                &[0x02, 0x24, 1, 2, 3, 4, 5],
+                Some(MieErrorKind::RecordTruncated),
+            ),
+            (
+                &[0x7F, 0x24, 0xAA, 0xAA],
+                Some(MieErrorKind::UnknownTypeWord),
+            ),
+            (
+                &[0x02, 0x01, 0xAA, 0xAA],
+                Some(MieErrorKind::InvalidTypeWord),
+            ),
+            (&[0x00, 0x00], None),
+            (&[0x02], None),
+        ];
+        for (tail, want) in cases {
+            let data = two_records_then(tail);
+            let (rows, err) = decode_tail(&data, true);
+            assert_eq!(rows, 2, "tail {tail:02X?}");
+            assert_eq!(err.as_ref().map(MieError::kind), want, "tail {tail:02X?}");
+            if let Some(MieError::RecordTruncated {
+                offset,
+                available_bytes,
+                ..
+            }) = err
+            {
+                assert_eq!(offset, 144);
+                assert_eq!(available_bytes, tail.len() as u64);
+            }
+
+            let (rows, err) = decode_tail(&data, false);
+            assert_eq!(rows, 2, "lenient, tail {tail:02X?}");
+            assert!(err.is_none(), "lenient, tail {tail:02X?}: {err:?}");
+        }
     }
 
     /// Regression: L2-RDR-004. A file that contains a structurally-

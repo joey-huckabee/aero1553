@@ -269,6 +269,35 @@
       "expected": "expected/multi-record-then-terminator.csv"
     },
     {
+      "name": "multi-record-then-terminator-strict",
+      "input": "inputs/multi-record-then-terminator.hex",
+      "args": [
+        "--strict"
+      ],
+      "expected": "expected/multi-record-then-terminator-strict.csv"
+    },
+    {
+      "name": "truncated-tail-short-strict",
+      "input": "inputs/truncated-tail-short.hex",
+      "args": [
+        "--strict"
+      ],
+      "expected_exit": 1,
+      "expected_stderr_contains": "Record requires 72 bytes but only 4 bytes remain in file"
+    },
+    {
+      "name": "truncated-tail-short-lenient",
+      "input": "inputs/truncated-tail-short.hex",
+      "expected": "expected/truncated-tail-short-lenient.csv",
+      "expected_stderr_contains": "4 trailing byte(s) at 0xB2 do not hold a complete record (Type Word 0x2402); stopping"
+    },
+    {
+      "name": "truncated-tail-long-lenient",
+      "input": "inputs/truncated-tail-long.hex",
+      "expected": "expected/truncated-tail-long-lenient.csv",
+      "expected_stderr_contains": "10 trailing byte(s) at 0xB2 do not hold a complete record (Type Word 0x2402); stopping"
+    },
+    {
       "name": "count-multi-record-then-terminator",
       "mode": "count",
       "input": "inputs/multi-record-then-terminator.hex",

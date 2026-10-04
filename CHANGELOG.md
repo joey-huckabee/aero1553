@@ -235,6 +235,28 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **A recording cut off inside its last record is no longer reported as a
+  sync loss** (all three implementations; L2-RDR-002 amended). Lenient mode
+  logged `sync lost ... scanning forward` for a truncated final record of 8
+  bytes or more, counted it as a sync recovery and classed the run
+  `partial-recovered`, though nothing was lost or recovered. It now gives
+  every truncated tail the same WARN (`N trailing byte(s) at 0x... do not
+  hold a complete record (Type Word 0x....); stopping`), counts no sync loss,
+  and classes the run `complete`. The forward scan still runs first, so a
+  Type Word corrupted near the end with whole records behind it is still a
+  sync loss and still recovered. Exit codes and CSV output are unchanged;
+  only the WARN text and the `decode exit class` INFO line differ.
+- **`--strict` reports a recording that ends 2-7 bytes into a record**
+  (all three implementations; L2-RDR-002 and L2-RDR-003 amended). The
+  reader stopped silently whenever fewer than 8 bytes -- the smallest
+  record -- remained, before reading the Type Word, so such a tail passed
+  strict mode as a clean end. Strict mode now classifies it from its Type
+  Word like a longer tail: `RecordTruncated` (exit 1), or `UnknownTypeWord`
+  / `InvalidTypeWord` for an implausible one. Lenient mode keeps every whole
+  record as before and now logs a WARN naming the dropped bytes, where it
+  said nothing. A trailing `00 00` terminator and a single stray byte still
+  end the decode cleanly. **Behaviour change:** `--strict` exits 1 on such a
+  file, where it exited 0.
 - **A `SPURIOUS_DATA` record with Type Word bit 14 set is labelled
   `SPURIOUS`, not `ERROR`** (all three implementations; L2-ERR-010
   amended). Such a record was already decoded, coded (`2000`/`2001`) and

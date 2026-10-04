@@ -357,15 +357,15 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-RDR-002
 
 **Parent**: L1-DEC-005
-**Statement**: Lenient mode SHALL stop cleanly at a truncated final record.
-**Rationale**: A truncated tail is the most common form of recording-card termination (operator stop, power loss, disk full). Lenient mode treats it as end-of-stream, emits all preceding valid records, and exits cleanly.
+**Statement**: Lenient mode SHALL stop cleanly at a truncated final record, emitting every preceding record and logging a WARN that names the truncation. A truncated final record SHALL NOT be counted or reported as a sync loss. A record is the truncated final record when its declared extent runs past end-of-file and the forward scan of L2-SYN-010 finds no record after it; when the scan does find one, the bytes skipped are a sync loss as before.
+**Rationale**: A truncated tail is the most common form of recording-card termination (operator stop, power loss, disk full). Lenient mode treats it as end-of-stream, emits all preceding valid records, and exits cleanly. It still says what it dropped, as lenient mode does for every other byte it discards: a tail too short to hold a record (2-7 bytes) was once dropped without a word, the one silent discard in lenient mode. A longer tail was the opposite fault: the reader logged "sync lost" before scanning, then counted the event as a sync recovery and classed the run `partial-recovered`, for a file in which nothing was lost or recovered. Narrating after the scan gives every length of tail one wording and one classification. The scan itself is kept, because a Type Word corrupted near the end of a file can also declare an extent past EOF while whole records still follow it.
 **Verification Method**: Test (T)
 
 #### L2-RDR-003
 
 **Parent**: L1-MODE-001
-**Statement**: Strict mode SHALL surface a truncation error when a readable Type Word declares a record extent beyond end-of-file.
-**Rationale**: Counterpart to L2-RDR-002 in strict mode. In strict contexts, the operator wants the truncated tail surfaced rather than silently treated as a clean end-of-stream.
+**Statement**: Strict mode SHALL surface a truncation error when a readable Type Word declares a record extent beyond end-of-file, however few bytes follow it. A Type Word is readable when at least 2 bytes remain; a null Type Word is the end-of-records terminator (L2-RDR-021), not a truncated record.
+**Rationale**: Counterpart to L2-RDR-002 in strict mode. In strict contexts, the operator wants the truncated tail surfaced rather than silently treated as a clean end-of-stream. "However few" is stated because the reader once stopped silently whenever fewer than 8 bytes (the smallest record) remained, before reading the Type Word at all, so a tail of 2-7 bytes passed strict mode as a clean end. No valid record fits in fewer than 8 bytes, so such a tail is classified from its Type Word alone, with the same classes a longer one gets.
 **Verification Method**: Test (T)
 
 #### L2-RDR-004

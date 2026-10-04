@@ -539,11 +539,27 @@ bool RecordIter::next(MieMessage& out) {
 }
 
 RecordIter::Step RecordIter::decode_one(MieMessage& out) {
-    // A Type Word plus the smallest possible payload has to fit.
-    if (offset_ + decode::MIN_RECORD_BYTES_STANDARD > file_len_) {
-        done_ = true;
-        log_complete();
-        return STEP_STOP;
+    // A Type Word plus the smallest possible payload has to fit. A tail of
+    // 2-7 bytes still holds a readable Type Word, and unless it is the null
+    // terminator it is a record cut short. Strict mode falls through so the
+    // validator reports it (L2-RDR-003): no valid record fits in fewer than 8
+    // bytes, so validation fails before a byte past the Type Word is read.
+    // Lenient mode stops cleanly (L2-RDR-002) and says what it dropped, as it
+    // does for every other byte it discards.
+    const std::size_t remaining = file_len_ > offset_ ? file_len_ - offset_ : 0;
+    if (remaining < decode::MIN_RECORD_BYTES_STANDARD) {
+        uint16_t tail_raw = 0;
+        const bool cut_short = remaining >= 2 &&
+                               decode::read_u16(data_, file_len_, offset_, tail_raw) &&
+                               !decode::is_terminator_type_word(tail_raw);
+        if (!(strict_ && cut_short)) {
+            if (cut_short) {
+                warn_truncated_tail(tail_raw);
+            }
+            done_ = true;
+            log_complete();
+            return STEP_STOP;
+        }
     }
 
     uint16_t type_raw = 0;
@@ -630,11 +646,10 @@ RecordIter::Step RecordIter::decode_one(MieMessage& out) {
 
 RecordIter::Step RecordIter::handle_sync_loss(sync::ValidationFailure failure, uint16_t type_raw,
                                               const TypeWord& tw, std::size_t record_bytes) {
-    sync_losses_ += 1;
-    owner_->sync_losses_ += 1;
     log_validation_context(data_, file_len_, offset_);
 
     if (strict_) {
+        count_sync_loss();
         // Latch before throwing: a caller that catches and calls next() again
         // must get a clean end of stream, not a second attempt at the record
         // that just failed.
@@ -662,12 +677,31 @@ RecordIter::Step RecordIter::handle_sync_loss(sync::ValidationFailure failure, u
                                           " (raw_type=" + hexw(type_raw, 4) + ")");
     }
 
+    // Lenient: scan first, narrate after. A plausible Type Word whose record
+    // runs past EOF is either the recording's truncated final record or
+    // corruption with whole records still behind it, and only the scan can
+    // tell which. Narrating before the scan called every truncated tail a sync
+    // loss -- "sync lost", "1 sync recoveries", partial-recovered -- for a file
+    // in which nothing was lost or recovered.
+    sync::ScanHit hit;
+    const bool recovered =
+        sync::recover_sync(data_, file_len_, offset_, file_len_, resolved_format_,
+                           sync::MAX_SCAN_BYTES, lookahead_records_, hit);
+    if (!recovered && failure == sync::VALIDATION_RECORD_TRUNCATED) {
+        // Nothing decodable follows and the record runs past EOF: the file ends
+        // inside it. A truncated final record (L2-RDR-002), reported exactly as
+        // a tail too short to hold a record is.
+        warn_truncated_tail(type_raw);
+        done_ = true;
+        log_complete();
+        return STEP_STOP;
+    }
+
+    count_sync_loss();
     MIE_LOG_WARN("sync lost at " + hex(offset_) + " (type=" + hexw(tw.message_type, 2) +
                  " wc=" + dec(tw.word_count) + "); scanning forward");
 
-    sync::ScanHit hit;
-    if (sync::recover_sync(data_, file_len_, offset_, file_len_, resolved_format_,
-                           sync::MAX_SCAN_BYTES, lookahead_records_, hit)) {
+    if (recovered) {
         MIE_LOG_INFO("sync recovered at " + hex(hit.offset) + " (skipped " + dec(hit.skipped) +
                      " bytes from " + hex(offset_) + ")");
         offset_ = hit.offset;
@@ -693,6 +727,17 @@ RecordIter::Step RecordIter::handle_sync_loss(sync::ValidationFailure failure, u
                   " messages");
     log_complete();
     fail(MieError::unrecoverable_sync_loss(static_cast<uint64_t>(offset_), sync_losses_));
+}
+
+void RecordIter::count_sync_loss() {
+    sync_losses_ += 1;
+    owner_->sync_losses_ += 1;
+}
+
+void RecordIter::warn_truncated_tail(uint16_t type_raw) const {
+    const std::size_t remaining = file_len_ > offset_ ? file_len_ - offset_ : 0;
+    MIE_LOG_WARN(dec(remaining) + " trailing byte(s) at " + hex(offset_) +
+                 " do not hold a complete record (Type Word " + hexw(type_raw, 4) + "); stopping");
 }
 
 bool RecordIter::decode_timestamp_at(TimestampFormat resolved, Timestamp& out) {

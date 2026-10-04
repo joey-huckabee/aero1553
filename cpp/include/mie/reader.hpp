@@ -245,6 +245,11 @@ class RecordIter {
     enum Step { STEP_CONTINUE, STEP_YIELD, STEP_STOP };
 
     Step decode_one(MieMessage& out);
+    /// One sync loss, in this walk's count and the reader's.
+    void count_sync_loss();
+    /// The lenient-mode WARN for a recording that ends inside a record
+    /// (L2-RDR-002), one wording for every length of tail.
+    void warn_truncated_tail(uint16_t type_raw) const;
     Step handle_sync_loss(sync::ValidationFailure failure, uint16_t type_raw, const TypeWord& tw,
                           std::size_t record_bytes);
     bool decode_timestamp_at(TimestampFormat resolved, Timestamp& out);
