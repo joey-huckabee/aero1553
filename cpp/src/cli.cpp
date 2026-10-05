@@ -1087,7 +1087,7 @@ int report_decode_failure(const Streams& streams, const MieError& error, uint64_
     if (error.kind() == KIND_UNRECOVERABLE_SYNC_LOSS) {
         MIE_LOG_INFO(
             "decode exit class: partial-unrecoverable (sync_losses=" + text::decimal(sync_losses) +
-            "); pass --allow-partial to preserve the rows decoded so far");
+            "); pass --allow-partial with an output file (-o) to preserve the rows decoded so far");
         return EXIT_SYNC_LOSS;
     }
     if (error.kind() == KIND_MERGE_INPUTS_DROPPED) {

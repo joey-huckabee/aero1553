@@ -668,7 +668,7 @@ The CLI exits with one of seven codes (L1-EXIT-001 through L1-EXIT-010), identic
 | **0** | `empty-recording` | A valid MIE recording that captured **zero** records (its stream is just the `0x0000` terminator). A header-only CSV is written. Distinct from exit 2. |
 | **1** | runtime / decode error | Per-record validation failed in strict mode, the input couldn't be opened, or the output sink failed. Read the stderr error line. |
 | **2** | `no-records` | The input file isn't an MIE recording at all (wrong file type, single-byte pad). No output file created. |
-| **3** | `partial-unrecoverable` | Mid-file sync loss that couldn't be recovered. Re-run with `--allow-partial` to keep what was decoded. |
+| **3** | `partial-unrecoverable` | Mid-file sync loss that couldn't be recovered. Re-run with `--allow-partial` and an output file (`-o`) to keep what was decoded; stdout cannot hold a `.partial`. |
 | **4** | usage error | The command line is wrong — unknown/invalid flag or argument, bad flag value, combined input methods, more than 256 merge inputs, or no subcommand. Run `--help`. |
 | **5** | configuration error | The `--config` TOML file can't be found, parsed, or fails validation. Fix the file named in the error. |
 | **6** | `merge-incompatible` | A multi-file merge whose inputs can't share an absolute IRIG timeline (a Standard-format, freerun-leading, or mixed-format set). Nothing is written. Decode those inputs individually. |

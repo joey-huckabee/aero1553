@@ -386,7 +386,8 @@ impl fmt::Display for MieError {
                 "Unrecoverable mid-file sync loss at offset 0x{offset:X} \
                  after {sync_losses} recovery attempt(s); the decoder could \
                  not reacquire sync within the scan window. \
-                 Pass --allow-partial to keep what was decoded as a .partial file."
+                 Pass --allow-partial with an output file (-o) to keep what was \
+                 decoded as a .partial file."
             ),
             Self::MergeInputsDropped {
                 left_out,

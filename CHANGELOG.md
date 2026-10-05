@@ -235,6 +235,21 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The Python library's `write_csv` to a stream no longer hides a sync loss
+  behind `allow_partial`** (new L3-PY-022). Writing to `sys.stdout` or any
+  other stream with `allow_partial=True`, an unrecoverable sync loss stopped
+  the write and returned the `WriteOutcome` of a complete decode, so the caller
+  could not tell the recording had been cut short. A stream cannot hold a
+  `.partial`, so `allow_partial` no longer applies there: the rows decoded
+  before the loss are written and `MieUnrecoverableSyncLossError` is raised,
+  as the CLIs' stdout output exits 3 -- and as a merge that left inputs out
+  was already raised on the same path.
+- **The sync-loss advice no longer tells you to pass a flag you passed**
+  (all three implementations). With `--allow-partial` and output to stdout
+  the decode exits 3, correctly, but the error and the exit-class line both
+  said "Pass --allow-partial to keep what was decoded". They now say to pass
+  it *with an output file (-o)*, which is true either way and names what was
+  missing.
 - **Ctrl-C stops the Python library's `write_csv`, `write_csv_split` and
   `columns`, and an interrupted write commits nothing** (new L3-PY-021).
   These run in the compiled extension with the GIL released, and CPython

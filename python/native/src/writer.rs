@@ -194,9 +194,12 @@ pub fn write_csv(
             .map(outcome)
             .map_err(|err| stream::raise(py, &slot, err));
     }
-    // A stream: `sys.stdout` or any object with a text `write` method.
+    // A stream: `sys.stdout` or any object with a text `write` method. It has
+    // no `.partial` to commit, so `allow_partial` does not apply: a sync loss
+    // fails the call after the rows before it are handed over, exactly as the
+    // CLI's stdout output exits 3 with those rows printed (L3-PY-022).
     let sink = output.clone().unbind();
-    let counted = py.detach(|| to_stream(source, sink, &slot, &destination, render, allow_partial));
+    let counted = py.detach(|| to_stream(source, sink, &slot, &destination, render));
     match counted {
         Ok(rows) => {
             log::emit(
@@ -218,27 +221,12 @@ fn to_stream(
     slot: &ErrorSlot,
     destination: &str,
     render: TimeRender,
-    allow_partial: bool,
 ) -> Result<u64, MieError> {
     let sink = PyTextSink::new(sink_stream, slot.clone(), false);
     let mut writer = CsvWriter::new(sink, destination)?.with_time_render(render);
     let mut failure: Option<MieError> = None;
     for item in source {
-        let step = match item {
-            Ok(msg) => writer.write_message(&msg),
-            // A stream has no `.partial`: the rows already sent are what the
-            // consumer has seen, so allow_partial simply stops here.
-            Err(MieError::UnrecoverableSyncLoss { .. }) if allow_partial => {
-                log::emit(
-                    Level::Debug,
-                    "aero1553::writer",
-                    format_args!("unrecoverable sync loss on stream output (--allow-partial)"),
-                );
-                break;
-            }
-            Err(err) => Err(err),
-        };
-        if let Err(err) = step {
+        if let Err(err) = item.and_then(|msg| writer.write_message(&msg)) {
             failure = Some(err);
             break;
         }

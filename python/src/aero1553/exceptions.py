@@ -535,8 +535,8 @@ class MieUnrecoverableSyncLossError(MieRecordError):
             offset,
             f"Unrecoverable mid-file sync loss after {sync_losses} "
             f"recovery attempt(s); the decoder could not reacquire sync "
-            f"within the scan window. Pass --allow-partial to keep what "
-            f"was decoded as a .partial file.",
+            f"within the scan window. Pass --allow-partial with an output "
+            f"file (-o) to keep what was decoded as a .partial file.",
         )
 
 
