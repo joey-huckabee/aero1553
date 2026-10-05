@@ -1,6 +1,6 @@
 [package]
 name = "aero1553-py"
-version = "3.0.0"
+version = "4.0.0"
 edition = "2024"
 # The core crate's floor (let-chains); PyO3 0.29 needs only 1.83.
 rust-version = "1.88"
