@@ -286,6 +286,12 @@ ignore_names = [
     "_cwd_with_flag_named_files",
     "_restore_sigint_handler",
     "_python_handles_sigint",
+    # io protocol: TextIOWrapper asks a raw stream test double whether it is
+    # writable; the test calls it only through that.
+    "writable",
+    # A test double's decoy attribute (test_stream_bytes.py), inspected by the
+    # compiled writer by name to prove a non-binary `buffer` is not used.
+    "buffer",
     # Raised by the compiled extension, which looks the class up by name.
     "MieCalendarUnavailableError",
     # A TypedDict key in writer.py -- read by the compiled writer as a keyword.

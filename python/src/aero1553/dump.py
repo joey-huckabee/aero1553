@@ -57,7 +57,9 @@ def hex_dump_raw(
         path: Path to the binary file.
         start_offset: Byte offset to begin the dump.
         length: Number of bytes to dump. None means dump to end of file.
-        stream: Output stream. Defaults to sys.stdout.
+        stream: Output stream. Defaults to sys.stdout. A stream with a
+            binary layer (``stream.buffer``) receives the bytes through it,
+            LF line endings on every platform.
 
     Raises:
         MieFileNotFoundError: if ``path`` does not exist.
@@ -90,7 +92,9 @@ def hex_dump_records(
         path: Path to the MIE binary file.
         max_records: Maximum number of records to dump. None for all.
         start_offset: Byte offset to begin scanning for records.
-        stream: Output stream. Defaults to sys.stdout.
+        stream: Output stream. Defaults to sys.stdout. A stream with a
+            binary layer (``stream.buffer``) receives the bytes through it,
+            LF line endings on every platform.
 
     Raises:
         MieFileNotFoundError: if ``path`` does not exist.

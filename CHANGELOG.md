@@ -235,6 +235,14 @@ shared behavior) holds at any compatible version pair. See
 
 ### Fixed
 
+- **The Python library writes LF to a Windows text stream, as the CLI does**
+  (new L3-PY-023). `write_csv` to `sys.stdout` or to a file opened with
+  `open(path, "w")`, and the `aero1553.dump` hex dumps, handed the stream
+  text, and on Windows its newline translation turned every `\n` into `\r\n`
+  -- against L2-WRT-012, while the CLI wrote LF. A stream with a binary layer
+  is now given the bytes through it, so the output is the CLI's bytes
+  whatever the stream's newline and encoding settings; one without (an
+  `io.StringIO`, a notebook's output) is given text as before.
 - **The Python library's `write_csv` to a stream no longer hides a sync loss
   behind `allow_partial`** (new L3-PY-022). Writing to `sys.stdout` or any
   other stream with `allow_partial=True`, an unrecoverable sync loss stopped

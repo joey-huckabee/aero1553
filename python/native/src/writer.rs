@@ -6,7 +6,8 @@
 //! unchanged: preflight, atomic temp + rename, `.partial` under
 //! `allow_partial`. A stream destination -- any object with a text `write`
 //! method, `sys.stdout` included -- is the core crate's `CsvWriter` over an
-//! adapter that hands the bytes to that method, so the rows are the same bytes
+//! adapter that hands the bytes to the stream's binary layer where it has one
+//! and to that method where it does not, so the rows are the same bytes
 //! either way.
 
 use std::io::{self, Write};
@@ -19,6 +20,7 @@ use aero1553::models::{MieMessage, OutputTimeFormat, TimeRender};
 use aero1553::writer::{self as core, CSV_HEADER, CsvWriter, WriteOptions, WriteOutcome};
 use pyo3::exceptions::{PyOSError, PyValueError};
 use pyo3::prelude::*;
+use pyo3::types::PyBytes;
 
 use crate::logbridge;
 use crate::models::PyMieMessage;
@@ -68,7 +70,7 @@ fn is_broken_pipe(py: Python<'_>, err: &PyErr) -> bool {
         .unwrap_or(false)
 }
 
-/// `Write` over a Python text stream's `write` method.
+/// `Write` over a Python text stream.
 ///
 /// Bytes are buffered and handed over in chunks; each hand-over takes the GIL
 /// for its own duration. A broken pipe becomes an `io::Error` of kind
@@ -76,22 +78,66 @@ fn is_broken_pipe(py: Python<'_>, err: &PyErr) -> bool {
 /// other `OSError` becomes an I/O error, reported as `MieWriterError`; any
 /// other exception is parked in the stream's error slot and raised unchanged.
 ///
+/// A stream with a binary layer under it (`stream.buffer`, as `sys.stdout` and
+/// every `open(path, "w")` file have) is given the bytes themselves, through
+/// that layer, so they are the CLI's bytes whatever the stream's newline and
+/// encoding settings (L3-PY-023). Handing it `str` instead let a text stream
+/// on Windows turn every `\n` into `\r\n`, against the LF rule of L2-WRT-012.
+/// A stream without one (`io.StringIO`, a notebook's output stream, any object
+/// with a `write` method) is given `str`, as before.
+///
 /// With `pass_through` set, EVERY exception is parked -- a broken pipe and an
 /// `OSError` included -- for a caller whose Python contract is that the
 /// stream's own exception propagates (`aero1553.dump`).
 pub(crate) struct PyTextSink {
     stream: Py<PyAny>,
+    target: Target,
     buf: Vec<u8>,
     slot: ErrorSlot,
     pass_through: bool,
 }
 
+/// Where a hand-over goes: decided on the first one, with the GIL held.
+enum Target {
+    Unresolved,
+    /// The stream's own `write`, given `str`.
+    Text,
+    /// The binary layer under the stream, given bytes.
+    Binary(Py<PyAny>),
+}
+
 const SINK_CHUNK: usize = 64 * 1024;
+
+/// The binary layer under `stream`, if it has one, with the text layer flushed
+/// so that whatever the caller wrote to the stream before this call comes out
+/// first.
+///
+/// Only a real `io` binary stream counts: an attribute that merely happens to
+/// be called `buffer` is not a promise to accept bytes.
+fn binary_layer<'py>(
+    py: Python<'py>,
+    stream: &Bound<'py, PyAny>,
+) -> PyResult<Option<Bound<'py, PyAny>>> {
+    // A missing attribute, or a detached stream's `ValueError`, alike mean
+    // there is no binary layer to write to.
+    let Ok(buffer) = stream.getattr("buffer") else {
+        return Ok(None);
+    };
+    let io = py.import("io")?;
+    let binary = buffer.is_instance(&io.getattr("BufferedIOBase")?)?
+        || buffer.is_instance(&io.getattr("RawIOBase")?)?;
+    if !binary {
+        return Ok(None);
+    }
+    stream.call_method0("flush")?;
+    Ok(Some(buffer))
+}
 
 impl PyTextSink {
     pub(crate) fn new(stream: Py<PyAny>, slot: ErrorSlot, pass_through: bool) -> Self {
         Self {
             stream,
+            target: Target::Unresolved,
             buf: Vec::new(),
             slot,
             pass_through,
@@ -102,17 +148,57 @@ impl PyTextSink {
         if self.buf.is_empty() {
             return Ok(());
         }
-        // The CSV is ASCII by construction (L2-CLI-014) apart from a MUX value
-        // taken from a file name, which is valid UTF-8 because it came from a
-        // Rust `str`; lossy decoding cannot trigger.
-        let text = String::from_utf8_lossy(&self.buf).into_owned();
-        self.buf.clear();
-        Python::attach(
-            |py| match self.stream.bind(py).call_method1("write", (text,)) {
-                Ok(_) => Ok(()),
-                Err(err) => Err(self.classify(py, err)),
-            },
-        )
+        Python::attach(|py| {
+            let sent = self.send(py);
+            self.buf.clear();
+            sent.map_err(|err| self.classify(py, err))
+        })
+    }
+
+    fn send(&mut self, py: Python<'_>) -> PyResult<()> {
+        if matches!(self.target, Target::Unresolved) {
+            self.target = match binary_layer(py, self.stream.bind(py))? {
+                Some(buffer) => Target::Binary(buffer.unbind()),
+                None => Target::Text,
+            };
+        }
+        let Target::Binary(buffer) = &self.target else {
+            // The CSV is ASCII by construction (L2-CLI-014) apart from a MUX
+            // value taken from a file name, which is valid UTF-8 because it
+            // came from a Rust `str`; lossy decoding cannot trigger.
+            let text = String::from_utf8_lossy(&self.buf);
+            self.stream.bind(py).call_method1("write", (text,))?;
+            return Ok(());
+        };
+        // A raw layer (`python -u`'s stdout) may take only part of a write.
+        let buffer = buffer.bind(py);
+        let mut rest: &[u8] = &self.buf;
+        while !rest.is_empty() {
+            let taken: Option<usize> = buffer
+                .call_method1("write", (PyBytes::new(py, rest),))?
+                .extract()?;
+            match taken {
+                Some(n) if n > 0 => rest = &rest[n.min(rest.len())..],
+                _ => return Err(PyOSError::new_err("the output stream accepted no bytes")),
+            }
+        }
+        Ok(())
+    }
+
+    /// Flush the binary layer, so that whatever the caller writes to the
+    /// stream after this call comes out after it. A text target is the
+    /// caller's to flush, as it always was.
+    fn flush_target(&self) -> io::Result<()> {
+        let Target::Binary(buffer) = &self.target else {
+            return Ok(());
+        };
+        Python::attach(|py| {
+            buffer
+                .bind(py)
+                .call_method0("flush")
+                .map(drop)
+                .map_err(|err| self.classify(py, err))
+        })
     }
 
     fn classify(&self, py: Python<'_>, err: PyErr) -> io::Error {
@@ -150,7 +236,8 @@ impl Write for PyTextSink {
     }
 
     fn flush(&mut self) -> io::Result<()> {
-        self.hand_over()
+        self.hand_over()?;
+        self.flush_target()
     }
 }
 
