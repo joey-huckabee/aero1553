@@ -188,13 +188,8 @@ jobs:
 
   cargo-semver-checks:
     name: Rust SemVer (cargo-semver-checks)
-    # DISABLED until the v4.0.0 tag exists -- RE-ENABLE AT THE v4.0.0 CUT.
-    # The crate was renamed mie-decoder -> aero1553, and cargo-semver-checks
-    # matches the baseline by package name: v3.0.0 has no `aero1553`, so the
-    # comparison cannot run at all ("package `aero1553` not found"). Once
-    # v4.0.0 is tagged the baseline carries the new name and the gate works
-    # again unchanged.
-    if: false
+    # Was disabled from the rename (#133) until the v4.0.0 tag existed: the
+    # tool matches the baseline by package name, and v3.0.0 has no `aero1553`.
     runs-on: ubuntu-latest
 
     steps:

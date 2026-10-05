@@ -19,6 +19,12 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Maintenance
+
+- **`cargo-semver-checks` runs again**, against `v4.0.0`. It was disabled
+  from the rename until that tag existed, because it matches the baseline by
+  package name and `v3.0.0` has no `aero1553`.
+
 ## [4.0.0] — 2026-10-04
 
 ### Changed — BREAKING
