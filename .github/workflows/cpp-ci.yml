@@ -155,7 +155,7 @@ jobs:
         run: |
           BIN=$(make -C cpp -s print-decoder-bin)
           "cpp/${BIN#cpp/}" --version | od -c | head -3
-          test "$("cpp/${BIN#cpp/}" --version)" = "aero1553 3.0.0"
+          test "$("cpp/${BIN#cpp/}" --version)" = "aero1553 4.0.0"
 
   # Fidelity job: the SLES 12 SP5 system compiler, via a mirror of the official
   # gcc:4.8 image (Debian 7 "wheezy", glibc 2.13, GCC 4.8.5).
@@ -221,7 +221,7 @@ jobs:
           $out = [System.Diagnostics.Process]::Start($psi).StandardOutput.ReadToEnd()
           $bytes = [System.Text.Encoding]::UTF8.GetBytes($out)
           if ($bytes -contains 13) { throw "stdout contained CR: binary mode is not in effect" }
-          if ($out.TrimEnd("`n") -ne "aero1553 3.0.0") { throw "unexpected --version output: $out" }
+          if ($out.TrimEnd("`n") -ne "aero1553 4.0.0") { throw "unexpected --version output: $out" }
 
   # ASan (heap/stack overflow, use-after-free), UBSan (undefined behaviour) and
   # LSan (leaks), all fatal on first finding. Modern toolchain only: GCC 4.8 has

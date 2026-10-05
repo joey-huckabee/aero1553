@@ -26,12 +26,13 @@ checklist in `docs/MAINTAINER-GUIDE.md` section 11.
 
 | Version | Feature |
 |---------|---------|
-| 4.0 | Data word decoders, additional per-message-type CSVs. |
-| 5.0 | Apache Parquet output. |
+| 5.0 | Data word decoders, additional per-message-type CSVs. |
+| 6.0 | Apache Parquet output. |
 
 3.0 was taken by the timestamp-rendering split (`--input-time-format` /
-`--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), which renumbered the two
-rows above. One breaking topic per major: the migration note for a flag rename
+`--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), and 4.0 by the rename to
+Aero1553 and the Python package becoming a binding over the Rust crate; each
+renumbered the two rows above. One breaking topic per major: the migration note for a flag rename
 and the one for a new output format have nothing to say to each other, and
 bundling them would have made both harder to read.
 
@@ -369,7 +370,7 @@ keep the two parsers byte-for-byte aligned via the parity corpus.
 
 A review of all three implementations in September 2026 found six
 high-severity defects; those were fixed in #136 and are recorded in
-`CHANGELOG.md` under `[Unreleased]`. Its medium-severity findings have since
+`CHANGELOG.md` under `[4.0.0]`. Its medium-severity findings have since
 been fixed or decided (#139 to #156, each recorded in `CHANGELOG.md`), the
 three Python stream items -- Ctrl-C during `write_csv`, `allow_partial` on a
 stream destination, and CRLF on Windows `sys.stdout` -- last. The

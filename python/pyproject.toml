@@ -1,6 +1,6 @@
 [project]
 name = "aero1553"
-version = "3.0.0"
+version = "4.0.0"
 description = "Decoder for DDC MIL-STD-1553 MIE binary recording files"
 authors = [
     { name = "Joey" },
