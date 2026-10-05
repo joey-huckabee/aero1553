@@ -345,7 +345,11 @@ True
 ### To a stream
 
 Pass any object with a text `write` method -- `sys.stdout`, an open file, an
-`io.StringIO`. Leaving the destination out writes to standard output.
+`io.StringIO`. Leaving the destination out writes to standard output. The
+bytes are the CLI's -- UTF-8, LF line endings -- whatever the stream's own
+newline and encoding settings: a stream with a binary layer under it, as
+`sys.stdout` and an `open(path, "w")` file have, is written through that
+layer, so Windows text-mode translation never turns `\n` into `\r\n`.
 `CSV_HEADER` lists the column names; `CSV_COLUMNS` pairs each with a
 description.
 

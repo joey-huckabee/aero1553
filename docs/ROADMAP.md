@@ -370,11 +370,19 @@ keep the two parsers byte-for-byte aligned via the parity corpus.
 A review of all three implementations in September 2026 found six
 high-severity defects; those were fixed in #136 and are recorded in
 `CHANGELOG.md` under `[Unreleased]`. Its medium-severity findings have since
-been fixed or decided (#139 to #153, each recorded in `CHANGELOG.md`) apart from
+been fixed or decided (#139 to #156, each recorded in `CHANGELOG.md`), the
 three Python stream items -- Ctrl-C during `write_csv`, `allow_partial` on a
-stream destination, and CRLF on Windows `sys.stdout` -- which are next. The
-lower-severity findings are still to be triaged against the current code. Two
-follow-ups are already known:
+stream destination, and CRLF on Windows `sys.stdout` -- last. The
+lower-severity findings are deferred past v4.0.0 and are still to be triaged
+against the current code. Known follow-ups:
+
+- **Merge throughput is sensitive to code layout.** While verifying #156, two
+  changed error-message strings made the Python merge (`py.merge_csv`) land per
+  process at either its usual time or about 12% slower, on WSL2. Interleaved
+  A/B builds placed the cause in the binary's layout, not the change: the
+  extension change alone was neutral. The local perf gate failed on it; CI's
+  passed (0.992). To do: find which loop or buffer in the merge hot path is
+  alignment-sensitive.
 
 - **Python long paths on Windows -- untested.** #136 made the C++ build accept
   paths longer than 260 characters by adding the `\\?\` prefix itself, as Rust's
