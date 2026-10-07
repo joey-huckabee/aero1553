@@ -852,6 +852,31 @@ impl RecordIter<'_> {
 
         // Errored record (Type Word bit 14 set).
         if tw.error {
+            // The Error Word is the record's last word, so it needs a slot of
+            // its own after the Command Word (L2-ERR-002). Sync validation
+            // admits a record that ends AT the Command Word, and reading "the
+            // last word" of that one reads the Command Word as the error code.
+            // Checked before `delta_for`, which would otherwise advance the
+            // DELTA state for a record that is then skipped.
+            let min_words = 1 + ts_words + 1 + 1;
+            if tw.word_count < min_words {
+                let detail = format!(
+                    "errored record has no Error Word: word count {} ends at the \
+                     Command Word (needs at least {min_words})",
+                    tw.word_count
+                );
+                if self.strict {
+                    self.done = true;
+                    return Step::Yield(Err(MieError::PayloadError {
+                        offset: self.offset as u64,
+                        detail,
+                    }));
+                }
+                log_warn!("{} at 0x{:X}; skipping record", detail, self.offset);
+                self.offset += record_bytes;
+                self.prev_error_timestamp = None;
+                return Step::Continue;
+            }
             let delta = self.delta_for(cmd, &timestamp);
             let msg =
                 self.decode_error_record(tw, timestamp, cmd, cmd_byte_offset, ts_words, delta);
@@ -1516,6 +1541,7 @@ fn extract_payload(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::ERROR_MANCHESTER_PARITY;
     use std::io::Write;
     use std::path::PathBuf;
     use std::sync::atomic::{AtomicU64, Ordering};
@@ -2064,6 +2090,155 @@ mod tests {
             .expect("lenient mode must not abort on an unknown error code");
         assert_eq!(msgs.len(), 2);
         assert_eq!(msgs[0].error_word, Some(0x0199));
+    }
+
+    /// An errored record with exactly `word_count` words, between two clean
+    /// records. Type + timestamp + Command Word, then `tail` (an Error Word
+    /// and nothing else, or nothing at all).
+    ///
+    /// The Command Word is `0x0120` -- RT0 SA9 R, and also the known DDC code
+    /// `ERROR_NO_RESPONSE` -- so reading it as the Error Word passes the
+    /// known-code check silently, in strict mode too. That is what made the
+    /// defect invisible.
+    fn errored_record_between_clean(fmt: TimestampFormat, tail: &[u8]) -> Vec<u8> {
+        let ts: &[u8] = match fmt {
+            TimestampFormat::Standard => &[0xA0, 0x86, 0x01, 0x00],
+            _ => &[0x0F, 0x18, 0x26, 0xDB, 0x21, 0xF6],
+        };
+        let words = 1 + ts.len() / 2 + 1 + tail.len() / 2;
+        let type_word = 0x4000 | (u16::try_from(words).unwrap() << 8) | 0x02;
+        let mut errored = type_word.to_le_bytes().to_vec();
+        errored.extend_from_slice(ts);
+        errored.extend_from_slice(&0x0120u16.to_le_bytes());
+        errored.extend_from_slice(tail);
+
+        let clean = || {
+            let mut r = rt15_sa11_rcv();
+            if fmt == TimestampFormat::Standard {
+                // Drop one timestamp word: Standard is 2 words, IRIG 3.
+                r.drain(6..8);
+                r[1] -= 1;
+            }
+            r
+        };
+        let mut data = clean();
+        data.extend(errored);
+        data.extend(clean());
+        data
+    }
+
+    fn decode_all(data: &[u8], fmt: TimestampFormat, strict: bool) -> Vec<MieResult<MieMessage>> {
+        let f = write_temp(data);
+        let reader = MieFileReader::with_options(
+            f.path(),
+            ReaderOptions {
+                strict,
+                input_time_format: fmt,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        reader.iter().collect()
+    }
+
+    /// An errored record that ends at its Command Word has no Error Word.
+    /// Strict mode SHALL reject it as a `PayloadError` naming the missing word,
+    /// in both timestamp formats -- not read the Command Word as the code.
+    /// Requirements: L2-ERR-002
+    #[test]
+    fn strict_rejects_errored_record_without_error_word() {
+        for fmt in [TimestampFormat::Irig, TimestampFormat::Standard] {
+            let got = decode_all(&errored_record_between_clean(fmt, &[]), fmt, true);
+            assert_eq!(
+                got.len(),
+                2,
+                "{fmt:?}: clean record, then the error, then nothing"
+            );
+            assert!(got[0].is_ok(), "{fmt:?}: the leading clean record decodes");
+            let err = got[1]
+                .as_ref()
+                .expect_err("the short errored record must fail");
+            assert_eq!(
+                err.kind(),
+                crate::error::MieErrorKind::PayloadError,
+                "{fmt:?}"
+            );
+            assert!(
+                err.to_string().contains("errored record has no Error Word"),
+                "{fmt:?}: {err}"
+            );
+        }
+    }
+
+    /// Lenient mode SHALL skip the record with a WARN and keep decoding; no
+    /// record may come out carrying the Command Word as its error code.
+    /// Requirements: L2-ERR-002
+    #[test]
+    fn lenient_skips_errored_record_without_error_word() {
+        for fmt in [TimestampFormat::Irig, TimestampFormat::Standard] {
+            let msgs: Vec<MieMessage> =
+                decode_all(&errored_record_between_clean(fmt, &[]), fmt, false)
+                    .into_iter()
+                    .collect::<Result<_, _>>()
+                    .expect("lenient mode must not abort");
+            assert_eq!(msgs.len(), 2, "{fmt:?}: both clean records, nothing else");
+            assert!(
+                msgs.iter().all(|m| !m.is_error() && m.error_word.is_none()),
+                "{fmt:?}: {msgs:?}"
+            );
+        }
+    }
+
+    /// A skipped record leaves no errored predecessor (L2-ERR-002 rationale):
+    /// the `SPURIOUS_DATA` after it is standalone `0x2001`, not a `0x2000`
+    /// continuation of the well-formed error two records back.
+    /// Requirements: L2-ERR-002, L2-ERR-006
+    #[test]
+    fn skipped_errored_record_breaks_the_continuation() {
+        let fmt = TimestampFormat::Irig;
+        // clean, well-formed error (Error Word present), short error, then:
+        let mut data = errored_record_between_clean(fmt, &ERROR_MANCHESTER_PARITY.to_le_bytes());
+        data.truncate(data.len() - rt15_sa11_rcv().len());
+        let short = errored_record_between_clean(fmt, &[]);
+        let clean_len = rt15_sa11_rcv().len();
+        data.extend_from_slice(&short[clean_len..short.len() - clean_len]);
+        // SPURIOUS_DATA: Type 0x20, 6 words = Type + IRIG + 2 leftover words.
+        data.extend_from_slice(&[0x20, 0x06, 0x0F, 0x18, 0x26, 0xDB, 0x21, 0xF6]);
+        data.extend_from_slice(&[0xAA, 0xAA, 0xBB, 0xBB]);
+        data.extend(rt15_sa11_rcv());
+
+        let msgs: Vec<MieMessage> = decode_all(&data, fmt, false)
+            .into_iter()
+            .collect::<Result<_, _>>()
+            .expect("lenient mode must not abort");
+        let codes: Vec<_> = msgs.iter().map(|m| m.error_word).collect();
+        assert_eq!(
+            codes,
+            [
+                None,
+                Some(ERROR_MANCHESTER_PARITY),
+                Some(crate::models::ERROR_SPURIOUS_STANDALONE),
+                None
+            ]
+        );
+    }
+
+    /// The boundary: one word more holds the Error Word and nothing else, and
+    /// that record decodes with its real code and an empty payload.
+    /// Requirements: L2-ERR-002
+    #[test]
+    fn errored_record_with_only_an_error_word_decodes() {
+        for fmt in [TimestampFormat::Irig, TimestampFormat::Standard] {
+            let data = errored_record_between_clean(fmt, &ERROR_MANCHESTER_PARITY.to_le_bytes());
+            let msgs: Vec<MieMessage> = decode_all(&data, fmt, true)
+                .into_iter()
+                .collect::<Result<_, _>>()
+                .expect("a record with its Error Word is well formed");
+            assert_eq!(msgs.len(), 3, "{fmt:?}");
+            assert!(msgs[1].is_error(), "{fmt:?}");
+            assert_eq!(msgs[1].error_word, Some(ERROR_MANCHESTER_PARITY), "{fmt:?}");
+            assert!(msgs[1].data_words.is_empty(), "{fmt:?}");
+        }
     }
 
     /// L2-SYN-018: 0x20-fill parses as a `SPURIOUS_DATA` Type Word

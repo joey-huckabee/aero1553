@@ -630,6 +630,25 @@ RecordIter::Step RecordIter::decode_one(MieMessage& out) {
 
     // Errored record: Type Word bit 14.
     if (tw.error) {
+        // The Error Word is the record's last word, so it needs a slot of its
+        // own after the Command Word (L2-ERR-002). Sync validation admits a
+        // record that ends AT the Command Word, and reading "the last word" of
+        // that one reads the Command Word as the error code. Checked before
+        // delta_for, which would otherwise advance the DELTA state for a record
+        // that is then skipped.
+        const uint16_t min_words = static_cast<uint16_t>(1 + ts_words + 1 + 1);
+        if (tw.word_count < min_words) {
+            const std::string detail = "errored record has no Error Word: word count " +
+                                       dec(tw.word_count) + " ends at the Command Word (needs " +
+                                       "at least " + dec(min_words) + ")";
+            if (strict_) {
+                fail(MieError::payload_error(static_cast<uint64_t>(offset_), detail));
+            }
+            MIE_LOG_WARN(detail + " at " + hex(offset_) + "; skipping record");
+            offset_ += record_bytes;
+            prev_error_timestamp_.reset();
+            return STEP_CONTINUE;
+        }
         const Optional<double> delta = delta_for(cmd, timestamp);
         // A failure inside decode_error_record (a strict-mode UnknownErrorCode,
         // or an Error Word past the end) throws, and `fail` has already latched

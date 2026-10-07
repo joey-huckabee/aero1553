@@ -1,0 +1,25 @@
+# L2-ERR-002 fixture: clean RT15 SA11 R record, then an ERRORED record
+# (Type 0x4502: bit 14, 5 words) that ends at its Command Word, then the
+# clean record again. 5 IRIG words is Type + timestamp + Command Word, so
+# there is no Error Word slot; its last word is the Command Word 0x0120
+# (RT0 SA9 R), which is also the known DDC code ERROR_NO_RESPONSE -- through
+# v4.0.0 Rust and C++ reported it as ERROR_CODE 0120 without a WARN, strict
+# mode included. Strict now exits 1 with a PayloadError; lenient skips the
+# record with a WARN and emits the two clean rows.
+
+# clean record (36 words)
+02240F1826DB21F67E79000400000000
+2F0022CA2F0022CA0000000000000000
+00000000000000000000000000000000
+00000000000000000000000000000000
+0000000071C70078
+
+# errored record with no Error Word: Type 0x4502, IRIG, Cmd 0x0120
+02450F1826DB21F62001
+
+# clean record again
+02240F1826DB21F67E79000400000000
+2F0022CA2F0022CA0000000000000000
+00000000000000000000000000000000
+00000000000000000000000000000000
+0000000071C70078

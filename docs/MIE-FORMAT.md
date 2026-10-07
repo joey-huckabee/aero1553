@@ -398,7 +398,7 @@ The resulting error record looks like:
 └──────────────┴─────┴─────┴───────────────┴────────────┘
 ```
 
-The Error Word's value names the failure (the DDC hardware error code). Aero1553 reads the final word of every error record and emits it in the CSV `ERROR_CODE` column with `ERROR` in the `ERROR` column. Strict mode rejects unknown DDC error codes (L2-ERR-004); lenient mode logs a WARN and still emits the row, with the **raw code** in `ERROR_CODE` — the CSV always carries the value read from the file, never a literal `UNKNOWN` placeholder.
+The Error Word's value names the failure (the DDC hardware error code). Aero1553 reads the final word of every error record and emits it in the CSV `ERROR_CODE` column with `ERROR` in the `ERROR` column. Strict mode rejects unknown DDC error codes (L2-ERR-004); lenient mode logs a WARN and still emits the row, with the **raw code** in `ERROR_CODE` — the CSV always carries the value read from the file, never a literal `UNKNOWN` placeholder. The Error Word needs a slot of its own after the Command Word, so an error record is at least 6 words with an IRIG timestamp and 5 with a Standard one. One shorter than that ends at its Command Word and has no Error Word: it is malformed (L2-ERR-002) -- strict mode rejects it with a `PayloadError`, lenient mode skips it with a WARN -- and its Command Word is never reported as an error code.
 
 ### 7.2 DDC hardware error codes (`0x01xx`)
 
