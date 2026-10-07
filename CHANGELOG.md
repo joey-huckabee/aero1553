@@ -30,6 +30,20 @@ shared behavior) holds at any compatible version pair. See
   where `0xFFFFFFFF` ticks at `0.9` Hz read `DELTA` `1.111112` instead of
   `1.111111`. It now uses `std::round`. Two conformance cases pin both
   inputs across all three implementations.
+- **An errored record with no room for its Error Word is rejected, not
+  decoded with its Command Word as the error code** (Rust and C++, and so
+  the Python package; L2-ERR-002 amended). The Error Word is an errored
+  record's last word, but sync validation admits a record that ends at its
+  Command Word -- 5 words with an IRIG timestamp, 4 with a Standard one --
+  and for that record "the last word" is the Command Word. Its value came
+  out as `ERROR_CODE`; when it happened to be a known `0x01xx` code
+  (`0x0120`, RT0 SA9 R, reads as "no response") the row passed without a
+  WARN, strict mode included. Such a record is now malformed, handled like
+  a structural-invariant failure: `--strict` exits 1 with a `PayloadError`
+  naming the missing Error Word; lenient mode skips it with a WARN, and a
+  `SPURIOUS_DATA` record after it is standalone (`2001`). **Behaviour
+  change:** such a file decoded under `--strict` exits 1 where it exited 0,
+  and loses a row in lenient mode.
 
 ### Maintenance
 

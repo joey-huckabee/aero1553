@@ -93,6 +93,27 @@
       "expected": "expected/standard-tick-rate-unrepresentable.csv"
     },
     {
+      "name": "errored-record-no-error-word-strict",
+      "input": "inputs/errored-record-no-error-word.hex",
+      "args": [
+        "--strict",
+        "--input-time-format",
+        "irig"
+      ],
+      "expected_exit": 1,
+      "expected_stderr_contains": "errored record has no Error Word: word count 5 ends at the Command Word (needs at least 6)"
+    },
+    {
+      "name": "errored-record-no-error-word-lenient",
+      "input": "inputs/errored-record-no-error-word.hex",
+      "args": [
+        "--input-time-format",
+        "irig"
+      ],
+      "expected": "expected/errored-record-no-error-word-lenient.csv",
+      "expected_stderr_contains": "errored record has no Error Word: word count 5 ends at the Command Word (needs at least 6) at 0x48; skipping record"
+    },
+    {
       "name": "standard-tick-rounding-below-half",
       "input": "inputs/standard-tick-rounding-below-half.hex",
       "args": [

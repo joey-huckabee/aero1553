@@ -112,6 +112,30 @@ std::vector<uint16_t> errored(uint8_t rt, uint8_t subaddress, uint8_t payload, u
     return words;
 }
 
+/// An errored record that ends AT its Command Word: Type(bit 14), timestamp,
+/// Cmd, and `tail` (nothing, or an Error Word alone). With no tail it has no
+/// Error Word, and the record's last word is the Command Word.
+///
+/// The Command Word is 0x0120 -- RT0 SA9 R, and also the known DDC code
+/// ERROR_NO_RESPONSE -- so reading it as the Error Word passes the known-code
+/// check silently, in strict mode too. That is what kept the defect hidden.
+std::vector<uint16_t> errored_ending_at_command(bool standard, uint32_t at,
+                                                const std::vector<uint16_t>& tail) {
+    const uint16_t ts_words = standard ? 2 : 3;
+    std::vector<uint16_t> words;
+    words.push_back(type_word(mie::MESSAGE_TYPE_BC_TO_RT,
+                              static_cast<uint16_t>(1 + ts_words + 1 + tail.size()),
+                              /*error=*/true));
+    if (standard) {
+        push_standard(words, at);
+    } else {
+        push_irig(words, at);
+    }
+    words.push_back(0x0120);
+    words.insert(words.end(), tail.begin(), tail.end());
+    return words;
+}
+
 /// A Standard-timestamp BC-to-RT record: Type, 2 counter words, Cmd, data,
 /// Status.
 std::vector<uint16_t> bc_to_rt_standard(uint8_t rt, uint8_t subaddress, uint8_t data_words,
@@ -736,6 +760,87 @@ TEST_CASE("an errored record with no payload words still decodes", "[reader][L2-
     CHECK(walk.messages[0].data_words.empty());
     REQUIRE(walk.messages[0].error_word.has_value());
     CHECK(walk.messages[0].error_word.value() == mie::ERROR_NO_RESPONSE);
+}
+
+TEST_CASE("an errored record with no room for an Error Word is malformed", "[reader][L2-ERR-002]") {
+    // Sync validation admits a record that ends at its Command Word; bit 14
+    // does not raise that minimum. Reading such a record's "last word" as the
+    // Error Word read the Command Word. Both formats, because the minimum is
+    // format-dependent: 5 words for IRIG, 4 for Standard.
+    const bool standard = GENERATE(false, true);
+    INFO((standard ? "Standard" : "IRIG"));
+
+    mie::ReaderOptions lenient;
+    lenient.input_time_format = standard ? mie::TIMESTAMP_STANDARD : mie::TIMESTAMP_IRIG;
+    mie::ReaderOptions strict = lenient;
+    strict.strict = true;
+
+    const std::vector<uint16_t> no_tail;
+    std::vector<uint16_t> words = standard ? bc_to_rt_standard(6, 2, 2, 0) : bc_to_rt(6, 2, 2, 0);
+    std::vector<uint16_t> with_error_word = words;
+    words += errored_ending_at_command(standard, 100, no_tail);
+    with_error_word += errored_ending_at_command(
+        standard, 100, std::vector<uint16_t>(1, mie::ERROR_MANCHESTER_PARITY));
+    const std::vector<uint16_t> clean =
+        standard ? bc_to_rt_standard(6, 2, 2, 200) : bc_to_rt(6, 2, 2, 200);
+    words += clean;
+    with_error_word += clean;
+
+    SECTION("strict rejects it as a payload error naming the missing word") {
+        const Walk walk = walk_words(words, strict);
+        CHECK(walk.threw);
+        CHECK(walk.kind == mie::KIND_PAYLOAD_ERROR);
+        CHECK(walk.error_message.find("errored record has no Error Word") != std::string::npos);
+        // The leading clean record came out first, so the failure is this
+        // record's, not a sync rejection of the file.
+        CHECK(walk.messages.size() == 1);
+        CHECK(walk.closed_after_throw);
+    }
+
+    SECTION("lenient skips it with a warning and keeps decoding") {
+        const LogCapture capture(mie::log::LEVEL_WARN);
+        const Walk walk = walk_words(words, lenient);
+        CHECK_FALSE(walk.threw);
+        REQUIRE(walk.messages.size() == 2);
+        for (std::size_t i = 0; i < walk.messages.size(); ++i) {
+            CHECK_FALSE(walk.messages[i].is_error());
+            CHECK_FALSE(walk.messages[i].error_word.has_value());
+        }
+        CHECK(capture.contains("errored record has no Error Word"));
+    }
+
+    SECTION("one word more holds the Error Word, and decodes with its real code") {
+        const Walk walk = walk_words(with_error_word, strict);
+        CHECK_FALSE(walk.threw);
+        REQUIRE(walk.messages.size() == 3);
+        CHECK(walk.messages[1].is_error());
+        REQUIRE(walk.messages[1].error_word.has_value());
+        CHECK(walk.messages[1].error_word.value() == mie::ERROR_MANCHESTER_PARITY);
+        CHECK(walk.messages[1].data_words.empty());
+    }
+}
+
+TEST_CASE("a skipped errored record leaves no parent for a spurious one",
+          "[reader][L2-ERR-002][L2-ERR-006]") {
+    // Well-formed error, then one with no Error Word, then SPURIOUS_DATA. The
+    // skip must clear the errored-predecessor state, or the spurious record
+    // becomes a 0x2000 continuation of the error two records back.
+    const std::vector<uint16_t> no_tail;
+    std::vector<uint16_t> words = bc_to_rt(6, 2, 2, 0);
+    words += errored(6, 2, 0, mie::ERROR_MANCHESTER_PARITY, 100);
+    words += errored_ending_at_command(false, 200, no_tail);
+    words += spurious(2, 300);
+    words += bc_to_rt(6, 2, 2, 400);
+
+    mie::ReaderOptions lenient;
+    lenient.input_time_format = mie::TIMESTAMP_IRIG;
+    const Walk walk = walk_words(words, lenient);
+    CHECK_FALSE(walk.threw);
+    REQUIRE(walk.messages.size() == 4);
+    REQUIRE(walk.messages[1].error_word.has_value());
+    CHECK(walk.messages[1].error_word.value() == mie::ERROR_MANCHESTER_PARITY);
+    REQUIRE(walk.messages[2].error_word.has_value());
+    CHECK(walk.messages[2].error_word.value() == mie::ERROR_SPURIOUS_STANDALONE);
 }
 
 // ---------------------------------------------------------------------------

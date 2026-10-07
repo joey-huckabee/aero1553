@@ -215,6 +215,12 @@ whose **`ERROR_CODE`** is the DDC code:
 | `0x0150` | A DDC error not in the list above (catch-all) |
 | other `0x01xx` | Unknown firmware code — **strict** errors (exit 1); **lenient** emits the row and WARNs |
 
+An error record too short to hold an Error Word -- one that ends at its command
+word (5 words with an IRIG timestamp, 4 with a Standard one) -- cannot have come
+from the card intact. It is treated as malformed: **strict** errors (exit 1,
+"errored record has no Error Word"); **lenient** skips it with a WARN and keeps
+decoding. Its command word is never reported as an error code.
+
 ### Spurious data (orphan words)
 
 If a transaction is cut short, the card may write the leftover words as a

@@ -512,8 +512,8 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-ERR-002
 
 **Parent**: L1-ERR-001
-**Statement**: The final word of an errored record SHALL be decoded as its DDC Error Word.
-**Rationale**: When bit 14 is set, the card truncates the payload and appends an Error Word in the last 16-bit slot. The decoder extracts this word as the error class.
+**Statement**: The final word of an errored record SHALL be decoded as its DDC Error Word. That word SHALL follow the Command Word: an errored record whose word count leaves no slot after the Command Word (fewer than 6 words with an IRIG timestamp, 5 with a Standard one) has no Error Word and SHALL be treated as malformed -- in strict mode rejected with a `PayloadError` that names the missing Error Word, and in lenient mode skipped with a WARN, exactly as a record failing a structural invariant (L2-SYN-020) is. No row SHALL be emitted for it, and its Command Word SHALL NOT be reported as an error code.
+**Rationale**: When bit 14 is set, the card truncates the payload and appends an Error Word in the last 16-bit slot. The decoder extracts this word as the error class. Sync validation admits any record that reaches its Command Word, and bit 14 does not raise that minimum, so a record ending at the Command Word passes it; read naively, its "last word" is the Command Word. Rust and C++ both did that through v4.0.0: the Command Word came out as `ERROR_CODE`, and when its value happened to be a known `0x01xx` code (`0x0120`, for instance, is RT0 SA9 R) it passed the known-code check without a WARN, even in strict mode. Such a record cannot have come from the card intact, which always appends the Error Word, so it is handled like the other internally inconsistent records rather than given a row with an empty `ERROR_CODE` -- a shape the CSV otherwise never has. A skipped record leaves no errored predecessor, so a `SPURIOUS_DATA` record after it is standalone (`0x2001`), as after any skipped record.
 **Verification Method**: Test (T)
 
 #### L2-ERR-003
