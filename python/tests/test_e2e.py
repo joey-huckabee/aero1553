@@ -10,6 +10,7 @@ from __future__ import annotations
 import csv
 import errno
 import io
+import re
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -1650,6 +1651,14 @@ class TestDeltaAndErrorRecords:
             f"expected exactly one non-monotonic WARN per key; got "
             f"{[w.getMessage() for w in warns]}"
         )
+        # The whole line, not a keyword: through v4.0.0 the Rust literal behind
+        # it carried two runs of 18 spaces, and the keyword check passed.
+        assert re.fullmatch(
+            r"non-monotonic timestamp at 0x[0-9A-F]+ for RT/MSG key 0x000F0B00: "
+            r"prev_us=\d+ curr_us=\d+ "
+            r"\(further out-of-order occurrences for this key suppressed\)",
+            warns[0].getMessage(),
+        ), warns[0].getMessage()
 
     @pytest.mark.requirement("L2-RDR-018")
     @pytest.mark.requirement("L2-ERR-005")

@@ -44,6 +44,14 @@ shared behavior) holds at any compatible version pair. See
   `SPURIOUS_DATA` record after it is standalone (`2001`). **Behaviour
   change:** such a file decoded under `--strict` exits 1 where it exited 0,
   and loses a row in lenient mode.
+- **The Rust non-monotonic-timestamp WARN is one well-formed line again**
+  (Rust, and so the Python package; L2-RDR-017 amended). A refactor in
+  v2.13.0 joined its three-line string literal without the `\` line
+  continuations, so the message carried two runs of 18 spaces
+  (`0x000F0B00:                  prev_us=...`). C++ was unaffected. Every
+  test matched only the words "non-monotonic timestamp"; the requirement now
+  pins the whole line, and the conformance case checks it for all three
+  implementations.
 
 ### Maintenance
 

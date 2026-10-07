@@ -1433,7 +1433,9 @@ impl RecordIter<'_> {
         } = outcome
         {
             log_warn!(
-                "non-monotonic timestamp at 0x{:X} for RT/MSG key 0x{:08X}:                  prev_us={} curr_us={} (further out-of-order occurrences for                  this key suppressed)",
+                "non-monotonic timestamp at 0x{:X} for RT/MSG key 0x{:08X}: \
+                 prev_us={} curr_us={} (further out-of-order occurrences for \
+                 this key suppressed)",
                 self.offset,
                 crate::delta::delta_key(
                     cmd.rt,

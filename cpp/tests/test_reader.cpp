@@ -30,6 +30,7 @@
 
 #include <cstdio>
 #include <cstdlib>
+#include <sstream>
 #include <string>
 #include <vector>
 
@@ -1068,6 +1069,21 @@ TEST_CASE("a backwards clock leaves DELTA absent and warns once per key", "[read
     // Two out-of-order records, one warning: a chronically unsorted file would
     // otherwise emit a line per record and bury everything else.
     CHECK(capture.count_containing("non-monotonic timestamp") == 1);
+
+    // The whole line, not a keyword: the text is shared with Rust (L2-RDR-017),
+    // and a keyword check passed while Rust's copy carried two 18-space runs
+    // from a literal whose line continuations were lost.
+    uint64_t prev_us = 0;
+    uint64_t curr_us = 0;
+    REQUIRE(walk.messages[0].timestamp.to_microseconds(mie::none(), prev_us));
+    REQUIRE(walk.messages[1].timestamp.to_microseconds(mie::none(), curr_us));
+    std::ostringstream expected;
+    expected << "non-monotonic timestamp at 0x" << std::uppercase << std::hex
+             << bc_to_rt(3, 5, 2, 500000).size() * 2
+             << " for RT/MSG key 0x00030500: prev_us=" << std::dec << prev_us
+             << " curr_us=" << curr_us
+             << " (further out-of-order occurrences for this key suppressed)";
+    CHECK(capture.contains(expected.str()));
 }
 
 TEST_CASE("each key gets its own non-monotonic warning", "[reader][L2-RDR-017]") {

@@ -820,6 +820,49 @@ fn decode_emits_exit_class_summary_at_info_level() {
     );
 }
 
+/// The non-monotonic WARN reads exactly as the C++ one does (L2-RDR-017).
+///
+/// Checked as a whole line, not a keyword: through v4.0.0 the Rust literal had
+/// lost its `\` line continuations in a refactor, so the message carried two
+/// runs of 18 spaces, and every test that looked for "non-monotonic" passed.
+/// Same two records as `tests/conformance/inputs/single-file-non-monotonic.hex`:
+/// RT15 SA11 R at 50.500000, then at 50.250000.
+///
+/// Requirements: L2-RDR-017
+#[test]
+fn non_monotonic_warn_is_one_well_formed_line() {
+    let mut data = one_valid_record();
+    data[4..8].copy_from_slice(&hex("27DB20A1"));
+    let mut earlier = one_valid_record();
+    earlier[4..8].copy_from_slice(&hex("23DB90D0"));
+    data.extend(earlier);
+
+    let tmp = TempDir::new();
+    let input = tmp.write("rec.mie", &data);
+    let output = tmp.path().join("out.csv");
+    let out = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("-o"),
+        output.as_os_str(),
+    ]);
+    assert_eq!(exit_code(&out), 0);
+
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    let expected = "non-monotonic timestamp at 0x48 for RT/MSG key 0x000F0B00: \
+                    prev_us=16646090500000 curr_us=16646090250000 \
+                    (further out-of-order occurrences for this key suppressed)";
+    let line = stderr
+        .lines()
+        .find(|l| l.contains("non-monotonic timestamp"))
+        .unwrap_or_else(|| panic!("no non-monotonic WARN\n--- stderr ---\n{stderr}"));
+    assert!(
+        line.ends_with(expected),
+        "WARN text drifted\n  got:  {line}\n  want: ...{expected}"
+    );
+    assert_eq!(stderr.matches("non-monotonic timestamp").count(), 1);
+}
+
 // ── dump subcommand (L2-CLI-009) ─────────────────────────────────────
 
 /// Requirements: L2-CLI-009
