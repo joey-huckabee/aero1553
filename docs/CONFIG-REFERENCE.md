@@ -268,7 +268,7 @@ When you set this key to your card's counter frequency in Hz, the decoder conver
 microseconds = round(raw_ticks × 1_000_000 / standard_tick_rate_hz)
 ```
 
-— and Standard records then participate in per-RT/MSG `DELTA` tracking on exactly the same terms as IRIG records (first occurrence `0.000000`, subsequent gaps in seconds, empty on a non-monotonic step). Rounding is half-away-from-zero and is identical across the Rust and Python implementations.
+— and Standard records then participate in per-RT/MSG `DELTA` tracking on exactly the same terms as IRIG records (first occurrence `0.000000`, subsequent gaps in seconds, empty on a non-monotonic step). Rounding is half-away-from-zero and is identical across all three implementations.
 
 This setting has no effect on IRIG recordings (IRIG already carries absolute time) and no effect when `input_time_format` resolves to anything other than `standard`.
 

@@ -19,6 +19,18 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Fixed
+
+- **C++ rounds a calibrated Standard timestamp the same way as Rust and
+  Python** (L2-DEC-017). It computed `floor(x + 0.5)`, where the addition
+  rounds before `floor` sees it, so two kinds of input came out 1 µs high:
+  `0.49999999999999994` µs (1 tick at `--standard-tick-rate-hz
+  2000000.0000000002`), and every odd count from 2^52 to 2^53 µs, where
+  doubles are spaced 1 apart -- reached at tick rates below about 0.95 Hz,
+  where `0xFFFFFFFF` ticks at `0.9` Hz read `DELTA` `1.111112` instead of
+  `1.111111`. It now uses `std::round`. Two conformance cases pin both
+  inputs across all three implementations.
+
 ### Maintenance
 
 - **`cargo-semver-checks` runs again**, against `v4.0.0`. It was disabled

@@ -93,6 +93,28 @@
       "expected": "expected/standard-tick-rate-unrepresentable.csv"
     },
     {
+      "name": "standard-tick-rounding-below-half",
+      "input": "inputs/standard-tick-rounding-below-half.hex",
+      "args": [
+        "--input-time-format",
+        "standard",
+        "--standard-tick-rate-hz",
+        "2000000.0000000002"
+      ],
+      "expected": "expected/standard-tick-rounding-below-half.csv"
+    },
+    {
+      "name": "standard-tick-rounding-odd-above-2p52",
+      "input": "inputs/standard-tick-rounding-odd-above-2p52.hex",
+      "args": [
+        "--input-time-format",
+        "standard",
+        "--standard-tick-rate-hz",
+        "0.9"
+      ],
+      "expected": "expected/standard-tick-rounding-odd-above-2p52.csv"
+    },
+    {
       "name": "auto-detect-standard",
       "input": "inputs/standard-timestamps.hex",
       "expected": "expected/standard-timestamps.csv"

@@ -233,11 +233,29 @@ TEST_CASE("Standard ticks convert only with a usable rate", "[models][timestamp]
         CHECK_FALSE(t.to_microseconds(-1.0, micros));
     }
 
-    SECTION("rounding is half-away-from-zero, matching Python's int(x + 0.5)") {
+    SECTION("rounding is half-away-from-zero") {
         const mie::StandardTimestamp odd(3, 0, 3);
         REQUIRE(odd.to_microseconds(2000000.0, micros));
         // 3 ticks / 2 MHz = 1.5 us -> 2, not 1.
         CHECK(micros == 2);
+    }
+
+    SECTION("rounding is of the exact value, not of value + 0.5") {
+        // The two inputs on which floor(x + 0.5) disagrees with Rust's
+        // f64::round; the C++ tree used that form until both were pinned.
+        //
+        // 1 tick at 2000000.0000000002 Hz is 0.49999999999999994, one ULP
+        // below 0.5; adding 0.5 rounds up to exactly 1.0.
+        const mie::StandardTimestamp one(1, 0, 1);
+        REQUIRE(one.to_microseconds(2000000.0000000002, micros));
+        CHECK(micros == 0);
+
+        // From 2^52 to 2^53 doubles are spaced 1 apart, so x + 0.5 is a tie
+        // that rounds to even: every odd count came out 1 high. 0xFFFFFFFF
+        // ticks at 0.9 Hz is the odd 4772185883333333 exactly.
+        const mie::StandardTimestamp max(0xFFFFFFFFu, 0xFFFF, 0xFFFF);
+        REQUIRE(max.to_microseconds(0.9, micros));
+        CHECK(micros == 4772185883333333ULL);
     }
 }
 

@@ -280,8 +280,7 @@ TEST_CASE("IRIG absolute microseconds agree with an independent computation",
 
 TEST_CASE("Standard tick conversion rounds half away from zero",
           "[models][exhaustive][L2-DEC-017]") {
-    // Ticks are non-negative, so half-away-from-zero and Python's int(x + 0.5)
-    // agree exactly. Swept over every half-tick boundary a 2 MHz counter can
+    // Swept over every half-tick boundary a 2 MHz counter can
     // produce in its first thousand ticks -- the region where a floor-instead-
     // of-round bug is invisible in a spot check.
     for (uint32_t ticks = 0; ticks < 1000; ++ticks) {
