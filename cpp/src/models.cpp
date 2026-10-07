@@ -347,10 +347,12 @@ bool StandardTimestamp::to_microseconds(double tick_rate_hz, uint64_t& out) cons
         return false;
     }
     const double micros = static_cast<double>(raw_value) * 1000000.0 / tick_rate_hz;
-    // Half-away-from-zero, matching Python's int(x + 0.5). Ticks are
-    // non-negative so the two agree exactly; std::round has the same tie
-    // behaviour and says so without an added constant.
-    const double rounded = std::floor(micros + 0.5);
+    // Half-away-from-zero (L2-DEC-017), as Rust's f64::round. Not
+    // floor(micros + 0.5): the addition rounds before floor sees it, so that
+    // form returns 1 for 0.49999999999999994 and, where doubles are spaced 1
+    // apart (2^52 to 2^53, reached at sub-1 Hz rates), adds 1 to every odd
+    // count. std::round rounds the exact value.
+    const double rounded = std::round(micros);
 
     // Decline a result that cannot be a microsecond count. This is reachable
     // from ordinary operator input: `--standard-tick-rate-hz 1e-300` is finite

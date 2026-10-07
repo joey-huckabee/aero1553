@@ -1,0 +1,17 @@
+# L2-DEC-017 rounding parity, case 2 of 2. The records of
+# standard-timestamps.hex with counter values 0xFFFFFFFE then 0xFFFFFFFF.
+# At --standard-tick-rate-hz 0.9 these are 4772185882222222 and the odd
+# 4772185883333333 us, both between 2^52 and 2^53, where doubles are
+# spaced 1 apart: x + 0.5 is a tie that rounds to even, so floor(x + 0.5)
+# -- the C++ form before this case -- put the second 1 us high and DELTA
+# read 1.111112 instead of 1.111111.
+
+0223FFFFFEFF7E790004000000002F00
+22CA2F0022CA00000000000000000000
+00000000000000000000000000000000
+00000000000000000000000000000000
+000071C700780223FFFFFFFF7E790004
+000000002F0022CA2F0022CA00000000
+00000000000000000000000000000000
+00000000000000000000000000000000
+000000000000000071C70078

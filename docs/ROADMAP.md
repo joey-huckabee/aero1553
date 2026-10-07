@@ -134,58 +134,6 @@ so the request isn't folded into the time-merge contract without separate design
     suppressible outright with `--no-irig-day-advisory` (L2-LOG-001) for a
     site that has already validated its own card model.
 
-- **Standard-tick rounding diverges between C++ and the other two.** Found
-  during the v3.0.0 timestamp work, in code that release did not touch, so
-  it is recorded here rather than fixed opportunistically alongside an
-  unrelated change.
-
-  `StandardTimestamp::to_microseconds` is specified as half-away-from-zero
-  (L2-DEC-017), and Rust and Python implement it that way -- Rust with
-  `f64::round`, Python with the explicit `floor(x) + (1 if frac >= 0.5)`.
-  **C++ uses `std::floor(micros + 0.5)`**, which is the one formulation
-  Python's own docstring singles out as wrong, because `x + 0.5` can round
-  up across the boundary before `floor` sees it.
-
-  - **Reachable, and pinned to a single value.** Exactly one double in the
-    whole range diverges: `0.49999999999999994`, the largest double below
-    `0.5`. Everywhere else the three agree, including every double in the
-    2^64 neighbourhood. Reproducer: `raw_value = 1` with
-    `--standard-tick-rate-hz 2000000.0000000002` yields **1 us** in C++ and
-    **0 us** in Rust and Python. It takes a deliberately adversarial tick
-    rate to hit, which is why no fixture has caught it -- but the rate is
-    ordinary operator input, so "unreachable" would be too strong.
-  - **The comment above it is wrong twice over**, which is the part worth
-    fixing regardless of the arithmetic. It claims parity with Python's
-    `int(x + 0.5)` -- Python does not do that and explicitly warns against
-    it -- and then observes that `std::round` "has the same tie behaviour"
-    without using it. A future reader checking this line against the
-    requirement would be told it already agrees.
-  - **Fix when taken:** `std::round(micros)` in `cpp/src/models.cpp`, the
-    comment corrected to name the real reference (Rust's `f64::round` and
-    Python's explicit form), and a shared conformance case pinning that
-    one input across all three. The change is two lines; the conformance
-    case is the part that keeps it fixed.
-
-- **Two adjacent findings from the same sweep, both benign, recorded so they
-  are not re-investigated.**
-  - *Range-check ordering.* Python range-checks the **unrounded** value and
-    then rounds; Rust and C++ round first and check after. The orderings
-    genuinely differ, but **no input distinguishes them**: every double at
-    or above 2^52 is already an integer, so rounding is a no-op exactly
-    where the `[0, 2^64)` bound bites. Checked over 400,000 values
-    including every double in the 200 immediately below 2^64 -- zero
-    divergences. This is a readability difference, not a defect; leaving it
-    alone is a defensible answer.
-  - *Stray-`Auto` fallback points opposite ways.* In the per-record
-    timestamp decode, Rust and C++ fall back to IRIG when handed an
-    unresolved `Auto`, while Python's `if fmt == IRIG: ... else: standard`
-    falls back to Standard. **Unreachable in all three** -- every
-    implementation resolves `Auto` to a concrete format before iteration
-    begins -- so this is a defensive path only. Worth aligning on the next
-    edit to that function for the same reason the L3-RDR-001 delta-key
-    extraction was worth doing: two implementations quietly disagreeing
-    about a "cannot happen" case is how a later change makes it happen.
-
 ## SonarCloud security findings on the input path (resolved)
 
 **Resolved.** `main` failed the SonarCloud quality gate from the v2.12.0 cut

@@ -322,9 +322,8 @@ struct StandardTimestamp {
     ///
     /// Declines (returns false) unless the rate is finite and strictly
     /// positive, so an uncalibrated or nonsensical rate can never be mistaken
-    /// for real timing. Rounding is half-away-from-zero; ticks are
-    /// non-negative, so this matches Python's `int(x + 0.5)` exactly
-    /// (L2-DEC-017).
+    /// for real timing. Rounding is half-away-from-zero, as Rust's
+    /// `f64::round` (L2-DEC-017).
     bool to_microseconds(double tick_rate_hz, uint64_t& out) const;
 
     /// `0xNNNNNNNN`.

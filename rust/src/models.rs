@@ -572,8 +572,9 @@ impl StandardTimestamp {
     /// unless the rate is finite and strictly positive, so an uncalibrated or
     /// invalid rate can never be mistaken for real timing.
     ///
-    /// Rounding is half-away-from-zero; ticks are non-negative so this matches
-    /// the Python implementation's `int(x + 0.5)` exactly (see L2-DEC-017).
+    /// Rounding is half-away-from-zero, by `f64::round` on the exact quotient
+    /// (see L2-DEC-017). `floor(x + 0.5)` is not equivalent: the addition
+    /// rounds first.
     #[must_use]
     pub fn to_microseconds(self, standard_tick_rate_hz: f64) -> Option<u64> {
         // 2^64 exactly, which f64 represents without rounding -- so this bound
@@ -1048,8 +1049,7 @@ mod tests {
     /// Requirements: L2-DEC-017
     #[test]
     fn standard_to_microseconds_rounds_half_away_from_zero() {
-        // 3 ticks at 2 MHz = 1.5 µs → rounds up to 2 (half-away-from-zero,
-        // matching Python's floor-based rounding).
+        // 3 ticks at 2 MHz = 1.5 µs → rounds up to 2 (half-away-from-zero).
         let t = StandardTimestamp {
             raw_value: 3,
             upper_word: 0,
@@ -1064,9 +1064,19 @@ mod tests {
         };
         assert_eq!(one.to_microseconds(2_000_000.0), Some(1));
         // Parity guard (L2-DEC-017): 1 tick at 2000000.0000000002 Hz is
-        // x = 0.49999999999999994, one ULP below 0.5. `f64::round` gives 0.
-        // Python's rounding must agree (its old `int(x + 0.5)` gave 1 here).
+        // x = 0.49999999999999994, one ULP below 0.5. `f64::round` gives 0;
+        // `floor(x + 0.5)` gives 1 (the old C++ form, and Python's before it).
         assert_eq!(one.to_microseconds(2_000_000.000_000_000_2), Some(0));
+        // Parity guard: from 2^52 to 2^53 doubles are spaced 1 apart, so
+        // `x + 0.5` is a tie that rounds to even, and `floor(x + 0.5)` adds 1
+        // to every odd count. 0xFFFFFFFF ticks at 0.9 Hz is the odd
+        // 4_772_185_883_333_333 exactly.
+        let max = StandardTimestamp {
+            raw_value: 0xFFFF_FFFF,
+            upper_word: 0xFFFF,
+            lower_word: 0xFFFF,
+        };
+        assert_eq!(max.to_microseconds(0.9), Some(4_772_185_883_333_333));
     }
 
     /// Requirements: L3-RS-005
