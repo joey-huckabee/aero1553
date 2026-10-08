@@ -5,6 +5,8 @@
 # DELTA tracker must emit DELTA = 0.000000 for the first occurrence and an
 # EMPTY DELTA for the second (a negative gap is non-monotonic, not a real
 # inter-message delta), plus a one-time "non-monotonic timestamp" WARN.
+# The manifest checks that WARN as a whole line (L2-RDR-017): a keyword check
+# passed while Rust's copy of the text carried two runs of 18 spaces.
 #
 # This is the SINGLE-FILE path (per-reader per-key state); the existing
 # merge-non-monotonic-* cases exercise the different merged-timeline path.

@@ -249,7 +249,7 @@
       "name": "single-file-non-monotonic",
       "input": "inputs/single-file-non-monotonic.hex",
       "expected": "expected/single-file-non-monotonic.csv",
-      "expected_stderr_contains": "monotonic timestamp"
+      "expected_stderr_contains": "non-monotonic timestamp at 0x48 for RT/MSG key 0x000F0B00: prev_us=16646090500000 curr_us=16646090250000 (further out-of-order occurrences for this key suppressed)"
     },
     {
       "name": "strict-rejects-irig-range",

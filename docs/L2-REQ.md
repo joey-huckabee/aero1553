@@ -434,8 +434,8 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-RDR-017
 
 **Parent**: L1-DLT-001
-**Statement**: When a record's timestamp is older than the prior message for the same RT/MSG key, `DELTA` SHALL be empty and the implementation SHALL log a WARN. The WARN SHALL be emitted at most once per RT/MSG key per decoded file to avoid log flooding.
-**Rationale**: A timestamp regression on the same key is a corruption signal that the operator should see. Per-key de-duplication keeps the log usable when a recording has hundreds of regressions on one key.
+**Statement**: When a record's timestamp is older than the prior message for the same RT/MSG key, `DELTA` SHALL be empty and the implementation SHALL log a WARN. The WARN SHALL be emitted at most once per RT/MSG key per decoded file to avoid log flooding. Its text SHALL be the same single line in every implementation: `non-monotonic timestamp at 0x<OFFSET> for RT/MSG key 0x<KEY>: prev_us=<PREV> curr_us=<CURR> (further out-of-order occurrences for this key suppressed)`, where `<OFFSET>` is the record's byte offset in uppercase hexadecimal, `<KEY>` is the packed RT/MSG key (L3-RDR-001) as eight uppercase hexadecimal digits, and `<PREV>` / `<CURR>` are the two timestamps in decimal microseconds -- one space between words, nothing else.
+**Rationale**: A timestamp regression on the same key is a corruption signal that the operator should see. Per-key de-duplication keeps the log usable when a recording has hundreds of regressions on one key. The text is pinned because nothing held it before: from v2.13.0 through v4.0.0 the Rust literal had lost its `\` line continuations in a refactor, so the message carried two runs of 18 spaces, while C++ printed it correctly -- and every test, in all three trees and in the conformance case, matched only the words "non-monotonic timestamp". The conformance case now matches the whole line for every implementation, and the Rust, C++ and Python suites each check it.
 **Verification Method**: Test (T)
 
 #### L2-RDR-018
