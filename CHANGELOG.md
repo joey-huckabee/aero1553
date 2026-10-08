@@ -52,6 +52,17 @@ shared behavior) holds at any compatible version pair. See
   test matched only the words "non-monotonic timestamp"; the requirement now
   pins the whole line, and the conformance case checks it for all three
   implementations.
+- **An output name ending in `.` gets the same `_errors` file name from
+  every implementation** (Rust, and so the Python package; L2-ERR-008
+  clarified). `-o o. --separate-errors` wrote `o_errors` from Rust,
+  `o_errors.` from C++, and Python's `error_path_for` claimed `o._errors` --
+  `o_errors.` on Python 3.14, whose `pathlib` changed how it splits a
+  trailing dot. All three now follow the requirement's string rule:
+  `_errors` goes before the final `.`, so `o.` -> `o_errors.`, and
+  `error_path_for` takes its answer from the writer. On Windows nothing
+  visible changes: Win32 strips the trailing dot, giving `o` and `o_errors`
+  as before. **Behaviour change** on POSIX for such names: the errors file
+  is `o_errors.`, where Rust wrote `o_errors`.
 
 ### Maintenance
 

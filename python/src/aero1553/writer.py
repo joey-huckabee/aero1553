@@ -247,9 +247,15 @@ class WriteOutcome:
 def error_path_for(output: Path) -> Path:
     """``<stem>_errors<suffix>`` -- where split mode sends errored rows.
 
-    Used by both :func:`write_csv_split` (which writes it) and
-    :func:`commit_targets` (which pre-flights it), so the path guarded and the
-    path written are one derivation.
+    ``_errors`` goes in front of the file name's final ``.`` (L2-ERR-008):
+    ``out.csv`` -> ``out_errors.csv``, ``out`` -> ``out_errors``, and ``o.`` ->
+    ``o_errors.``.
+
+    Taken from the writer's own :func:`commit_targets`, so the path reported
+    here is the path written. It used to be ``pathlib``'s ``stem`` +
+    ``suffix``, which split a name ending in ``.`` differently from the writer
+    (``o._errors`` against ``o_errors``) and changed its own answer in Python
+    3.14.
 
     Args:
         output: The destination the operator named.
@@ -257,7 +263,7 @@ def error_path_for(output: Path) -> Path:
     Returns:
         The sibling path errored and spurious rows are written to.
     """
-    return output.with_name(f"{output.stem}_errors{output.suffix}")
+    return Path(_native.commit_targets(output, True, False)[1])
 
 
 def partial_path_for(destination: Path) -> Path:

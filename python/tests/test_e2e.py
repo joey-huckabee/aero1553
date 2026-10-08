@@ -809,7 +809,14 @@ class TestAtomicWriteSafety:
         the path the API reports is not the path that gets written."""
         from aero1553.writer import commit_targets, error_path_for, partial_path_for
 
-        for out in (Path("dir") / "capture.csv", Path("x.y.tar"), Path("noext"), Path(".hidden")):
+        for out in (
+            Path("dir") / "capture.csv",
+            Path("x.y.tar"),
+            Path("noext"),
+            Path(".hidden"),
+            Path("o."),
+            Path("o.."),
+        ):
             errors = error_path_for(out)
             assert commit_targets(out, True, True) == [
                 out,
@@ -817,6 +824,32 @@ class TestAtomicWriteSafety:
                 partial_path_for(out),
                 partial_path_for(errors),
             ]
+
+    @pytest.mark.requirement("L2-ERR-008")
+    @pytest.mark.parametrize(
+        ("out", "want"),
+        [
+            ("out.csv", "out_errors.csv"),
+            ("out", "out_errors"),
+            ("data.bar.csv", "data.bar_errors.csv"),
+            (".hidden", ".hidden_errors"),
+            (".hidden.csv", ".hidden_errors.csv"),
+            ("..x", "._errors.x"),
+            ("a..b", "a._errors.b"),
+            # The rows that diverged: Rust wrote `o_errors`, C++ `o_errors.`,
+            # and this helper -- pathlib's stem + suffix -- claimed `o._errors`
+            # (or `o_errors.` on Python 3.14).
+            ("o.", "o_errors."),
+            ("o..", "o._errors."),
+            ("o.csv.", "o.csv_errors."),
+        ],
+    )
+    def test_error_path_for_puts_errors_before_the_final_dot(self, out: str, want: str) -> None:
+        """L2-ERR-008: ``_errors`` goes in front of the file name's final ``.``,
+        on every Python version -- the same table as the Rust and C++ suites."""
+        from aero1553.writer import error_path_for
+
+        assert error_path_for(Path("dir.d") / out) == Path("dir.d") / want
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_write_csv_split_rejects_collision_on_the_derived_errors_path(
