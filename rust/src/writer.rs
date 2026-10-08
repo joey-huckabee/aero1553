@@ -1162,18 +1162,26 @@ pub fn commit_targets(output: &Path, split_errors: bool, allow_partial: bool) ->
     targets
 }
 
+/// `<stem>_errors<suffix>` (L2-ERR-008): `_errors` goes in front of the file
+/// name's final `.`, or at the end when there is none -- or when the only `.`
+/// leads a dotfile name, which is all stem.
+///
+/// A string rule on the file name, deliberately not `file_stem` /
+/// `extension`. Those call the `.` of a name ending in one an empty extension,
+/// and dropping it turned `o.` into `o_errors` where C++ wrote `o_errors.`;
+/// Python's `pathlib`, which the old Python helper used, splits that name a
+/// third way, and changed its answer in 3.14.
 fn error_path_for(output: &Path) -> std::path::PathBuf {
-    let stem = output
-        .file_stem()
+    let name = output
+        .file_name()
         .map(|s| s.to_string_lossy().into_owned())
         .unwrap_or_default();
-    let ext = output.extension().map(|e| e.to_string_lossy().into_owned());
-    let parent = output.parent().unwrap_or_else(|| Path::new(""));
-    let name = match ext {
-        Some(e) if !e.is_empty() => format!("{stem}_errors.{e}"),
-        _ => format!("{stem}_errors"),
+    let derived = match name.rfind('.') {
+        Some(dot) if dot > 0 => format!("{}_errors{}", &name[..dot], &name[dot..]),
+        _ => format!("{name}_errors"),
     };
-    parent.join(name)
+    let parent = output.parent().unwrap_or_else(|| Path::new(""));
+    parent.join(derived)
 }
 
 #[cfg(test)]
@@ -1350,6 +1358,31 @@ mod tests {
             Path::new("data/x/out_errors.csv")
         );
         assert_eq!(error_path_for(Path::new("out")), Path::new("out_errors"));
+    }
+
+    /// The whole L2-ERR-008 table, the same rows as the C++ suite and the
+    /// conformance runner. The trailing-dot rows are the ones that diverged:
+    /// Rust wrote `o_errors`, C++ `o_errors.`, and Python's helper claimed
+    /// `o._errors` (or `o_errors.`, on Python 3.14).
+    ///
+    /// Requirements: L2-ERR-008
+    #[test]
+    fn error_path_follows_the_final_dot_rule() {
+        for (out, want) in [
+            ("out.csv", "out_errors.csv"),
+            ("out", "out_errors"),
+            ("data.bar.csv", "data.bar_errors.csv"),
+            ("o.", "o_errors."),
+            ("o..", "o._errors."),
+            ("o.csv.", "o.csv_errors."),
+            (".hidden", ".hidden_errors"),
+            (".hidden.csv", ".hidden_errors.csv"),
+            ("..x", "._errors.x"),
+            ("a..b", "a._errors.b"),
+            ("dir.d/out", "dir.d/out_errors"),
+        ] {
+            assert_eq!(error_path_for(Path::new(out)), Path::new(want), "{out}");
+        }
     }
 
     // ── AtomicCsvFile and path identity ──────────────────────────────

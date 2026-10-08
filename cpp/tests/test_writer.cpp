@@ -23,6 +23,7 @@
 #include "log_capture.hpp"
 #include "mie/error.hpp"
 #include "mie/models.hpp"
+#include "mie/platform.hpp"
 #include "temp_path.hpp"
 #include "writer_fixtures.hpp"
 
@@ -477,11 +478,25 @@ TEST_CASE("allow-partial does not swallow other failures", "[writer][L1-EXIT-004
 // ---------------------------------------------------------------------------
 
 TEST_CASE("error_path_for derives the errors file name", "[writer][L2-ERR-008]") {
+    // The whole L2-ERR-008 table, the same rows as the Rust suite and the
+    // conformance runner: `_errors` goes before the file name's final dot.
     CHECK(mie::error_path_for("out.csv") == "out_errors.csv");
     CHECK(mie::error_path_for("out") == "out_errors");
     CHECK(mie::error_path_for("archive.tar.gz") == "archive.tar_errors.gz");
-    // A dotfile is all stem and no extension, matching Rust's Path::file_stem.
+    // A leading dot is part of the stem: a dotfile has no extension.
     CHECK(mie::error_path_for(".mie") == ".mie_errors");
+    CHECK(mie::error_path_for(".hidden.csv") == ".hidden_errors.csv");
+    CHECK(mie::error_path_for("..x") == "._errors.x");
+    CHECK(mie::error_path_for("a..b") == "a._errors.b");
+    // A trailing dot is a suffix of its own. These rows are where the three
+    // implementations disagreed: Rust dropped the dot (`o_errors`), and
+    // Python's pathlib-based helper claimed `o._errors`.
+    CHECK(mie::error_path_for("o.") == "o_errors.");
+    CHECK(mie::error_path_for("o..") == "o._errors.");
+    CHECK(mie::error_path_for("o.csv.") == "o.csv_errors.");
+    // Only the file name is split, never a directory.
+    CHECK(mie::error_path_for(mie::platform::path_join("dir.d", "out")) ==
+          mie::platform::path_join("dir.d", "out_errors"));
 }
 
 TEST_CASE("split mode routes clean and errored records apart", "[writer][L2-ERR-008]") {

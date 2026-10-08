@@ -228,6 +228,16 @@
       ]
     },
     {
+      "name": "errors-separate-trailing-dot",
+      "input": "inputs/errors-inline.hex",
+      "output_name": "o.",
+      "expected": "expected/errors-separate.csv",
+      "expected_errors": "expected/errors-separate_errors.csv",
+      "args": [
+        "--separate-errors"
+      ]
+    },
+    {
       "name": "errors-separate-iso",
       "input": "inputs/errors-inline.hex",
       "expected": "expected/errors-separate-iso.csv",

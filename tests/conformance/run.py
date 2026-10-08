@@ -628,15 +628,19 @@ IMPLS: dict[str, ImplSpec] = {
 def _errors_path(main_output: Path) -> Path:
     """Derive the split-mode errors path for a given main output path.
 
-    Mirrors the L2-ERR-008 stem/suffix definition (and the matching
-    behavior in both implementations' writers): `out.csv` →
-    `out_errors.csv`, `out` → `out_errors`.
+    The L2-ERR-008 rule, written out here rather than imported, so the runner
+    stays an independent check on the writers: `_errors` goes in front of the
+    file name's final `.`, unless that `.` leads the name -- `out.csv` →
+    `out_errors.csv`, `out` → `out_errors`, `o.` → `o_errors.`.
+
+    Not `pathlib`'s `stem` / `suffix`: those split a name ending in `.`
+    differently from the rule, and differently again from Python 3.14 on.
     """
-    stem = main_output.stem
-    suffix = main_output.suffix
-    if suffix:
-        return main_output.with_name(f"{stem}_errors{suffix}")
-    return main_output.with_name(f"{stem}_errors")
+    name = main_output.name
+    dot = name.rfind(".")
+    if dot > 0:
+        return main_output.with_name(f"{name[:dot]}_errors{name[dot:]}")
+    return main_output.with_name(f"{name}_errors")
 
 
 def diff_bytes(

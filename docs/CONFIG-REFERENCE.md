@@ -232,7 +232,7 @@ Controls how errored records (Type Word bit 14 set) and SPURIOUS_DATA records ap
 
 | Value | Behavior |
 |-------|----------|
-| `"separate"` | Errored and spurious messages are written to a separate file named `<output_stem>_errors<output_suffix>`. The main CSV contains only clean messages. Stem/suffix rules per L2-ERR-008: `out.csv` → `out_errors.csv`; `out` → `out_errors`; `data.bar.csv` → `data.bar_errors.csv`. The errors file is not created if there are no error rows. |
+| `"separate"` | Errored and spurious messages are written to a separate file named `<output_stem>_errors<output_suffix>`. The main CSV contains only clean messages. Stem/suffix rules per L2-ERR-008 -- `_errors` goes before the file name's final `.`: `out.csv` → `out_errors.csv`; `out` → `out_errors`; `data.bar.csv` → `data.bar_errors.csv`; `o.` → `o_errors.`; a dotfile is all stem, `.hidden` → `.hidden_errors`. The errors file is not created if there are no error rows. |
 | `"inline"` | Errored, spurious, and normal messages all go to one CSV. The `ERROR` column contains `ERROR` or `SPURIOUS` (or empty for clean); `ERROR_CODE` contains the 4-character uppercase hex code. |
 
 **Stdout output forces `inline` mode** in both implementations (you can't split stdout into two streams), so `--separate-errors` is ignored there with a WARN.
