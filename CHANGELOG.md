@@ -72,6 +72,20 @@ shared behavior) holds at any compatible version pair. See
   asked the platform layer what a separator is but kept its own copy of the
   split, uses the same `path_filename` / `path_parent` pair -- so one rule
   decides where a C++ path's file name begins. Windows is unchanged.
+- **C++ output files get the same permissions as Rust's and Python's**
+  (L3-WRT-001 extended). On POSIX the C++ writer created its files asking
+  for mode `0644`, while Rust -- and the Python package, which writes
+  through it -- ask for `0666`. The two agreed only under umask `022`: under
+  `002`, a per-user-group default, C++ wrote `0644` where the others wrote
+  `0664`. It now asks for `0666`, so every implementation writes
+  `0666 & ~umask`, as a shell redirect does. A new conformance check runs
+  each implementation under four umasks across every commit path. The
+  C++ `--no-clobber` fallback for filesystems without hard links
+  (FAT/exFAT, some network mounts) is split out as `reserve_then_rename`,
+  as Rust's is, and now has a test of its own: no test host's filesystem
+  reaches it, so until now it had never run under test.
+  **Behaviour change** for C++ on POSIX under a umask that leaves group or
+  other write open. Windows is unchanged.
 
 ### Maintenance
 

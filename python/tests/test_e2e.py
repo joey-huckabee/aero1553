@@ -10,7 +10,9 @@ from __future__ import annotations
 import csv
 import errno
 import io
+import os
 import re
+import stat
 import subprocess
 import sys
 from collections.abc import Iterator
@@ -713,6 +715,27 @@ class TestAtomicWriteSafety:
         # Temp pattern: <output>.aero1553.tmp.<pid>
         leftovers = [p for p in tmp_path.iterdir() if p.name.startswith("out.csv.aero1553.tmp.")]
         assert leftovers == [], f"unexpected temp file(s): {leftovers}"
+
+    @pytest.mark.requirement("L3-WRT-001")
+    @pytest.mark.skipif(os.name != "posix", reason="Windows has no umask or mode bits")
+    @pytest.mark.parametrize("umask", [0o022, 0o002, 0o000, 0o077])
+    def test_write_csv_output_mode_is_0666_under_umask(
+        self, tmp_mie_file: Path, tmp_path: Path, umask: int
+    ) -> None:
+        """L3-WRT-001: the output is created asking for 0666, so the umask decides.
+
+        Four masks, because ``022`` alone cannot tell a ``0644`` request from a
+        ``0666`` one -- that is how the C++ writer's ``0644`` went unnoticed.
+        tests/conformance/output_mode.py holds every implementation to the
+        same rule.
+        """
+        out = tmp_path / "out.csv"
+        previous = os.umask(umask)
+        try:
+            write_csv(MieFileReader(tmp_mie_file), output=out)
+        finally:
+            os.umask(previous)
+        assert stat.S_IMODE(out.stat().st_mode) == 0o666 & ~umask
 
     @pytest.mark.requirement("L2-WRT-014")
     def test_write_csv_split_rejects_input_output_collision(self, tmp_mie_file: Path) -> None:

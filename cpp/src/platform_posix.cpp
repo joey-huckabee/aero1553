@@ -39,6 +39,14 @@ namespace platform {
 
 namespace {
 
+/// The mode every output file is created with, before the umask (L3-WRT-001).
+///
+/// The platform default -- what Rust's OpenOptions and a shell redirect ask
+/// for -- so that what lands on disk is `0666 & ~umask` whichever
+/// implementation wrote it. The operator's umask is the policy; the decoder
+/// does not impose a narrower one of its own.
+const mode_t kOutputMode = 0666;
+
 /// Encode a file descriptor into the opaque void* the header carries.
 ///
 /// Offset by one so that a zeroed handle means "closed". Descriptor 0 is
@@ -204,7 +212,10 @@ bool AtomicFile::create(const std::string& final_utf8_path, OsError& err) {
     // attempt will not fix.
     for (int attempt = 0; attempt < 8; ++attempt) {
         const std::string candidate = make_temp_name(final_utf8_path);
-        const int fd = ::open(candidate.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+        // The temp file becomes the operator's output, so its mode IS the
+        // output's mode. This asked for 0644, which agreed with Rust and Python
+        // only under umask 022.
+        const int fd = ::open(candidate.c_str(), O_WRONLY | O_CREAT | O_EXCL, kOutputMode);
         if (fd >= 0) {
             handle_ = encode_fd(fd);
             temp_path_ = candidate;
@@ -322,8 +333,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
             fill_errno(err, errno);
             return COMMIT_ERROR;
         }
-        committed_ = true;
-        temp_path_.clear();
+        mark_committed();
         return COMMIT_DONE;
     }
 
@@ -345,8 +355,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
         // `committed_` false when the unlink fails just gives abort() a second
         // attempt at it.
         if (::unlink(temp_path_.c_str()) == 0) {
-            committed_ = true;
-            temp_path_.clear();
+            mark_committed();
         }
         return COMMIT_DONE;
     }
@@ -354,14 +363,23 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
         return COMMIT_EXISTS;
     }
 
-    // Mechanism 2. Hard links do not exist on FAT/exFAT and are refused by some
-    // network filesystems, so the link can fail for reasons that have nothing to
-    // do with the destination. O_EXCL claims the name atomically -- one of two
-    // racing processes wins it -- and the rename that follows overwrites only
-    // OUR OWN zero-byte reservation. The narrow cost is that the destination is
-    // briefly an empty file, which is why this is the fallback and not the
-    // primary.
-    const int reserved = ::open(destination.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    // Mechanism 2: the link failed for a reason that has nothing to do with
+    // the destination.
+    const CommitStatus status = reserve_then_rename(temp_path_, destination, err);
+    if (status == COMMIT_DONE) {
+        mark_committed();
+    }
+    return status;
+}
+
+CommitStatus reserve_then_rename(const std::string& temp_utf8, const std::string& dest_utf8,
+                                 OsError& err) {
+    // Hard links do not exist on FAT/exFAT and are refused by some network
+    // filesystems. O_EXCL claims the name atomically -- one of two racing
+    // processes wins it -- and the rename that follows overwrites only OUR OWN
+    // zero-byte reservation. The narrow cost is that the destination is briefly
+    // an empty file, which is why this is the fallback and not the primary.
+    const int reserved = ::open(dest_utf8.c_str(), O_WRONLY | O_CREAT | O_EXCL, kOutputMode);
     if (reserved < 0) {
         if (errno == EEXIST) {
             return COMMIT_EXISTS;
@@ -370,15 +388,13 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
         return COMMIT_ERROR;
     }
     ::close(reserved);
-    if (::rename(temp_path_.c_str(), destination.c_str()) != 0) {
+    if (::rename(temp_utf8.c_str(), dest_utf8.c_str()) != 0) {
         fill_errno(err, errno);
         // Take the reservation back out. Leaving it would hand the operator an
         // empty CSV where the failure message says nothing was written.
-        ::unlink(destination.c_str());
+        ::unlink(dest_utf8.c_str());
         return COMMIT_ERROR;
     }
-    committed_ = true;
-    temp_path_.clear();
     return COMMIT_DONE;
 }
 
