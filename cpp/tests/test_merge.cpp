@@ -414,6 +414,32 @@ TEST_CASE("expand_glob does not treat a backslash as a separator on POSIX",
 }
 #endif
 
+TEST_CASE("expand_glob lists a root, not an empty directory name", "[merge][L2-MRG-001]") {
+    // The directory part of a pattern at a root is the root separator itself.
+    // Taking everything BEFORE the final separator gives an empty name there,
+    // which opendir refuses -- so the pattern errors instead of matching
+    // nothing. The extension cannot exist, so success with no matches proves
+    // the root was listed.
+    std::vector<std::string> found;
+    mie::platform::OsError err;
+
+    SECTION("the filesystem root") {
+        CHECK(mie::merge::expand_glob("/*.aero1553-no-such-ext", found, err));
+        CHECK(err.ok());
+        CHECK(found.empty());
+    }
+
+#if defined(_WIN32)
+    SECTION("a drive root") {
+        // "C:" alone is the current directory ON drive C; the root is "C:\".
+        const std::string drive = mie_test::temp_root().substr(0, 2);
+        CHECK(mie::merge::expand_glob(drive + "\\*.aero1553-no-such-ext", found, err));
+        CHECK(err.ok());
+        CHECK(found.empty());
+    }
+#endif
+}
+
 TEST_CASE("expand_glob refuses a wildcard in the directory part", "[merge][L2-MRG-001]") {
     // Wildcards apply to the filename only. Read literally, `captures/**` is a
     // directory named `**`, and the failure to open it reported "No such file or

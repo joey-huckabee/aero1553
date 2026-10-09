@@ -332,6 +332,40 @@ TEST_CASE("the raw view parses nothing and clamps its range", "[dump][L3-CPP-027
     }
 }
 
+#ifndef _WIN32
+TEST_CASE("the File: line does not split on a backslash on POSIX",
+          "[dump][L3-CPP-025][L3-CPP-027]") {
+    // On POSIX a backslash is an ordinary filename character. The header used
+    // to split on "/\\" regardless of platform, so a recording named
+    // `odd\name.mie` was reported as `File: name.mie` here and as the whole
+    // name by Rust and Python, whose Path types agree with the platform.
+    //
+    // Compiled out on Windows rather than skipped: a backslash IS a separator
+    // there and cannot appear in a filename, so it is not a capability question.
+    TempPath anchor("dump-backslash");
+    const std::string path = anchor.also_remove(anchor.str() + "-odd\\name.mie");
+    const std::vector<uint8_t> bytes = two_records();
+    std::FILE* handle = std::fopen(path.c_str(), "wb");
+    REQUIRE(handle != NULL);
+    REQUIRE(std::fwrite(&bytes[0], 1, bytes.size(), handle) == bytes.size());
+    REQUIRE(std::fclose(handle) == 0);
+
+    const std::string name = path.substr(path.rfind('/') + 1);
+    REQUIRE(name.find('\\') != std::string::npos);
+    const std::string expected = "File: " + name + " (";
+
+    SECTION("the record view") {
+        const std::string report = capture_records(path, mie::Optional<uint64_t>(), 0);
+        REQUIRE(report.find(expected) == 0);
+    }
+
+    SECTION("the raw view") {
+        const std::string report = capture_raw(path, 0, mie::Optional<std::size_t>());
+        REQUIRE(report.find(expected) == 0);
+    }
+}
+#endif
+
 TEST_CASE("the hex line renders non-printable bytes as dots", "[dump][L3-CPP-027]") {
     // Explicit ASCII range, never <cctype>: this tree is locale-free by rule,
     // and `isprint` under a non-C locale would render high bytes differently on

@@ -207,36 +207,21 @@ bool expand_glob(const std::string& pattern, std::vector<std::string>& out,
     // ordinary filename character: `--glob 'odd\name*.mie'` was one pattern in
     // the current directory to Rust and Python (whose Path types agree with the
     // platform) and a `name*.mie` pattern inside a directory called `odd` here.
-    // Identical expansion is the requirement (L2-MRG-001), and
-    // `platform::is_separator` is where that question is already answered once.
-    std::size_t slash = std::string::npos;
-    for (std::size_t i = pattern.size(); i > 0; --i) {
-        if (platform::is_separator(pattern[i - 1])) {
-            slash = i - 1;
-            break;
-        }
-    }
-    std::string directory;
-    std::string name_pattern;
+    // Identical expansion is the requirement (L2-MRG-001), and the platform
+    // layer's path helpers are where that question is already answered once --
+    // `dump`'s File: line made the same mistake and takes the same answer.
+    const std::string name_pattern = platform::path_filename(pattern);
     // Everything up to AND INCLUDING the separator, reused verbatim when
     // rebuilding each match. Rebuilding with a hardcoded '/' instead produced
     // `C:\dir/file.mie` for a Windows pattern -- which Windows happily OPENS,
     // so the decode still worked and only the paths the tool reported back were
     // mangled. A defect that survives every functional check and shows up in
     // log lines and error messages is worth more care, not less.
-    std::string prefix;
-    if (slash == std::string::npos) {
-        directory = ".";
-        name_pattern = pattern;
-    } else {
-        directory = pattern.substr(0, slash);
-        name_pattern = pattern.substr(slash + 1);
-        prefix = pattern.substr(0, slash + 1);
-        if (directory.empty()) {
-            // Rooted at the separator itself, e.g. "/recordings.mie".
-            directory = pattern.substr(0, 1);
-        }
-    }
+    const std::string prefix = pattern.substr(0, pattern.size() - name_pattern.size());
+    // `path_parent` keeps a root separator ("/" for "/x.mie", and "C:\" for
+    // "C:\x.mie" on Windows), so a pattern at a root lists that root.
+    const std::string directory =
+        prefix.empty() ? std::string(".") : platform::path_parent(pattern);
 
     // Wildcards apply to the filename only (L2-MRG-001 clause 2). Read
     // literally, `captures/**` is a directory named `**`, and the failure to
