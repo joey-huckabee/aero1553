@@ -333,8 +333,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
             fill_errno(err, errno);
             return COMMIT_ERROR;
         }
-        committed_ = true;
-        temp_path_.clear();
+        mark_committed();
         return COMMIT_DONE;
     }
 
@@ -356,8 +355,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
         // `committed_` false when the unlink fails just gives abort() a second
         // attempt at it.
         if (::unlink(temp_path_.c_str()) == 0) {
-            committed_ = true;
-            temp_path_.clear();
+            mark_committed();
         }
         return COMMIT_DONE;
     }
@@ -369,8 +367,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
     // the destination.
     const CommitStatus status = reserve_then_rename(temp_path_, destination, err);
     if (status == COMMIT_DONE) {
-        committed_ = true;
-        temp_path_.clear();
+        mark_committed();
     }
     return status;
 }

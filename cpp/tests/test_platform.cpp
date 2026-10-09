@@ -357,6 +357,31 @@ TEST_CASE("AtomicFile in no-replace mode commits onto a free destination",
     CHECK_FALSE(raw_exists(temp));
 }
 
+TEST_CASE("AtomicFile in no-replace mode reports a failed move as an error, not a refusal",
+          "[platform][atomic][L2-WRT-023][L3-CPP-032]") {
+    // A destination in a directory that does not exist: on POSIX link(2)
+    // fails with ENOENT, which is NOT "the destination exists", so the commit
+    // falls through to the reservation fallback -- which fails the same way.
+    // Either way the answer must be COMMIT_ERROR with the OS reason, never
+    // COMMIT_EXISTS, which the writer would report as a --no-clobber refusal.
+    const mie_test::TempPath destination("noreplace-unreachable.csv");
+
+    plat::AtomicFile file;
+    plat::OsError err;
+    REQUIRE(file.create(destination.str(), err));
+    file.set_commit_mode(plat::COMMIT_NO_REPLACE);
+    const std::string rows("ROWS");
+    REQUIRE(file.write(rows.data(), rows.size(), err));
+
+    const std::string temp = file.temp_path();
+    CHECK(file.commit_with_suffix("-missing-dir/out.csv", err) == plat::COMMIT_ERROR);
+    CHECK_FALSE(err.ok());
+    // Not committed, so the temp is still ours to clean up.
+    CHECK(raw_exists(temp));
+    file.abort();
+    CHECK_FALSE(raw_exists(temp));
+}
+
 #if !defined(_WIN32)
 TEST_CASE("the no-replace fallback commits and refuses like the link path",
           "[platform][atomic][L2-WRT-023][L3-CPP-032]") {

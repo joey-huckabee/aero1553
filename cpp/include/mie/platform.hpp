@@ -210,6 +210,10 @@ class AtomicFile {
     bool finish_stream(OsError& err);
     /// The move itself, once the handle is closed. Honours the commit mode.
     CommitStatus place(const std::string& destination, OsError& err);
+    /// Record that the temp file no longer exists under its own name, so
+    /// abort() must not unlink it. Shared by every successful move in both
+    /// backends.
+    void mark_committed();
 
     void* handle_;
     std::string temp_path_;

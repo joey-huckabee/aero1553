@@ -28,6 +28,13 @@ namespace platform {
 // buffer size nobody asked for.
 const std::size_t kWriteBufferSize = std::size_t(64) * 1024;
 
+// Portable, so defined once here rather than in each backend: every successful
+// move ends the same way whichever OS call made it.
+void AtomicFile::mark_committed() {
+    committed_ = true;
+    temp_path_.clear();
+}
+
 namespace {
 
 // Per-process temp-name counter. L3-WRT-001 requires the name be unique per

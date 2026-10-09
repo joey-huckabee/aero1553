@@ -446,8 +446,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
         fill_last_error(err, captured);
         return COMMIT_ERROR;
     }
-    committed_ = true;
-    temp_path_.clear();
+    mark_committed();
     return COMMIT_DONE;
 }
 
