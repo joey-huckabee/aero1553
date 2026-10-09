@@ -55,6 +55,11 @@ enum Level {
 /// error, because the CLI and the config loader phrase it differently.
 bool level_from_name(const std::string& name, Level& out);
 
+/// Every spelling level_from_name accepts, for the error that rejects one.
+/// The CLI's --log-level and the config file's [logging] level both quote it,
+/// so the list a user is shown is the list the parser takes.
+extern const char* const LEVEL_NAMES;
+
 /// The label that appears in a log line. "WARN", not "WARNING" -- matching
 /// Rust.
 const char* level_label(Level level);

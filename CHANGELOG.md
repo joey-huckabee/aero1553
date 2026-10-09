@@ -124,6 +124,23 @@ shared behavior) holds at any compatible version pair. See
   `check_utc_offset`, composed by a new checked `TimeRender::new` -- which
   the CLI and config loader call as well; the bindings' two unchecked
   conversions became one. The CLI's behaviour and messages are unchanged.
+- **A command-line run inside Python keeps its log settings to itself**
+  (L2-LOG-003). The decoder's log level and day-of-year advisory switch were
+  process-wide, and `aero1553.cli.main` set them without putting them back:
+  after `main(["--log-level", "ERROR", ...])` an iterator already open in
+  the same process silently stopped reporting its WARNINGs, and
+  `--no-irig-day-advisory` turned the advisory off for the library too. A
+  library call on another thread could also change a run's level mid-run.
+  A run now holds its own level and switch for its thread, starting from
+  the defaults (`log::with_cli_scope`), as it already held its own output
+  stream. The logging configuration also lost its duplicates: the Python
+  package's advisory switch is now the decoder's own rather than a copy
+  synchronised into it, so it takes effect immediately, even in an open
+  reader; `configure_logging` uses the decoder's level parser, so it accepts
+  exactly the names `--log-level` does -- **it now rejects `FATAL` and
+  `NOTSET`**, and `CRITICAL` sets the same silent threshold as `OFF`; and
+  the list of valid names that the CLI and config errors quote is one
+  constant in Rust and one in C++, with the messages unchanged.
 
 ### Maintenance
 

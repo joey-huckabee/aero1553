@@ -42,6 +42,8 @@ from __future__ import annotations
 import logging
 import sys
 
+from aero1553 import _native
+
 #: Name of the root logger for the Aero1553 package.
 LOGGER_NAME: str = "aero1553"
 
@@ -50,19 +52,6 @@ LOG_FORMAT: str = "%(asctime)s [%(levelname)-5s] %(name)s: %(message)s"
 
 #: Default timestamp format for log records.
 LOG_DATE_FORMAT: str = "%Y-%m-%dT%H:%M:%S"
-
-
-class _Switches:
-    """Diagnostics switches that are not the level itself (L2-LOG-001).
-
-    Module-level rather than reader arguments because they are diagnostics
-    switches, not decode parameters: they are applied where the log level is
-    applied, so one call covers ``decode`` / ``count`` / ``dump``. Held as
-    class attributes rather than rebindable module globals so the setters
-    need no ``global`` statement.
-    """
-
-    irig_day_advisory: bool = True
 
 
 def set_irig_day_advisory(enabled: bool) -> None:
@@ -74,8 +63,14 @@ def set_irig_day_advisory(enabled: bool) -> None:
 
     Args:
         enabled: ``False`` to suppress the advisory at every level.
+
+    It sets the decoder's own switch -- there is no Python copy of it -- so
+    it applies from the next record, including in a reader already open. A
+    command line run with ``aero1553.cli.main`` has a switch of its own
+    (``--no-irig-day-advisory``) and neither changes nor sees this one
+    (L2-LOG-003).
     """
-    _Switches.irig_day_advisory = enabled
+    _native.set_irig_day_advisory(enabled)
 
 
 def irig_day_advisory() -> bool:
@@ -85,7 +80,7 @@ def irig_day_advisory() -> bool:
         ``True`` unless suppressed via ``--no-irig-day-advisory`` or
         ``[logging] irig_day_advisory = false``.
     """
-    return _Switches.irig_day_advisory
+    return _native.irig_day_advisory()
 
 
 def configure_logging(
@@ -108,18 +103,12 @@ def configure_logging(
     Raises:
         ValueError: If ``level`` is not a recognized log level name.
     """
-    level_name = level.upper()
-    if level_name == "OFF":
-        # "OFF" silences all output. stdlib `logging` has no OFF level, so
-        # map it to a numeric level above CRITICAL — no decoder message is
-        # emitted at CRITICAL, so nothing passes the filter. Matches the
-        # Rust logger's `Level::Off`.
-        numeric_level: int = logging.CRITICAL + 1
-    else:
-        resolved = getattr(logging, level_name, None)
-        if not isinstance(resolved, int):
-            raise ValueError(f"Invalid log level: {level!r}")
-        numeric_level = resolved
+    # The decoder's own parser, so this accepts exactly the names
+    # `--log-level` and `[logging] level` do. CRITICAL and OFF both silence the
+    # decoder: they map one above CRITICAL, since `logging` has no OFF level.
+    numeric_level = _native.log_level_threshold(level)
+    if numeric_level is None:
+        raise ValueError(f"Invalid log level: {level!r}")
 
     target_stream = stream if stream is not None else sys.stderr
 

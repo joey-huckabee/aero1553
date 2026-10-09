@@ -15,6 +15,7 @@ and stderr descriptors, not to ``sys.stdout``.
 
 from __future__ import annotations
 
+import logging
 import os
 import signal
 import subprocess
@@ -24,7 +25,7 @@ from pathlib import Path
 
 import pytest
 
-from aero1553 import __version__, cli
+from aero1553 import MieFileReader, __version__, cli
 from aero1553.cli import (
     EXIT_CONFIG,
     EXIT_MERGE_INCOMPATIBLE,
@@ -627,3 +628,89 @@ class TestHelpPrecedence:
         """``--`` demotes a later help flag to an argument, so it cannot
         rescue a broken command line."""
         assert run_cli(["decode", "--nonsense", "--", "--help"]).rc == EXIT_USAGE
+
+
+# ---------------------------------------------------------------------------
+# L2-LOG-003: an in-process CLI run keeps its logging settings to itself
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.requirement("L2-LOG-003")
+@pytest.mark.parametrize("cli_level", ["ERROR", "OFF"])
+def test_a_cli_runs_level_does_not_reach_an_open_iterator(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture, cli_level: str
+) -> None:
+    """A reader opened before ``main()`` still logs what its loggers ask for.
+
+    The decoder's level was process-wide and the CLI set it without putting it
+    back, so after ``main(["--log-level", "ERROR", ...])`` an iterator already
+    open silently dropped its WARNING about a backward timestamp step.
+    """
+    recording = tmp_path / "non-monotonic.mie"
+    recording.write_bytes(conformance_input("single-file-non-monotonic"))
+    other = tmp_path / "other.mie"
+    other.write_bytes(conformance_input("basic-multi-record"))
+
+    with caplog.at_level(logging.WARNING, logger="aero1553"):
+        records = iter(MieFileReader(recording))
+        next(records)
+        assert cli.main(["--log-level", cli_level, "count", str(other)]) == EXIT_OK
+        assert list(records), "the iterator should have records left"
+
+    warnings = [r for r in caplog.records if "non-monotonic" in r.getMessage()]
+    assert warnings, "the open iterator's WARNING was lost to the CLI's level"
+
+
+@pytest.mark.requirement("L2-LOG-003")
+def test_a_cli_runs_advisory_switch_does_not_reach_an_open_iterator(
+    tmp_path: Path, caplog: pytest.LogCaptureFixture
+) -> None:
+    """``--no-irig-day-advisory`` silences the run, not the host's readers.
+
+    The iterator is created before the run and first advanced after it, so its
+    one advisory -- emitted on the first calendar-locked IRIG record -- is
+    decided after the CLI has set its switch. That switch was process-wide.
+    """
+    recording = tmp_path / "irig.mie"
+    recording.write_bytes(conformance_input("basic-multi-record"))
+
+    with caplog.at_level(logging.INFO, logger="aero1553"):
+        records = iter(MieFileReader(recording))
+        assert cli.main(["--no-irig-day-advisory", "count", str(recording)]) == EXIT_OK
+        assert list(records)
+
+    advisories = [r for r in caplog.records if "day-of-year" in r.getMessage()]
+    assert advisories, "the CLI's --no-irig-day-advisory silenced the library"
+
+
+@pytest.mark.requirement("L2-LOG-003")
+def test_the_librarys_advisory_switch_does_not_reach_a_cli_run(
+    tmp_path: Path, capfd: pytest.CaptureFixture[str]
+) -> None:
+    """The reverse: a CLI run starts from its own defaults, not the library's."""
+    from aero1553.logger import set_irig_day_advisory
+
+    recording = tmp_path / "irig.mie"
+    recording.write_bytes(conformance_input("basic-multi-record"))
+    set_irig_day_advisory(False)
+    try:
+        assert cli.main(["--log-level", "INFO", "count", str(recording)]) == EXIT_OK
+    finally:
+        set_irig_day_advisory(True)
+    assert "day-of-year" in capfd.readouterr().err
+
+
+@pytest.mark.requirement("L2-CLI-004")
+def test_configure_logging_accepts_exactly_the_cli_level_names() -> None:
+    """One parser: ``configure_logging`` takes the names ``--log-level`` takes.
+
+    It used to resolve names with ``getattr(logging, ...)``, so it also took
+    ``FATAL`` and ``NOTSET``, which the CLI and the config file reject.
+    """
+    from aero1553.logger import configure_logging
+
+    for name in ("DEBUG", "info", "WARNING", "warn", "ERROR", "CRITICAL", "off"):
+        configure_logging(name)
+    for name in ("FATAL", "NOTSET", "BASIC_FORMAT", "VERBOSE", ""):
+        with pytest.raises(ValueError, match="Invalid log level"):
+            configure_logging(name)

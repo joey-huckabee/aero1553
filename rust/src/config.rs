@@ -391,8 +391,8 @@ fn apply_logging_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), 
         let upper = level.to_uppercase();
         if crate::log::Level::parse(&upper).is_none() {
             return Err(ConfigError(format!(
-                "Invalid logging.level: {level:?}. \
-                 Valid: DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF"
+                "Invalid logging.level: {level:?}. Valid: {}",
+                crate::log::LEVEL_NAMES
             )));
         }
         cfg.log_level = upper;

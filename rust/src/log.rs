@@ -10,6 +10,11 @@
 //! into Python's `logging` that way. [`with_stderr`] forces stderr on the
 //! calling thread regardless, which is how the CLI keeps its output identical
 //! to the binary's under any embedder.
+//!
+//! A CLI run has settings of its own: [`with_cli_scope`] gives the calling
+//! thread a private level and advisory switch for the run's duration, so a
+//! `--log-level` never outlives the run, and a library call on another thread
+//! never changes the run's (L2-LOG-003).
 
 use std::cell::Cell;
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
@@ -39,6 +44,17 @@ impl Level {
         }
     }
 
+    /// The inverse of `self as u8`; anything past `Off` reads as `Off`.
+    fn from_u8(value: u8) -> Self {
+        match value {
+            0 => Self::Debug,
+            1 => Self::Info,
+            2 => Self::Warn,
+            3 => Self::Error,
+            _ => Self::Off,
+        }
+    }
+
     #[must_use]
     pub fn label(self) -> &'static str {
         match self {
@@ -51,42 +67,84 @@ impl Level {
     }
 }
 
-/// Default to WARN, matching the Python CLI default.
-static LEVEL: AtomicU8 = AtomicU8::new(Level::Warn as u8);
+/// The level a process starts at, and every CLI run starts from (WARN).
+pub const DEFAULT_LEVEL: Level = Level::Warn;
 
-pub fn set_level(level: Level) {
-    LEVEL.store(level as u8, Ordering::Relaxed);
+/// Whether the IRIG day-of-year advisory is on before anything sets it.
+pub const DEFAULT_IRIG_DAY_ADVISORY: bool = true;
+
+/// Every spelling [`Level::parse`] accepts, for the error that rejects one.
+/// The CLI's `--log-level` and the config file's `[logging] level` both quote
+/// it, so the list a user is shown is the list the parser takes.
+pub const LEVEL_NAMES: &str = "DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF";
+
+static LEVEL: AtomicU8 = AtomicU8::new(DEFAULT_LEVEL as u8);
+
+/// Whether the one-time IRIG day-of-year advisory is emitted at all.
+/// `--no-irig-day-advisory` / `[logging] irig_day_advisory = false` turns it
+/// off for a CLI run, and the Python package's `set_irig_day_advisory` for
+/// the library.
+static IRIG_DAY_ADVISORY: AtomicBool = AtomicBool::new(DEFAULT_IRIG_DAY_ADVISORY);
+
+/// `SCOPE_LEVEL` when no [`with_cli_scope`] is active on the thread.
+const NO_SCOPE: u8 = u8::MAX;
+
+thread_local! {
+    /// The level of the CLI run on this thread, or [`NO_SCOPE`]. Const-
+    /// initialised and drop-free, so reading it is a plain thread-local load:
+    /// it sits on the path every filtered-out log line takes.
+    static SCOPE_LEVEL: Cell<u8> = const { Cell::new(NO_SCOPE) };
+    /// That run's advisory switch; read only while `SCOPE_LEVEL` holds a level.
+    static SCOPE_ADVISORY: Cell<bool> = const { Cell::new(DEFAULT_IRIG_DAY_ADVISORY) };
 }
 
-#[inline]
-pub fn current_level() -> Level {
-    match LEVEL.load(Ordering::Relaxed) {
-        0 => Level::Debug,
-        1 => Level::Info,
-        2 => Level::Warn,
-        3 => Level::Error,
-        _ => Level::Off,
+fn in_cli_scope() -> bool {
+    SCOPE_LEVEL.with(Cell::get) != NO_SCOPE
+}
+
+/// Set the level: the CLI run's, inside [`with_cli_scope`] on this thread, and
+/// the process-wide one everywhere else.
+pub fn set_level(level: Level) {
+    if in_cli_scope() {
+        SCOPE_LEVEL.with(|scoped| scoped.set(level as u8));
+    } else {
+        LEVEL.store(level as u8, Ordering::Relaxed);
     }
 }
 
 #[inline]
-pub fn enabled(level: Level) -> bool {
-    (level as u8) >= LEVEL.load(Ordering::Relaxed)
+fn threshold() -> u8 {
+    match SCOPE_LEVEL.with(Cell::get) {
+        NO_SCOPE => LEVEL.load(Ordering::Relaxed),
+        scoped => scoped,
+    }
 }
 
-/// Whether the one-time IRIG day-of-year advisory is emitted at all. Enabled by
-/// default; `--no-irig-day-advisory` / `[logging] irig_day_advisory = false`
-/// turns it off.
-static IRIG_DAY_ADVISORY: AtomicBool = AtomicBool::new(true);
+#[inline]
+#[must_use]
+pub fn current_level() -> Level {
+    Level::from_u8(threshold())
+}
 
-/// Enable or disable the IRIG day-of-year advisory (L2-LOG-001).
+#[inline]
+#[must_use]
+pub fn enabled(level: Level) -> bool {
+    (level as u8) >= threshold()
+}
+
+/// Enable or disable the IRIG day-of-year advisory (L2-LOG-001), with the
+/// same scoping as [`set_level`].
 ///
-/// This lives beside the global level rather than in [`crate::ReaderOptions`]
+/// This lives beside the level rather than in [`crate::ReaderOptions`]
 /// because it is a diagnostics switch, not a decode parameter: it is applied
 /// where `--log-level` is applied, so it covers `decode`, `count` and `dump`
 /// uniformly without each command wiring it through.
 pub fn set_irig_day_advisory(enabled: bool) {
-    IRIG_DAY_ADVISORY.store(enabled, Ordering::Relaxed);
+    if in_cli_scope() {
+        SCOPE_ADVISORY.with(|scoped| scoped.set(enabled));
+    } else {
+        IRIG_DAY_ADVISORY.store(enabled, Ordering::Relaxed);
+    }
 }
 
 /// Whether the IRIG day-of-year advisory may be emitted. The level filter still
@@ -95,7 +153,38 @@ pub fn set_irig_day_advisory(enabled: bool) {
 #[inline]
 #[must_use]
 pub fn irig_day_advisory() -> bool {
-    IRIG_DAY_ADVISORY.load(Ordering::Relaxed)
+    if in_cli_scope() {
+        SCOPE_ADVISORY.with(Cell::get)
+    } else {
+        IRIG_DAY_ADVISORY.load(Ordering::Relaxed)
+    }
+}
+
+/// Run `f` as one CLI run: log lines to stderr (see [`with_stderr`]), and a
+/// level and advisory switch of its own, starting from [`DEFAULT_LEVEL`] and
+/// [`DEFAULT_IRIG_DAY_ADVISORY`] (L2-LOG-003).
+///
+/// Inside, [`set_level`] and [`set_irig_day_advisory`] change only this
+/// thread's run, and other threads keep the process-wide settings. Both were
+/// once process-wide for the CLI too, so `aero1553.cli.main(["--log-level",
+/// "ERROR", ...])` left the level at ERROR afterwards and an iterator already
+/// open in the same process silently stopped reporting its warnings; and a
+/// library call on another thread could reset the level in the middle of a
+/// run, changing what the run printed. The previous scope is restored on
+/// return and on unwind.
+pub fn with_cli_scope<R>(f: impl FnOnce() -> R) -> R {
+    struct Restore(u8, bool);
+    impl Drop for Restore {
+        fn drop(&mut self) {
+            SCOPE_LEVEL.with(|scoped| scoped.set(self.0));
+            SCOPE_ADVISORY.with(|scoped| scoped.set(self.1));
+        }
+    }
+    let _restore = Restore(
+        SCOPE_LEVEL.with(|scoped| scoped.replace(DEFAULT_LEVEL as u8)),
+        SCOPE_ADVISORY.with(|scoped| scoped.replace(DEFAULT_IRIG_DAY_ADVISORY)),
+    );
+    with_stderr(f)
 }
 
 /// Internal write — used by the `log_*!` macros. `args` is already-formatted
@@ -112,8 +201,9 @@ pub fn irig_day_advisory() -> bool {
 pub fn emit(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
     // The level check stays first and alone, and `emit` is inlined so it sits
     // at each call site: a filtered-out line -- including the per-record DEBUG
-    // lines on the decode path -- costs one relaxed load and a branch. The
-    // delivery below is `#[cold]` so its code stays out of that path.
+    // lines on the decode path -- costs a thread-local load, at most one
+    // relaxed load, and a branch. The delivery below is `#[cold]` so its code
+    // stays out of that path.
     if !enabled(level) {
         return;
     }
@@ -215,6 +305,12 @@ macro_rules! log_error {
     };
 }
 
+/// Held by every test that sets or asserts on the process-wide level or
+/// advisory, which the harness's parallel threads otherwise share. Everything
+/// else in this crate that sets them runs inside a CLI scope.
+#[cfg(test)]
+pub(crate) static GLOBAL_SETTINGS_TESTS: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -237,6 +333,71 @@ mod tests {
     fn level_ordering() {
         assert!(Level::Debug < Level::Info);
         assert!(Level::Warn < Level::Error);
+    }
+
+    /// Inside a CLI scope the level and advisory are the run's own: they start
+    /// from the defaults, never reach the process-wide settings or another
+    /// thread, nest, and are dropped on return and on unwind. And the reverse:
+    /// a process-wide write from another thread mid-run does not reach the run.
+    /// Requirements: L2-LOG-003
+    #[test]
+    fn a_cli_scope_keeps_its_settings_to_itself() {
+        let _serial = GLOBAL_SETTINGS_TESTS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        set_level(Level::Info);
+        set_irig_day_advisory(true);
+
+        with_cli_scope(|| {
+            assert_eq!(current_level(), DEFAULT_LEVEL, "starts from the default");
+            assert_eq!(irig_day_advisory(), DEFAULT_IRIG_DAY_ADVISORY);
+            set_level(Level::Error);
+            set_irig_day_advisory(false);
+            assert_eq!(current_level(), Level::Error);
+            assert!(!enabled(Level::Warn));
+            assert!(!irig_day_advisory());
+
+            with_cli_scope(|| {
+                assert_eq!(current_level(), DEFAULT_LEVEL, "a nested run starts fresh");
+                set_level(Level::Debug);
+            });
+            assert_eq!(current_level(), Level::Error, "the outer run is restored");
+
+            let elsewhere = std::thread::spawn(|| (current_level(), irig_day_advisory()))
+                .join()
+                .unwrap();
+            assert_eq!(
+                elsewhere,
+                (Level::Info, true),
+                "other threads see the process"
+            );
+
+            std::thread::spawn(|| set_level(Level::Debug))
+                .join()
+                .unwrap();
+            assert_eq!(
+                current_level(),
+                Level::Error,
+                "a library write does not reach the run"
+            );
+        });
+        assert_eq!(
+            current_level(),
+            Level::Debug,
+            "the other thread's write was the process's"
+        );
+        assert!(irig_day_advisory(), "the run's advisory did not leak");
+
+        set_level(Level::Info);
+        let unwound = std::panic::catch_unwind(|| {
+            with_cli_scope(|| {
+                set_level(Level::Off);
+                panic!("unwind");
+            })
+        });
+        assert!(unwound.is_err());
+        assert_eq!(current_level(), Level::Info, "dropped on unwind as well");
+        set_level(DEFAULT_LEVEL);
     }
 
     // The sink is process-wide and the test harness runs tests in parallel, so

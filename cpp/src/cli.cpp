@@ -841,8 +841,7 @@ void apply_log_level(const char* source, const std::string& value) {
     log::Level level = log::LEVEL_WARN;
     if (!log::level_from_name(value, level)) {
         throw usage_error(std::string("invalid ") + source + " \"" + value +
-                          "\": valid levels are DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, "
-                          "OFF");
+                          "\": valid levels are " + log::LEVEL_NAMES);
     }
     log::set_level(level);
 }

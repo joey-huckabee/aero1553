@@ -482,10 +482,12 @@ pub fn run(argv: Vec<String>) -> ExitCode {
 /// Diagnostics go to stderr exactly as the binary writes them, even when an
 /// embedder has installed a [`log::set_sink`] for the library's log lines:
 /// the command line's output is its contract, and it does not change with
-/// the host it runs in.
+/// the host it runs in. The run's `--log-level` and advisory switch are its
+/// own and end with it ([`log::with_cli_scope`], L2-LOG-003): library code in
+/// the same process neither inherits them nor changes them.
 #[must_use]
 pub fn run_to_code(argv: Vec<String>) -> u8 {
-    log::with_stderr(|| run_command(argv))
+    log::with_cli_scope(|| run_command(argv))
 }
 
 fn run_command(argv: Vec<String>) -> u8 {
@@ -505,17 +507,16 @@ fn run_command(argv: Vec<String>) -> u8 {
         Err(code) => return code,
     };
 
-    // Apply log level early so the version banner respects it. CLI
-    // value if provided, else WARN default. An invalid CLI value
-    // (e.g. `--log-level NOPE`) fails fast here via `die` (exit 4,
-    // the usage class) instead of being silently ignored. The config file's level is layered
-    // on top later inside resolve_config.
-    if let Some(s) = globals.log_level.as_deref() {
-        if let Err(msg) = apply_log_level("--log-level", s) {
-            return die(&msg);
-        }
-    } else {
-        log::set_level(Level::Warn);
+    // Apply log level early so the version banner respects it. Without
+    // `--log-level` the run keeps the level its scope started at,
+    // `log::DEFAULT_LEVEL`. An invalid CLI value (e.g. `--log-level NOPE`)
+    // fails fast here via `die` (exit 4, the usage class) instead of being
+    // silently ignored. The config file's level is layered on top later
+    // inside resolve_config.
+    if let Some(s) = globals.log_level.as_deref()
+        && let Err(msg) = apply_log_level("--log-level", s)
+    {
+        return die(&msg);
     }
 
     log_info!("aero1553 v{VERSION}");
@@ -1454,8 +1455,8 @@ fn parse_collapse_window_us(s: &str) -> Result<i64, String> {
 ///
 /// `source` is included in the error for diagnosability (it'll be
 /// `--log-level` for CLI-supplied values, `[logging].level` for config
-/// file values). Validated names are DEBUG, INFO, WARNING, ERROR,
-/// CRITICAL (CRITICAL maps to OFF).
+/// file values). Validated names are [`log::LEVEL_NAMES`] (CRITICAL maps to
+/// OFF).
 fn apply_log_level(source: &str, value: &str) -> Result<(), String> {
     match Level::parse(value) {
         Some(lvl) => {
@@ -1463,7 +1464,8 @@ fn apply_log_level(source: &str, value: &str) -> Result<(), String> {
             Ok(())
         }
         None => Err(format!(
-            "invalid {source}: {value:?}; valid: DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF"
+            "invalid {source}: {value:?}; valid: {}",
+            log::LEVEL_NAMES
         )),
     }
 }
@@ -2773,6 +2775,30 @@ mod tests {
         );
     }
 
+    /// The Python package runs the CLI in-process. Its `--log-level` once
+    /// stayed set after the run, so a library iterator already open in the
+    /// same process silently lost its WARNINGs to a `--log-level ERROR`.
+    /// Requirements: L2-LOG-003
+    #[test]
+    fn run_to_code_leaves_the_process_log_settings_as_it_found_them() {
+        let _serial = log::GLOBAL_SETTINGS_TESTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let before = (log::current_level(), log::irig_day_advisory());
+        let argv: Vec<String> = [
+            "aero1553",
+            "--log-level",
+            "ERROR",
+            "--no-irig-day-advisory",
+            "count",
+            "definitely-missing-input.mie",
+        ]
+        .map(String::from)
+        .to_vec();
+        assert_eq!(run_to_code(argv), exit_code::RUNTIME);
+        assert_eq!((log::current_level(), log::irig_day_advisory()), before);
+    }
+
     /// `run_to_code` hands an embedder the L2-CLI-011 status as a number --
     /// the Python binding returns it from `aero1553.cli.main()` -- so the
     /// number itself is the contract, not just the process exit it becomes.
@@ -3102,7 +3128,8 @@ mod tests {
             config: Some(bad.clone()),
         };
         // Input doesn't matter: config error fires before the file is opened.
-        let result = run_count(globals, PathBuf::from("/no/such/recording.mie"));
+        let result =
+            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
         let _ = std::fs::remove_file(&bad);
         match result {
             Err(e) => {
@@ -3130,7 +3157,7 @@ mod tests {
             input: PathBuf::from("/no/such/recording.mie"),
             ..Default::default()
         };
-        let result = run_dump(globals, dump_args);
+        let result = log::with_cli_scope(|| run_dump(globals, dump_args));
         let _ = std::fs::remove_file(&bad);
         match result {
             Err(e) => {
@@ -3177,7 +3204,8 @@ mod tests {
             irig_day_advisory: None,
             config: Some(PathBuf::from("/no/such/config.toml")),
         };
-        let result = run_count(globals, PathBuf::from("/no/such/recording.mie"));
+        let result =
+            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
         match result {
             Err(e) => {
                 assert_eq!(
@@ -3210,7 +3238,7 @@ mod tests {
         for name in [
             "DEBUG", "INFO", "WARNING", "WARN", "ERROR", "CRITICAL", "off",
         ] {
-            apply_log_level("--log-level", name)
+            log::with_cli_scope(|| apply_log_level("--log-level", name))
                 .unwrap_or_else(|e| panic!("expected {name} to parse, got: {e}"));
         }
     }
@@ -3218,7 +3246,7 @@ mod tests {
     /// Requirements: L2-CLI-004
     #[test]
     fn apply_log_level_rejects_unknown_names() {
-        match apply_log_level("--log-level", "NOPE") {
+        match log::with_cli_scope(|| apply_log_level("--log-level", "NOPE")) {
             Err(msg) => {
                 assert!(msg.contains("--log-level"));
                 assert!(msg.contains("NOPE"));
@@ -3231,9 +3259,10 @@ mod tests {
     /// Requirements: L2-CLI-004
     #[test]
     fn apply_log_level_includes_source_in_error() {
-        let err = apply_log_level("[logging].level (in config)", "WHATEVER")
-            .err()
-            .unwrap();
+        let err =
+            log::with_cli_scope(|| apply_log_level("[logging].level (in config)", "WHATEVER"))
+                .err()
+                .unwrap();
         assert!(err.contains("[logging].level"));
         assert!(err.contains("WHATEVER"));
     }
@@ -3247,7 +3276,8 @@ mod tests {
             irig_day_advisory: None,
             config: Some(bad.clone()),
         };
-        let result = run_count(globals, PathBuf::from("/no/such/recording.mie"));
+        let result =
+            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
         let _ = std::fs::remove_file(&bad);
         match result {
             Err(e) => {
@@ -3278,7 +3308,8 @@ mod tests {
             irig_day_advisory: None,
             config: None,
         };
-        let result = run_count(globals, PathBuf::from("/no/such/recording.mie"));
+        let result =
+            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
         match result {
             Err(e) => {
                 assert_eq!(e.code, exit_code::USAGE, "bad --log-level should exit 4");
