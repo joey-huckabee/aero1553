@@ -1205,6 +1205,10 @@ except MieFileNotFoundError as error:
 True True
 ```
 
+Every one of these pickles, so an error raised in a `multiprocessing` or
+`concurrent.futures` worker reaches the parent as the same class, with the
+same message and attributes.
+
 [ERROR-CATALOG.md](ERROR-CATALOG.md) describes every error and the CLI exit
 code it maps to.
 
