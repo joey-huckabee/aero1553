@@ -152,16 +152,17 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 
 | L1 ID | L2 Children | Test Artifacts | Status |
 |-------|-------------|----------------|--------|
-| L1-LOG-001 | L2-CLI-004, L2-CLI-006, L2-LOG-001, L2-LOG-002, L2-SYN-012, L2-SYN-013 | `cpp/tests/test_log.cpp::levels are ordered by severity`<br>`rust/src/log.rs::an_installed_sink_receives_each_line`<br>`rust/src/log.rs::level_ordering`<br>`rust/src/log.rs::with_stderr_bypasses_the_sink_and_restores` | Implemented |
+| L1-LOG-001 | L2-CLI-004, L2-CLI-006, L2-LOG-001, L2-LOG-002, L2-LOG-003, L2-SYN-012, L2-SYN-013 | `cpp/tests/test_log.cpp::levels are ordered by severity`<br>`rust/src/log.rs::an_installed_sink_receives_each_line`<br>`rust/src/log.rs::level_ordering`<br>`rust/src/log.rs::with_stderr_bypasses_the_sink_and_restores` | Implemented |
 
 **L2 -> L3 -> Verification Artifacts**
 
 | L2 ID | L3 Children | Test Artifacts | Status |
 |-------|-------------|----------------|--------|
-| L2-CLI-004 | _(none)_ | `cpp/tests/test_config.cpp::logging.level accepts every spelling the logger does`<br>`cpp/tests/test_log.cpp::level names parse case-insensitively`<br>`python/tests/test_e2e.py::test_cli_log_level_accepts_full_set_case_insensitively`<br>`python/tests/test_e2e.py::test_cli_log_level_debug`<br>`python/tests/test_e2e.py::test_cli_log_level_info`<br>`python/tests/test_e2e.py::test_cli_logging_level_off_does_not_crash`<br>`python/tests/test_e2e.py::test_cli_version_and_help_short_circuit_before_log_level_validation`<br>`python/tests/test_exceptions.py::test_case_insensitive`<br>`python/tests/test_exceptions.py::test_invalid_level_raises`<br>`python/tests/test_exceptions.py::test_no_duplicate_handlers`<br>`python/tests/test_exceptions.py::test_off_level_case_insensitive`<br>`python/tests/test_exceptions.py::test_off_level_silences_all_output`<br>`python/tests/test_exceptions.py::test_sets_info_level`<br>`python/tests/test_exceptions.py::test_sets_level`<br>`rust/src/cli.rs::apply_log_level_accepts_known_names`<br>`rust/src/cli.rs::apply_log_level_includes_source_in_error`<br>`rust/src/cli.rs::apply_log_level_rejects_unknown_names`<br>`rust/src/cli.rs::run_count_with_invalid_cli_log_level_fails_via_resolve_config`<br>`rust/src/log.rs::level_parse` | Implemented |
+| L2-CLI-004 | _(none)_ | `cpp/tests/test_config.cpp::logging.level accepts every spelling the logger does`<br>`cpp/tests/test_log.cpp::level names parse case-insensitively`<br>`python/tests/test_cli.py::test_configure_logging_accepts_exactly_the_cli_level_names`<br>`python/tests/test_e2e.py::test_cli_log_level_accepts_full_set_case_insensitively`<br>`python/tests/test_e2e.py::test_cli_log_level_debug`<br>`python/tests/test_e2e.py::test_cli_log_level_info`<br>`python/tests/test_e2e.py::test_cli_logging_level_off_does_not_crash`<br>`python/tests/test_e2e.py::test_cli_version_and_help_short_circuit_before_log_level_validation`<br>`python/tests/test_exceptions.py::test_case_insensitive`<br>`python/tests/test_exceptions.py::test_invalid_level_raises`<br>`python/tests/test_exceptions.py::test_no_duplicate_handlers`<br>`python/tests/test_exceptions.py::test_off_level_case_insensitive`<br>`python/tests/test_exceptions.py::test_off_level_silences_all_output`<br>`python/tests/test_exceptions.py::test_sets_info_level`<br>`python/tests/test_exceptions.py::test_sets_level`<br>`rust/src/cli.rs::apply_log_level_accepts_known_names`<br>`rust/src/cli.rs::apply_log_level_includes_source_in_error`<br>`rust/src/cli.rs::apply_log_level_rejects_unknown_names`<br>`rust/src/cli.rs::run_count_with_invalid_cli_log_level_fails_via_resolve_config`<br>`rust/src/log.rs::level_parse` | Implemented |
 | L2-CLI-006 | L3-CPP-017 | `cpp/tests/test_cli.cpp::--separate-errors on stdout forces inline, and says so`<br>`cpp/tests/test_cli.cpp::count writes the integer alone to stdout`<br>`python/tests/test_exceptions.py::test_outputs_to_stderr_by_default`<br>`rust/tests/cli.rs::decode_emits_exit_class_summary_at_info_level` | Implemented |
 | L2-LOG-001 | _(none)_ | `cpp/tests/test_reader.cpp::the IRIG day-of-year advisory can be disabled outright`<br>`cpp/tests/test_reader.cpp::the IRIG day-of-year advisory fires once per decode`<br>`cpp/tests/test_reader.cpp::the IRIG day-of-year advisory is silent at the default level`<br>`cpp/tests/test_timestamp_rendering.cpp::the day-of-year advisory escalates under a calendar rendering`<br>`python/tests/test_e2e.py::test_irig_day_of_year_advises_once_per_decode`<br>`python/tests/test_e2e.py::test_irig_day_of_year_advisory_can_be_disabled`<br>`python/tests/test_e2e.py::test_irig_day_of_year_advisory_is_silent_at_the_default_level`<br>`python/tests/test_timestamp_rendering.py::test_advisory_escalates_under_a_calendar_rendering`<br>`rust/tests/cli.rs::day_of_year_advisory_escalates_under_a_calendar_rendering`<br>`rust/tests/cli.rs::irig_day_advisory_can_be_disabled`<br>`rust/tests/cli.rs::irig_day_advisory_fires_once_at_info`<br>`rust/tests/cli.rs::irig_day_advisory_flag_rejects_a_joined_value`<br>`rust/tests/cli.rs::irig_day_advisory_is_silent_at_the_default_level` | Implemented |
 | L2-LOG-002 | _(none)_ | `cpp/tests/test_timestamp_rendering.cpp::the day-of-year advisory escalates under a calendar rendering`<br>`python/tests/test_timestamp_rendering.py::test_advisory_escalates_under_a_calendar_rendering`<br>`python/tests/test_timestamp_rendering.py::test_opt_out_still_wins_under_a_calendar_rendering`<br>`rust/tests/cli.rs::day_of_year_advisory_escalates_under_a_calendar_rendering` | Implemented |
+| L2-LOG-003 | _(none)_ | `python/tests/test_cli.py::test_a_cli_runs_advisory_switch_does_not_reach_an_open_iterator`<br>`python/tests/test_cli.py::test_a_cli_runs_level_does_not_reach_an_open_iterator`<br>`python/tests/test_cli.py::test_the_librarys_advisory_switch_does_not_reach_a_cli_run`<br>`rust/src/cli.rs::run_to_code_leaves_the_process_log_settings_as_it_found_them`<br>`rust/src/log.rs::a_cli_scope_keeps_its_settings_to_itself` | Implemented |
 | L2-SYN-012 | _(none)_ | `cpp/tests/test_reader.cpp::leading bytes before the first record are skipped`<br>`python/tests/test_sync.py::test_header_detection_logs_size_at_info`<br>`rust/tests/cli.rs::header_detection_logs_size_at_info` | Implemented |
 | L2-SYN-013 | _(none)_ | `cpp/tests/test_reader.cpp::a corrupt region mid-file is recovered from in lenient mode`<br>`python/tests/test_sync.py::test_debug_validation_context_is_bounded`<br>`python/tests/test_sync.py::test_sync_loss_warns_and_recovery_logs_info`<br>`rust/tests/cli.rs::debug_sync_failure_includes_bounded_validation_context` | Implemented |
 
@@ -362,7 +363,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | OUT | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DLT | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CLI | 2 | 19 | 0 | 19 | 0 | 19 | 0 |
-| LOG | 1 | 2 | 0 | 2 | 0 | 2 | 0 |
+| LOG | 1 | 3 | 0 | 3 | 0 | 3 | 0 |
 | MODE | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | SYN | 2 | 28 | 0 | 28 | 0 | 28 | 0 |
 | ERR | 1 | 10 | 0 | 10 | 0 | 10 | 0 |
@@ -378,13 +379,13 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | PY | 0 | 0 | 21 | 0 | 16 | 0 | 16 |
 | RS | 0 | 0 | 16 | 0 | 11 | 0 | 11 |
 | CPP | 0 | 0 | 32 | 0 | 27 | 0 | 30 |
-| **Total** | **33** | **143** | **75** | **139** | **60** | **141** | **63** |
+| **Total** | **33** | **144** | **75** | **140** | **60** | **142** | **63** |
 
 The countable requirement set is every L2 and L3 requirement plus the 6 Test-verifiable L1 *leaf* requirement(s) (L1s with no L2 decomposition, e.g. `L1-ROB-001`, where the test markers attach directly). Composite L1s are verified transitively through their L2/L3 children, which are counted individually above.
 
-**Tested by at least one test marker**: 205 of 224 (91.5%).
+**Tested by at least one test marker**: 206 of 225 (91.6%).
 
-**Verified (Test or declared Inspection/Analysis/Demonstration)**: 210 of 224 (93.8%).
+**Verified (Test or declared Inspection/Analysis/Demonstration)**: 211 of 225 (93.8%).
 
 ### Orphan check
 

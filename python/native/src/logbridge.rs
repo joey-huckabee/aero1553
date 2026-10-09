@@ -44,6 +44,8 @@ fn forward(py: Python<'_>, level: Level, module: &str, message: &str) -> PyResul
     Ok(())
 }
 
+/// The Python `logging` level a decoder line is logged at. `Off` is never a
+/// line's level; it is listed only so the match is total.
 fn python_level(level: Level) -> i32 {
     match level {
         Level::Debug => 10,
@@ -51,6 +53,36 @@ fn python_level(level: Level) -> i32 {
         Level::Warn => 30,
         Level::Error | Level::Off => 40,
     }
+}
+
+/// The Python `logging` threshold that shows what `level` shows: one above
+/// `CRITICAL` for `Off`, since `logging` has no level that silences everything.
+fn python_threshold(level: Level) -> i32 {
+    match level {
+        Level::Off => 51,
+        line => python_level(line),
+    }
+}
+
+/// `aero1553.logger.configure_logging`'s level, by the decoder's own parser
+/// (`Level::parse`), so the names the library accepts are exactly the ones
+/// `--log-level` and `[logging] level` accept. `None` for a name it rejects.
+#[pyfunction]
+pub fn log_level_threshold(name: &str) -> Option<i32> {
+    Level::parse(name).map(python_threshold)
+}
+
+/// `aero1553.logger.set_irig_day_advisory`: the decoder's switch itself, so
+/// there is one switch rather than a Python copy synchronised into it.
+#[pyfunction]
+pub fn set_irig_day_advisory(enabled: bool) {
+    log::set_irig_day_advisory(enabled);
+}
+
+/// `aero1553.logger.irig_day_advisory`.
+#[pyfunction]
+pub fn irig_day_advisory() -> bool {
+    log::irig_day_advisory()
 }
 
 /// The most verbose effective level among the `aero1553` logger and every
@@ -86,12 +118,13 @@ fn most_verbose_level(py: Python<'_>) -> PyResult<i32> {
 }
 
 /// Set the decoder's level from the Python loggers (see
-/// [`most_verbose_level`]), and its day-of-year advisory switch from
-/// `aero1553.logger`.
+/// [`most_verbose_level`]).
 ///
 /// Called where a reader is created and where iteration starts. The decoder
 /// formats a line only when its own level lets it through, so matching that
 /// level to Python's means a line no Python logger would take is never built.
+/// A CLI run on this or another thread is unaffected: it holds a level of its
+/// own (`log::with_cli_scope`, L2-LOG-003).
 pub fn sync_level(py: Python<'_>) -> PyResult<()> {
     let effective = most_verbose_level(py)?;
     log::set_level(match effective {
@@ -101,10 +134,5 @@ pub fn sync_level(py: Python<'_>) -> PyResult<()> {
         31..=40 => Level::Error,
         _ => Level::Off,
     });
-    let advisory: bool = py
-        .import("aero1553.logger")?
-        .call_method0("irig_day_advisory")?
-        .extract()?;
-    log::set_irig_day_advisory(advisory);
     Ok(())
 }

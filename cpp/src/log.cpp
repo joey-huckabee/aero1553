@@ -48,6 +48,8 @@ void write_out(const std::string& line) {
 
 }  // namespace
 
+const char* const LEVEL_NAMES = "DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF";
+
 bool level_from_name(const std::string& name, Level& out) {
     const std::string lower = text::to_ascii_lower(name);
     if (lower == "debug") {

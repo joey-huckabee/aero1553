@@ -101,6 +101,9 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(dump::hex_dump_records, m)?)?;
     m.add_function(wrap_pyfunction!(config::load_config, m)?)?;
     m.add_function(wrap_pyfunction!(config::parse_utc_offset, m)?)?;
+    m.add_function(wrap_pyfunction!(logbridge::log_level_threshold, m)?)?;
+    m.add_function(wrap_pyfunction!(logbridge::set_irig_day_advisory, m)?)?;
+    m.add_function(wrap_pyfunction!(logbridge::irig_day_advisory, m)?)?;
     m.add_class::<merge::PyDeltaTracker>()?;
     // From here on the library's log lines reach Python's `logging`; the CLI
     // keeps writing to stderr (see `logbridge`).

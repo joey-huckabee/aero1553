@@ -375,7 +375,7 @@ void apply_logging(const toml::Document& doc, DecoderConfig& config) {
     log::Level parsed = log::LEVEL_WARN;
     if (!log::level_from_name(level, parsed)) {
         throw ConfigError("Invalid logging.level: " + quoted(level) +
-                          ". Valid: DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF");
+                          ". Valid: " + log::LEVEL_NAMES);
     }
     // Stored uppercased, matching the other implementations, so a later
     // comparison does not have to be case-insensitive too.
