@@ -79,7 +79,11 @@ shared behavior) holds at any compatible version pair. See
   `002`, a per-user-group default, C++ wrote `0644` where the others wrote
   `0664`. It now asks for `0666`, so every implementation writes
   `0666 & ~umask`, as a shell redirect does. A new conformance check runs
-  each implementation under four umasks across every commit path.
+  each implementation under four umasks across every commit path. The
+  C++ `--no-clobber` fallback for filesystems without hard links
+  (FAT/exFAT, some network mounts) is split out as `reserve_then_rename`,
+  as Rust's is, and now has a test of its own: no test host's filesystem
+  reaches it, so until now it had never run under test.
   **Behaviour change** for C++ on POSIX under a umask that leaves group or
   other write open. Windows is unchanged.
 

@@ -357,6 +357,50 @@ TEST_CASE("AtomicFile in no-replace mode commits onto a free destination",
     CHECK_FALSE(raw_exists(temp));
 }
 
+#if !defined(_WIN32)
+TEST_CASE("the no-replace fallback commits and refuses like the link path",
+          "[platform][atomic][L2-WRT-023][L3-CPP-032]") {
+    // On a filesystem with no hard links the commit reserves the name with
+    // O_EXCL instead, and must still refuse a taken one. No test host's
+    // filesystem fails link(2), so the fallback is driven directly -- as Rust's
+    // reserve_then_rename is -- rather than left as the one path never run.
+    const mie_test::TempPath destination("fallback.csv");
+    const mie_test::TempPath temp("fallback.tmp");
+    plat::OsError err;
+
+    SECTION("a free destination commits, and a taken one is refused intact") {
+        write_raw(temp.str(), std::string("ROWS"));
+        REQUIRE(plat::reserve_then_rename(temp.str(), destination.str(), err) == plat::COMMIT_DONE);
+        CHECK(err.ok());
+        CHECK(read_raw(destination.str()) == "ROWS");
+        CHECK_FALSE(raw_exists(temp.str()));
+
+        write_raw(temp.str(), std::string("OTHER"));
+        CHECK(plat::reserve_then_rename(temp.str(), destination.str(), err) == plat::COMMIT_EXISTS);
+        CHECK(err.ok());
+        // Refused, so no zero-byte reservation replaced the first writer's rows.
+        CHECK(read_raw(destination.str()) == "ROWS");
+    }
+
+    SECTION("a failed rename takes its reservation back out") {
+        // No temp file: the reservation succeeds and the rename then fails.
+        // Leaving the reservation would hand the operator an empty CSV where
+        // the error says nothing was written.
+        CHECK(plat::reserve_then_rename(temp.str(), destination.str(), err) == plat::COMMIT_ERROR);
+        CHECK_FALSE(err.ok());
+        CHECK_FALSE(raw_exists(destination.str()));
+    }
+
+    SECTION("a reservation that cannot be made is an error, not a refusal") {
+        write_raw(temp.str(), std::string("ROWS"));
+        const std::string unreachable = destination.str() + "-missing-dir/out.csv";
+        CHECK(plat::reserve_then_rename(temp.str(), unreachable, err) == plat::COMMIT_ERROR);
+        CHECK_FALSE(err.ok());
+        CHECK(raw_exists(temp.str()));
+    }
+}
+#endif
+
 TEST_CASE("AtomicFile in no-replace mode refuses an existing suffixed target",
           "[platform][atomic][L2-WRT-016][L2-WRT-023][L3-CPP-032][L3-WRT-005]") {
     // `<destination>.partial` is never pre-flighted -- a stale one must not

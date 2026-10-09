@@ -223,6 +223,20 @@ class AtomicFile {
 /// proves buffering happens at all rather than every row hitting a syscall.
 extern const std::size_t kWriteBufferSize;
 
+#if !defined(_WIN32)
+/// The `COMMIT_NO_REPLACE` fallback on POSIX: claim `dest_utf8` with an
+/// exclusive create, then rename `temp_utf8` over that reservation.
+///
+/// `AtomicFile` reaches it only when link(2) fails for a reason other than
+/// EEXIST -- FAT/exFAT, some network filesystems -- which no test host's
+/// filesystem does. Exposed so a test can drive it directly, as Rust's
+/// `reserve_then_rename` is; otherwise the path an operator on a USB stick
+/// takes would be the one path never run. Windows needs no fallback:
+/// MoveFileExW without MOVEFILE_REPLACE_EXISTING is natively non-replacing.
+CommitStatus reserve_then_rename(const std::string& temp_utf8, const std::string& dest_utf8,
+                                 OsError& err);
+#endif
+
 /// Build the unique temp-file name L3-WRT-001 requires, beside `final_path`.
 ///
 /// Portable and side-effect-free -- it composes a name, it does not create a
