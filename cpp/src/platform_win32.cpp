@@ -600,18 +600,44 @@ bool file_metadata(const std::string& utf8_path, uint64_t& size, bool& is_regula
     size = 0;
     is_regular = false;
 
+    // Through an opened handle, not GetFileAttributesExW. That call describes a
+    // symlink ITSELF -- zero bytes, and present even when its target is not --
+    // where POSIX stat() and Rust's fs::metadata describe what it points to. So
+    // a recording reached through a link was refused as an empty recording
+    // (L2-RDR-006), and a dangling link "existed": decoding one reported an I/O
+    // failure instead of a missing file (L2-RDR-005), and --glob matched it
+    // where the other two skip it (L2-MRG-001). Opening without
+    // FILE_FLAG_OPEN_REPARSE_POINT follows the link, as Rust's std does.
+    //
+    // FILE_READ_ATTRIBUTES alone is exempt from sharing checks, so this still
+    // answers for a file another process holds open exclusively -- a recording
+    // still being written, say. FILE_FLAG_BACKUP_SEMANTICS admits directories.
     const std::wstring wide = to_wide_path(utf8_path);
-    WIN32_FILE_ATTRIBUTE_DATA data;
-    if (::GetFileAttributesExW(wide.c_str(), GetFileExInfoStandard, &data) == 0) {
+    const HANDLE handle = ::CreateFileW(wide.c_str(), FILE_READ_ATTRIBUTES,
+                                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, 0,
+                                        OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, 0);
+    if (handle == INVALID_HANDLE_VALUE) {
         fill_last_error(err);
         return false;
     }
 
+    BY_HANDLE_FILE_INFORMATION info;
+    const bool got = ::GetFileInformationByHandle(handle, &info) != 0;
+    // A disk file, not a device such as NUL or CON that also opens by name.
+    const bool on_disk = ::GetFileType(handle) == FILE_TYPE_DISK;
+    if (!got) {
+        fill_last_error(err);
+    }
+    ::CloseHandle(handle);
+    if (!got) {
+        return false;
+    }
+
     ULARGE_INTEGER combined;
-    combined.HighPart = data.nFileSizeHigh;
-    combined.LowPart = data.nFileSizeLow;
+    combined.HighPart = info.nFileSizeHigh;
+    combined.LowPart = info.nFileSizeLow;
     size = static_cast<uint64_t>(combined.QuadPart);
-    is_regular = (data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
+    is_regular = on_disk && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0;
     return true;
 }
 
