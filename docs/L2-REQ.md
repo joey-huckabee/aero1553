@@ -378,14 +378,14 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-RDR-005
 
 **Parent**: L1-EXIT-001
-**Statement**: Opening a missing input file SHALL surface a file-not-found error.
+**Statement**: Opening a missing input file SHALL surface a file-not-found error. An input path SHALL be resolved through symlinks, so a symlink whose target does not exist is a missing file.
 **Rationale**: Distinct from format errors and validation errors; usually means the operator typed the path wrong.
 **Verification Method**: Test (T)
 
 #### L2-RDR-006
 
 **Parent**: L1-EXIT-001
-**Statement**: Opening an empty input file SHALL surface an empty-file error.
+**Statement**: Opening an empty input file SHALL surface an empty-file error. Emptiness SHALL be judged on the file a symlink resolves to, never on the link itself.
 **Rationale**: Distinct from "no valid records found" (which implies the file had content but none of it parsed). An empty input file is usually an upstream pipeline failure that the operator can investigate directly.
 **Verification Method**: Test (T)
 

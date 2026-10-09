@@ -339,9 +339,11 @@ std::FILE* open_read(const std::string& utf8_path, OsError& err);
 bool read_file(const std::string& utf8_path, std::vector<uint8_t>& bytes, OsError& err);
 
 /// Existence test. Never fails -- a path that cannot be stat'ed is "no".
+/// Follows symlinks, so a dangling one does not exist.
 bool path_exists(const std::string& utf8_path);
 
-/// Size in bytes, and whether the path is a regular file.
+/// Size in bytes, and whether the path is a regular file -- both of what a
+/// symlink points to, never of the link itself, on every platform.
 bool file_metadata(const std::string& utf8_path, uint64_t& size, bool& is_regular, OsError& err);
 
 bool remove_file(const std::string& utf8_path, OsError& err);

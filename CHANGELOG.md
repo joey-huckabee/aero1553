@@ -86,6 +86,19 @@ shared behavior) holds at any compatible version pair. See
   reaches it, so until now it had never run under test.
   **Behaviour change** for C++ on POSIX under a umask that leaves group or
   other write open. Windows is unchanged.
+- **C++ on Windows reads an input through a symlink** (L2-RDR-005 and
+  L2-RDR-006 amended). Its file checks used `GetFileAttributesExW`, which
+  describes a symlink itself rather than what it points to: a recording
+  reached through a link was refused as an empty recording, decoding or
+  dumping a dangling link reported an I/O failure instead of "MIE file not
+  found", a dangling `--config` link was not reported as missing, and
+  `--glob` matched a dangling link that Rust and Python skip, failing the
+  merge. It now opens the path and reads the file's details from the
+  handle, which follows the link as Rust's `std::fs` does; a device such
+  as `NUL` no longer counts as a regular file either. A new conformance
+  check covers decode, `--glob`, `dump` and `--config` through links in
+  all three implementations, and fails rather than skips on CI if the
+  runner cannot create a symlink. POSIX is unchanged.
 
 ### Maintenance
 
