@@ -99,6 +99,18 @@ shared behavior) holds at any compatible version pair. See
   check covers decode, `--glob`, `dump` and `--config` through links in
   all three implementations, and fails rather than skips on CI if the
   runner cannot create a symlink. POSIX is unchanged.
+- **The `MUX` field is trimmed of spaces and tabs only, in all three
+  implementations** (L2-WRT-020 amended). Rust -- and so the Python
+  package -- trimmed it with `str::trim`, which also removes Unicode
+  whitespace, while C++ removed only spaces and tabs: a file name with a
+  no-break space (U+00A0) or ideographic space (U+3000) at the edge of the
+  MUX field gave `aa` from two implementations and the padded value from
+  the third. The rule now matches the one `--manifest` lines already
+  follow (L2-MRG-001 rule 4), and both are performed by one routine per
+  language: a new `text::trim_ascii_blank` in Rust, the existing one of
+  that name in C++. A conformance case pins it across all three.
+  **Behaviour change** for Rust and Python: Unicode whitespace at the edge
+  of the MUX field is now kept as part of the value.
 
 ### Maintenance
 

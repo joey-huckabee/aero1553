@@ -41,6 +41,12 @@ _ALT_NAME = "full_loadout.draw.data.1553.bb.unused.mie_irig"
         ("a..b", ".", 1, None),
         ("plain", ".", 4, None),
         ("plain", ".", 0, "plain"),
+        # Spaces are trimmed; Unicode whitespace is part of the name, as on a
+        # --manifest line (no tab case: Windows forbids one in a file name).
+        ("a. B7 .c", ".", 1, "B7"),
+        ("a.   .c", ".", 1, None),
+        ("a.\u00a0B7\u3000.c", ".", 1, "\u00a0B7\u3000"),
+        ("a.\u00a0.c", ".", 1, "\u00a0"),
     ],
 )
 def test_mux_from_filename(

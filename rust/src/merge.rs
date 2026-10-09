@@ -64,14 +64,9 @@ pub fn read_manifest(path: &Path) -> io::Result<Vec<PathBuf>> {
         // line ending is. No other `\r` is touched, so a filename containing an
         // interior CR survives.
         let line = raw.strip_suffix('\r').unwrap_or(raw);
-        // ASCII space and tab only, NOT `str::trim`. `trim` removes Unicode
-        // whitespace -- a no-break space, an ideographic space, an ogham space
-        // mark -- and the C++ implementation cannot: it is locale-free by rule
-        // (scripts/assert-locale-free.sh), so it trims ASCII blanks and would
-        // have to embed a Unicode table to agree. Two implementations silently
-        // editing a filename that legitimately begins with U+00A0, while the
-        // third passed it through, is the divergence this closes (L2-MRG-001).
-        let trimmed = line.trim_matches([' ', '\t']);
+        // Spaces and tabs only, never Unicode whitespace: see the helper for
+        // why, and the MUX field for the other caller.
+        let trimmed = crate::text::trim_ascii_blank(line);
         if trimmed.is_empty() || trimmed.starts_with('#') {
             continue;
         }
