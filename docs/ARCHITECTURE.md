@@ -532,9 +532,14 @@ For the full schema reference (every key, its type, valid values, validation beh
 
 ## 11. Logging strategy
 
-Rust's `log.rs` is hand-rolled — no `log` crate, no `env_logger`. A single global `AtomicU8` holds the current level; the `log_debug!`, `log_info!`, `log_warn!`, `log_error!` macros emit to stderr only when the level passes. Python uses the stdlib `logging` module with the same five levels.
+Rust's `log.rs` is hand-rolled — no `log` crate, no `env_logger`. The `log_debug!`, `log_info!`, `log_warn!`, `log_error!` macros format a line only when the level passes, so a filtered-out line costs a thread-local load, at most one relaxed atomic load, and a branch. A line that passes goes to stderr, or to a sink an embedder installs with `set_sink`.
 
-The level is set from the CLI `--log-level` flag or the config file's `logging.level`; CLI overrides config (L2-CFG-003).
+The level and the day-of-year advisory switch (below) are read in two layers:
+
+- **Process-wide** — an `AtomicU8` level and an `AtomicBool` advisory. This is the library's setting. The Python package installs a sink that forwards each line to the stdlib `logging` logger of the same name (`aero1553::reader` → `aero1553.reader`), and `sync_level` sets the process-wide level from the most verbose `aero1553.*` logger whenever a reader is created or iteration starts, so the decoder never formats a line no Python logger would take. The Python API keeps the stdlib's five level names.
+- **Per CLI run** — `cli::run_to_code`, which every CLI entry point (the binary, `run`, `run_os`, and Python's `aero1553.cli.main`) goes through, runs the command inside `log::with_cli_scope`. That gives the calling thread its own level and advisory, starting from the defaults (`WARNING`, advisory on), and pins its lines to stderr. Inside the scope `set_level` / `set_irig_day_advisory` change only the run; outside it they change the process-wide pair. The scope is restored on return and on unwind (L2-LOG-003). Without it, a `--log-level ERROR` run inside a Python host left the host's open iterators silenced afterwards, and a library call on another thread could change what a run printed mid-run, since the binding releases the GIL while the CLI runs.
+
+Within a run, the level is set from the CLI `--log-level` flag or the config file's `logging.level`; CLI overrides config (L2-CFG-003). One routine per implementation parses level names (`log::LEVEL_NAMES` lists them), shared by `--log-level`, `[logging] level` and Python's `configure_logging`. The C++ binary runs one command per process, so its single process-wide level is already per run.
 
 One message has a switch of its own beside the level: the IRIG day-of-year advisory (L2-LOG-001), off-switchable via `--no-irig-day-advisory` / `[logging] irig_day_advisory`. It lives in the logging module in all three implementations rather than in the reader's options, because it is a diagnostics switch rather than a decode parameter -- applied where the level is applied, so one call covers `decode`, `count` and `dump`.
 
