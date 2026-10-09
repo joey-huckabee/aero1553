@@ -145,7 +145,9 @@ pub const DEFAULT_MUX_FIELD: i64 = 4;
 
 /// Extract the MUX column value from a file *name* (basename, not a path):
 /// split on `delimiter` and return the `field`-th part (0-based; a negative
-/// `field` counts from the end, e.g. `-1` is the last part), trimmed.
+/// `field` counts from the end, e.g. `-1` is the last part), trimmed of spaces
+/// and tabs only -- the same trim as a `--manifest` line. A no-break space or
+/// other Unicode whitespace at the field's edge is part of the name and kept.
 ///
 /// Returns `None` (→ empty MUX) when the index is out of range, the selected
 /// field is empty after trimming, or `delimiter` is empty. Pure and
@@ -162,7 +164,8 @@ pub fn mux_from_filename(file_name: &str, delimiter: &str, field: i64) -> Option
     // rather than by a bounds check the cast has to be trusted to respect.
     let len = i64::try_from(parts.len()).unwrap_or(i64::MAX);
     let idx = if field < 0 { len + field } else { field };
-    let value = usize::try_from(idx).ok().and_then(|i| parts.get(i))?.trim();
+    let value =
+        crate::text::trim_ascii_blank(usize::try_from(idx).ok().and_then(|i| parts.get(i))?);
     if value.is_empty() {
         None
     } else {
@@ -756,6 +759,36 @@ mod tests {
         // No delimiter present and field != 0 → None.
         assert_eq!(mux_from_filename("plain", ".", 4), None);
         assert_eq!(mux_from_filename("plain", ".", 0).as_deref(), Some("plain"));
+    }
+
+    /// Requirements: L2-WRT-020, L2-MRG-001
+    #[test]
+    fn mux_trims_spaces_and_tabs_only() {
+        // `str::trim` removed Unicode whitespace here while C++ kept it, so a
+        // no-break space at the field's edge gave two different MUX values.
+        assert_eq!(
+            mux_from_filename("a. \tB7\t .c", ".", 1).as_deref(),
+            Some("B7")
+        );
+        assert_eq!(mux_from_filename("a. \t .c", ".", 1), None);
+        // Built at run time: a non-ASCII source literal would trip the
+        // shipped-literal ASCII gate (L2-CLI-014).
+        let nbsp = char::from_u32(0xA0).unwrap();
+        let ideographic = char::from_u32(0x3000).unwrap();
+        let padded = format!("{nbsp}B7{ideographic}");
+        assert_eq!(
+            mux_from_filename(&format!("a.{padded}.c"), ".", 1),
+            Some(padded)
+        );
+        // A field of only Unicode spaces is a value, not an empty field.
+        assert_eq!(
+            mux_from_filename(&format!("a.{nbsp}.c"), ".", 1),
+            Some(nbsp.to_string())
+        );
+        assert_eq!(
+            mux_from_filename("a.\rB7\x0b.c", ".", 1).as_deref(),
+            Some("\rB7\x0b")
+        );
     }
 
     /// Requirements: L2-DEC-001

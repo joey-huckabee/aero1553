@@ -37,6 +37,7 @@ pub mod models;
 pub mod order;
 pub mod reader;
 pub mod sync;
+mod text;
 pub mod writer;
 
 pub use reader::{MieFileReader, ReaderOptions};

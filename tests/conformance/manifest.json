@@ -901,6 +901,14 @@
       "expected": "expected/mux-from-filename.csv"
     },
     {
+      "name": "mux-unicode-space-kept",
+      "input": "inputs/basic-multi-record.hex",
+      "input_names": [
+        "full_loadout.draw.data.1553.\u00a0aa\u3000.unused.mie_irig"
+      ],
+      "expected": "expected/mux-unicode-space-kept.csv"
+    },
+    {
       "name": "mux-disabled",
       "input": "inputs/basic-multi-record.hex",
       "input_names": [

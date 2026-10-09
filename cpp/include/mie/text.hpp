@@ -77,7 +77,12 @@ inline int ascii_hex_value(char c) {
 std::string to_ascii_lower(const std::string& s);
 bool equals_ignoring_ascii_case(const std::string& a, const std::string& b);
 
-/// Remove leading and trailing spaces and tabs.
+/// Remove leading and trailing spaces and tabs -- nothing else.
+///
+/// The one trim for text taken from a file name: a --manifest line
+/// (L2-MRG-001 rule 4) and the MUX field (L2-WRT-020) both call it, as they
+/// call `text::trim_ascii_blank` in rust/src/text.rs. A no-break space or other
+/// Unicode whitespace at either end is part of the name and is kept.
 std::string trim_ascii_blank(const std::string& s);
 
 /// Trim ASCII whitespace (is_ascii_whitespace) from both ends: the rule for a

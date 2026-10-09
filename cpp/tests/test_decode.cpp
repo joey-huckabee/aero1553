@@ -267,9 +267,21 @@ TEST_CASE("MUX takes the configured field from the file name", "[decode][mux][L2
         CHECK_FALSE(dec::mux_from_filename("a.   .c", ".", 1, mux));
     }
 
-    SECTION("the field is trimmed") {
-        REQUIRE(dec::mux_from_filename("a. B7 .c", ".", 1, mux));
+    SECTION("the field is trimmed of spaces and tabs only") {
+        REQUIRE(dec::mux_from_filename("a. \tB7\t .c", ".", 1, mux));
         CHECK(mux == "B7");
+        CHECK_FALSE(dec::mux_from_filename("a. \t .c", ".", 1, mux));
+        // Unicode whitespace and the other ASCII whitespace bytes are part of
+        // the name -- the same rule as a --manifest line. Rust once trimmed
+        // them here, so a no-break space gave two different MUX values.
+        const std::string nbsp = "\xC2\xA0";             // U+00A0
+        const std::string ideographic = "\xE3\x80\x80";  // U+3000
+        REQUIRE(dec::mux_from_filename("a." + nbsp + "B7" + ideographic + ".c", ".", 1, mux));
+        CHECK(mux == nbsp + "B7" + ideographic);
+        REQUIRE(dec::mux_from_filename("a." + nbsp + ".c", ".", 1, mux));
+        CHECK(mux == nbsp);
+        REQUIRE(dec::mux_from_filename("a.\rB7\v.c", ".", 1, mux));
+        CHECK(mux == "\rB7\v");
     }
 
     SECTION("an empty delimiter declines rather than splitting per character") {
