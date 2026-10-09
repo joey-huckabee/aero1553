@@ -375,17 +375,17 @@ jobs:
             # platform_posix.cpp: cpp:S2612 "permissions granted to others"
             # ----------------------------------------------------------------
             #
-            # Fires on `::open(candidate, O_WRONLY|O_CREAT|O_EXCL, 0644)` in the
-            # atomic-write path. Two reasons this stays:
+            # Fires on `::open(..., O_WRONLY|O_CREAT|O_EXCL, kOutputMode)` (0666)
+            # in the atomic-write path. Two reasons this stays:
             #
-            # 1. 0644 is the MODE ARGUMENT, not the resulting mode -- the umask
-            #    still applies. It is also stricter than what the other two
-            #    implementations request: Rust's `File::create` passes 0666 and
-            #    Python's `open(...,"w")` does the same. Tightening C++ to 0600
-            #    would make the three implementations emit output files with
-            #    DIFFERENT permissions from the same input, which is exactly the
-            #    kind of cross-implementation divergence this repository exists
-            #    to prevent.
+            # 1. 0666 is the MODE ARGUMENT, not the resulting mode -- the umask
+            #    still applies -- and it is what the other two implementations
+            #    request: Rust's OpenOptions passes 0666, and the Python package
+            #    writes through Rust. L3-WRT-001 requires it, so the three emit
+            #    `0666 & ~umask` from the same input. This once asked for 0644,
+            #    recorded here as "stricter than the others" -- but a different
+            #    request IS a divergence: under umask 002 C++ wrote 0644 where
+            #    Rust wrote 0664. tests/conformance/output_mode.py now pins it.
             # 2. The temp file becomes the operator's CSV via rename. A decoded
             #    recording is not a secret relative to the recording it came
             #    from, and a 0600 output would break the ordinary case of a CSV

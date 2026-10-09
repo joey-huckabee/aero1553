@@ -39,6 +39,14 @@ namespace platform {
 
 namespace {
 
+/// The mode every output file is created with, before the umask (L3-WRT-001).
+///
+/// The platform default -- what Rust's OpenOptions and a shell redirect ask
+/// for -- so that what lands on disk is `0666 & ~umask` whichever
+/// implementation wrote it. The operator's umask is the policy; the decoder
+/// does not impose a narrower one of its own.
+const mode_t kOutputMode = 0666;
+
 /// Encode a file descriptor into the opaque void* the header carries.
 ///
 /// Offset by one so that a zeroed handle means "closed". Descriptor 0 is
@@ -204,7 +212,10 @@ bool AtomicFile::create(const std::string& final_utf8_path, OsError& err) {
     // attempt will not fix.
     for (int attempt = 0; attempt < 8; ++attempt) {
         const std::string candidate = make_temp_name(final_utf8_path);
-        const int fd = ::open(candidate.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+        // The temp file becomes the operator's output, so its mode IS the
+        // output's mode. This asked for 0644, which agreed with Rust and Python
+        // only under umask 022.
+        const int fd = ::open(candidate.c_str(), O_WRONLY | O_CREAT | O_EXCL, kOutputMode);
         if (fd >= 0) {
             handle_ = encode_fd(fd);
             temp_path_ = candidate;
@@ -361,7 +372,7 @@ CommitStatus AtomicFile::place(const std::string& destination, OsError& err) {
     // OUR OWN zero-byte reservation. The narrow cost is that the destination is
     // briefly an empty file, which is why this is the fallback and not the
     // primary.
-    const int reserved = ::open(destination.c_str(), O_WRONLY | O_CREAT | O_EXCL, 0644);
+    const int reserved = ::open(destination.c_str(), O_WRONLY | O_CREAT | O_EXCL, kOutputMode);
     if (reserved < 0) {
         if (errno == EEXIST) {
             return COMMIT_EXISTS;
