@@ -63,6 +63,15 @@ shared behavior) holds at any compatible version pair. See
   visible changes: Win32 strips the trailing dot, giving `o` and `o_errors`
   as before. **Behaviour change** on POSIX for such names: the errors file
   is `o_errors.`, where Rust wrote `o_errors`.
+- **C++ `dump` names a file with a backslash in it correctly on Linux.**
+  The report's `File:` line split the path on `/` and `\` on every
+  platform, so a recording named `odd\name.mie` was reported as
+  `File: name.mie` on POSIX, where a backslash is an ordinary filename
+  character and Rust and Python print the whole name. It now takes the name
+  from the platform layer's `path_filename`, and `--glob`, which already
+  asked the platform layer what a separator is but kept its own copy of the
+  split, uses the same `path_filename` / `path_parent` pair -- so one rule
+  decides where a C++ path's file name begins. Windows is unchanged.
 
 ### Maintenance
 

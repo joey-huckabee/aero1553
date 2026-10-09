@@ -71,12 +71,6 @@ const char* format_label(MessageFormat format) {
 
 std::string rule() { return std::string(kRuleWidth, '-'); }
 
-/// The last path component, or the whole string when there is no separator.
-std::string file_name_of(const std::string& path) {
-    const std::size_t slash = path.find_last_of("/\\");
-    return slash == std::string::npos ? path : path.substr(slash + 1);
-}
-
 /// Read the whole file.
 ///
 /// Read rather than mapped: this view must work on files the reader rejects,
@@ -283,7 +277,8 @@ void hex_dump_raw(const std::string& path, std::size_t offset, const Optional<st
         end = start;
     }
 
-    emit_line(out, "File: " + file_name_of(path) + " (" + text::decimal(file_size) + " bytes)");
+    emit_line(out, "File: " + platform::path_filename(path) + " (" + text::decimal(file_size) +
+                       " bytes)");
     emit_line(out, "Range: 0x" + text::hex_upper(start, 8) + "-0x" + text::hex_upper(end, 8));
     emit_line(out, "");
 
@@ -300,7 +295,8 @@ void hex_dump_records(const std::string& path, const Optional<uint64_t>& max_rec
     const std::vector<uint8_t> data = read_whole_file(path);
     const std::size_t file_size = data.size();
 
-    emit_line(out, "File: " + file_name_of(path) + " (" + text::decimal(file_size) + " bytes)");
+    emit_line(out, "File: " + platform::path_filename(path) + " (" + text::decimal(file_size) +
+                       " bytes)");
     emit_line(out, "Record dump starting at offset 0x" + text::hex_upper(offset, 8));
     emit_line(out, "");
 
