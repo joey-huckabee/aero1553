@@ -510,14 +510,12 @@ fn apply_output_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), C
     // one is actually needed is a question about the resolved pair, so it is
     // asked once both sources have been merged (see `cli::resolve_time_render`).
     if let Some(n) = toml.get_int("output", "year")? {
-        match u16::try_from(n) {
-            Ok(v) if (YEAR_MIN..=YEAR_MAX).contains(&v) => cfg.year = Some(v),
-            _ => {
-                return Err(ConfigError(format!(
-                    "Invalid output.year: {n}. Valid range: [{YEAR_MIN}, {YEAR_MAX}]"
-                )));
-            }
-        }
+        let year = crate::models::check_year(n).map_err(|_| {
+            ConfigError(format!(
+                "Invalid output.year: {n}. Valid range: [{YEAR_MIN}, {YEAR_MAX}]"
+            ))
+        })?;
+        cfg.year = Some(year);
     }
     if let Some(offset) = toml.get_string("output", "utc_offset")? {
         cfg.utc_offset_minutes = parse_utc_offset(offset)?;

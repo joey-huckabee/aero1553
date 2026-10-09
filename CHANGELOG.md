@@ -111,6 +111,19 @@ shared behavior) holds at any compatible version pair. See
   that name in C++. A conformance case pins it across all three.
   **Behaviour change** for Rust and Python: Unicode whitespace at the edge
   of the MUX field is now kept as part of the value.
+- **The Python package range-checks every calendar year and UTC offset it
+  is given** (L3-PY-024). A `TimeRender` reached the formatter unchecked, so
+  `format_with`, `message_to_row`, `write_csv` and `write_csv_split` rendered
+  a year of `10000` as a five-digit year, `0` as `0000`, and an offset of
+  `5000` minutes as `+83:20`; `MieFileReader(calendar_year=)` was unchecked
+  too. `columns` and `to_dict` checked, through a copy of their own that
+  compared `abs()` in a 16-bit integer, and so accepted `-32768`. Every entry
+  point now raises `ValueError` for a year outside `[1, 9999]` or an offset
+  outside `[-1439, 1439]`, before any output, however large the integer. The
+  checks are now one pair in the Rust core -- `check_year` and
+  `check_utc_offset`, composed by a new checked `TimeRender::new` -- which
+  the CLI and config loader call as well; the bindings' two unchecked
+  conversions became one. The CLI's behaviour and messages are unchanged.
 
 ### Maintenance
 

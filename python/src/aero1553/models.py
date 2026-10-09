@@ -264,6 +264,10 @@ class TimeRender:
             calendar rendering.
         utc_offset_minutes: Offset from UTC in minutes, used only by ``ISO``.
             Zero renders as ``Z``.
+
+    A plain container: the year (``[1, 9999]``) and offset (``[-1439,
+    1439]``) are range-checked by the decoder wherever a rendering is used,
+    raising ``ValueError`` before any output (L3-PY-024).
     """
 
     format: OutputTimeFormat = OutputTimeFormat.DOY

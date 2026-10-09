@@ -19,7 +19,9 @@ use crate::dump::{hex_dump_raw_to_stdout, hex_dump_records_to_stdout};
 use crate::error::MieError;
 use crate::filter::FilterIterExt;
 use crate::log::{self, Level};
-use crate::models::{ErrorMode, OutputTimeFormat, TimeRender, TimestampFormat, YEAR_MAX, YEAR_MIN};
+use crate::models::{
+    ErrorMode, OutputTimeFormat, TimeRender, TimestampFormat, YEAR_MAX, YEAR_MIN, check_year,
+};
 use crate::order::OrderIterExt;
 use crate::reader::{MieFileReader, ReaderOptions};
 use crate::writer::{WriteOptions, write_csv, write_csv_split};
@@ -1275,12 +1277,10 @@ fn parse_output_time_format_arg(s: &str) -> Result<OutputTimeFormat, String> {
 fn parse_year_arg(s: &str) -> Result<u16, String> {
     let invalid = || format!("invalid --year: {s:?}; valid range: [{YEAR_MIN}, {YEAR_MAX}]");
     // Parsed as `u32` first so that an out-of-range four-plus-digit year
-    // reports the range rather than an integer-overflow message.
+    // reports the range rather than an integer-overflow message; the range
+    // itself is the one shared check.
     let value: u32 = s.trim_ascii().parse().map_err(|_| invalid())?;
-    match u16::try_from(value) {
-        Ok(y) if (YEAR_MIN..=YEAR_MAX).contains(&y) => Ok(y),
-        _ => Err(invalid()),
-    }
+    check_year(i64::from(value)).map_err(|_| invalid())
 }
 
 /// L2-CLI-018: `--utc-offset Z|+HH:MM|-HH:MM`, shared with the config loader's
@@ -1517,11 +1517,14 @@ fn resolve_time_render(cfg: &DecoderConfig) -> Result<TimeRender, CliError> {
             cfg.output_time_format.as_str()
         )));
     }
-    Ok(TimeRender {
-        format: cfg.output_time_format,
-        year: cfg.year,
-        utc_offset_minutes: cfg.utc_offset_minutes,
-    })
+    // Both values were range-checked as they were parsed; building through the
+    // checked constructor keeps that true of a configuration assembled in code.
+    TimeRender::new(
+        cfg.output_time_format,
+        cfg.year.map(i64::from),
+        i64::from(cfg.utc_offset_minutes),
+    )
+    .map_err(|err| CliError::usage(err.to_string()))
 }
 
 fn open_reader(path: &Path, cfg: &DecoderConfig) -> Result<MieFileReader, CliError> {

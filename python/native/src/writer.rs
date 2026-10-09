@@ -16,33 +16,15 @@ use std::sync::PoisonError;
 
 use aero1553::error::MieError;
 use aero1553::log::{self, Level};
-use aero1553::models::{MieMessage, OutputTimeFormat, TimeRender};
+use aero1553::models::{MieMessage, TimeRender};
 use aero1553::writer::{self as core, CSV_HEADER, CsvWriter, WriteOptions, WriteOutcome};
-use pyo3::exceptions::{PyOSError, PyValueError};
+use pyo3::exceptions::PyOSError;
 use pyo3::prelude::*;
 use pyo3::types::PyBytes;
 
 use crate::logbridge;
-use crate::models::PyMieMessage;
+use crate::models::{PyMieMessage, render_from};
 use crate::stream::{self, ErrorSlot};
-
-fn time_render(format: u8, year: Option<u16>, utc_offset_minutes: i16) -> PyResult<TimeRender> {
-    let format = match format {
-        0 => OutputTimeFormat::Doy,
-        1 => OutputTimeFormat::Iso,
-        2 => OutputTimeFormat::Dom,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "{other} is not a valid OutputTimeFormat"
-            )));
-        }
-    };
-    Ok(TimeRender {
-        format,
-        year,
-        utc_offset_minutes,
-    })
-}
 
 /// `(normal_count, error_count, partial)`, where `partial` is
 /// `(main_path, errors_path, offset, sync_losses)`. The Python wrapper builds
@@ -262,11 +244,11 @@ pub fn write_csv(
     no_clobber: bool,
     allow_partial: bool,
     time_format: u8,
-    year: Option<u16>,
-    utc_offset_minutes: i16,
+    year: Option<i64>,
+    utc_offset_minutes: i64,
 ) -> PyResult<Outcome> {
     logbridge::sync_level(py)?;
-    let render = time_render(time_format, year, utc_offset_minutes)?;
+    let render = render_from(time_format, year, utc_offset_minutes)?;
     let (source, slot) = stream::source(messages)?;
     let source = stream::interruptible(source, slot.clone());
     if let Ok(path) = output.extract::<PathBuf>() {
@@ -364,15 +346,15 @@ pub fn write_csv_split(
     no_clobber: bool,
     allow_partial: bool,
     time_format: u8,
-    year: Option<u16>,
-    utc_offset_minutes: i16,
+    year: Option<i64>,
+    utc_offset_minutes: i64,
 ) -> PyResult<Outcome> {
     logbridge::sync_level(py)?;
     let opts = WriteOptions {
         input_path,
         no_clobber,
         allow_partial,
-        time_render: time_render(time_format, year, utc_offset_minutes)?,
+        time_render: render_from(time_format, year, utc_offset_minutes)?,
     };
     let (source, slot) = stream::source(messages)?;
     let source = stream::interruptible(source, slot.clone());
@@ -398,10 +380,10 @@ pub fn message_to_row(
     py: Python<'_>,
     msg: &Bound<'_, PyMieMessage>,
     time_format: u8,
-    year: Option<u16>,
-    utc_offset_minutes: i16,
+    year: Option<i64>,
+    utc_offset_minutes: i64,
 ) -> PyResult<Vec<String>> {
-    let render = time_render(time_format, year, utc_offset_minutes)?;
+    let render = render_from(time_format, year, utc_offset_minutes)?;
     let record: &MieMessage = &msg.get().inner;
     let mut bytes = Vec::new();
     let mut writer = CsvWriter::new(&mut bytes, "<row>")

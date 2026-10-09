@@ -160,6 +160,9 @@ When the Python `write_csv` writes to a stream rather than a file path, `allow_p
 **L3-PY-023** · Parent: L2-WRT-012 · Verification: T
 When the Python `write_csv` or `aero1553.dump`'s hex dumps write to a stream that has a binary layer under it (`stream.buffer` an `io` binary stream, as `sys.stdout` and an `open(path, "w")` file have), the bytes SHALL be written through that layer, after flushing the text layer, and the binary layer SHALL be flushed before the call returns, so the output is byte-for-byte what the CLI writes -- UTF-8, LF line endings -- whatever the stream's newline and encoding settings, and text written to the stream before and after the call keeps its place. A stream without one SHALL be given `str`. Before this the text was handed to the stream's `write`, and a Windows text stream turned every `\n` into `\r\n`, against L2-WRT-012.
 
+**L3-PY-024** · Parent: L2-WRT-026 · Verification: T
+Every Python entry point that accepts a calendar year or a UTC offset -- a `TimeRender` passed to `format_with`, `message_to_row`, `write_csv` or `write_csv_split`; `columns` and `MieMessage.to_dict`; and `MieFileReader(calendar_year=)` -- SHALL range-check it before any output is produced, raising `ValueError` for a year outside `[1, 9999]` (L2-WRT-026 clause 1) or an offset outside `[-1439, 1439]` minutes (the `+HH:MM` range of L2-CFG-012), whatever the size of the integer given. The checks SHALL be the Rust core's (`check_year`, `check_utc_offset`, composed by `TimeRender::new`), which the CLI and config loader also call, and no entry point SHALL carry a copy of its own. Before this a `TimeRender` was converted unchecked, so a year of `10000` rendered a five-digit year and an offset of `5000` rendered `+83:20`; `columns` alone checked, through its own copy, which compared `abs()` in a 16-bit integer and so accepted `-32768`.
+
 ## L3-RS: Rust implementation technology
 
 **L3-RS-001** · Parent: L2-CONF-005 · Verification: I
