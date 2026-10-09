@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 
-use aero1553::models::TimestampFormat;
+use aero1553::models::{TimestampFormat, check_year};
 use aero1553::reader::{MieFileReader, ReaderOptions};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -53,7 +53,7 @@ impl PyReader {
         mux_enabled: bool,
         mux_delimiter: String,
         mux_field: i64,
-        calendar_year: Option<u16>,
+        calendar_year: Option<i64>,
     ) -> PyResult<Self> {
         logbridge::sync_level(py)?;
         let options = ReaderOptions {
@@ -65,7 +65,12 @@ impl PyReader {
             mux_enabled,
             mux_delimiter,
             mux_field,
-            calendar_year,
+            // The same year check every rendering is built through: this year
+            // is the calendar the reader's rollover WARN names.
+            calendar_year: calendar_year
+                .map(check_year)
+                .transpose()
+                .map_err(|err| PyValueError::new_err(err.to_string()))?,
         };
         MieFileReader::with_options(&path, options)
             .map(|inner| Self { inner })

@@ -17,7 +17,8 @@
 //! day 366 of a common year does not exist).
 
 use aero1553::models::{
-    CommandWord, IrigTimestamp, MieMessage, Timestamp, YEAR_MAX, YEAR_MIN, day_of_year_to_month_day,
+    CommandWord, IrigTimestamp, MieMessage, TimeRenderError, Timestamp, check_utc_offset,
+    check_year, day_of_year_to_month_day,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -108,7 +109,6 @@ const FIELDS: &[(&str, Kind, F)] = &[
 ];
 
 const DATETIME: usize = 7;
-const MAX_UTC_OFFSET_MINUTES: i16 = 23 * 60 + 59;
 /// Records gathered before the columns are filled: bounded, so `columns` keeps
 /// the stream's constant-memory property.
 const BATCH: usize = 1024;
@@ -252,8 +252,8 @@ impl Spec {
         py: Python<'_>,
         fields: Option<&Bound<'_, PyAny>>,
         tick_rate_hz: Option<f64>,
-        year: Option<u16>,
-        utc_offset_minutes: i16,
+        year: Option<i64>,
+        utc_offset_minutes: i64,
     ) -> PyResult<Self> {
         if let Some(hz) = tick_rate_hz
             && !(hz.is_finite() && hz > 0.0)
@@ -262,19 +262,12 @@ impl Spec {
                 "standard_tick_rate_hz must be finite and positive, got {hz}"
             )));
         }
-        if let Some(y) = year
-            && !(YEAR_MIN..=YEAR_MAX).contains(&y)
-        {
-            return Err(PyValueError::new_err(format!(
-                "year must be in [{YEAR_MIN}, {YEAR_MAX}], got {y}"
-            )));
-        }
-        if utc_offset_minutes.abs() > MAX_UTC_OFFSET_MINUTES {
-            return Err(PyValueError::new_err(format!(
-                "utc_offset_minutes must be in [-{MAX_UTC_OFFSET_MINUTES}, \
-                 {MAX_UTC_OFFSET_MINUTES}], got {utc_offset_minutes}"
-            )));
-        }
+        // The core's range checks, the ones every rendering is built through.
+        // This once had its own copy, which tested `abs() > 1439` and so passed
+        // i16::MIN: its absolute value does not fit, and wraps back to itself.
+        let range = |err: TimeRenderError| PyValueError::new_err(err.to_string());
+        let year = year.map(check_year).transpose().map_err(range)?;
+        let utc_offset_minutes = check_utc_offset(utc_offset_minutes).map_err(range)?;
         let wanted = match fields {
             None => {
                 let mut all = [true; FIELDS.len()];
@@ -615,8 +608,8 @@ pub fn columns<'py>(
     messages: &Bound<'py, PyAny>,
     fields: Option<Bound<'py, PyAny>>,
     standard_tick_rate_hz: Option<f64>,
-    year: Option<u16>,
-    utc_offset_minutes: i16,
+    year: Option<i64>,
+    utc_offset_minutes: i64,
 ) -> PyResult<Bound<'py, PyDict>> {
     logbridge::sync_level(py)?;
     let spec = Spec::new(

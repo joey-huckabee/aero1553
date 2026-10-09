@@ -10,10 +10,13 @@ feature is built to refuse.
 from __future__ import annotations
 
 import datetime
+import io
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from aero1553 import MieFileReader, columns
 from aero1553.cli import EXIT_NO_RECORDS, EXIT_OK, EXIT_USAGE, main
 from aero1553.models import (
     YEAR_MAX,
@@ -28,7 +31,8 @@ from aero1553.models import (
     is_leap_year,
     parse_output_time_format,
 )
-from tests.conftest import RunCli
+from aero1553.writer import WriteOptions, message_to_row, write_csv, write_csv_split
+from tests.conftest import RunCli, conformance_input
 
 DOY_RENDER = TimeRender()
 
@@ -537,3 +541,84 @@ class TestAdvisoryLevel:
         result = run_cli(["--no-irig-day-advisory", *argv])
         assert result.rc == EXIT_OK
         assert "day-of-year" not in result.err
+
+
+# ---------------------------------------------------------------------------
+# L3-PY-024: every entry point range-checks year and offset, through the core
+# ---------------------------------------------------------------------------
+
+#: (year, utc_offset_minutes, the ValueError's message) for values out of range.
+#: -32768 is i16::MIN, the value a 16-bit `abs()` check let through; 40000 and
+#: 2**40 do not fit 16 bits at all and must still read as out of range.
+_OUT_OF_RANGE = [
+    pytest.param(0, 0, r"year must be in \[1, 9999\], got 0", id="year-0"),
+    pytest.param(10_000, 0, "got 10000", id="year-10000"),
+    pytest.param(-1, 0, "got -1", id="year-negative"),
+    pytest.param(2**40, 0, f"got {2**40}", id="year-huge"),
+    pytest.param(
+        2026, 1440, r"utc_offset_minutes must be in \[-1439, 1439\], got 1440", id="offset-1440"
+    ),
+    pytest.param(2026, -1440, "got -1440", id="offset-minus-1440"),
+    pytest.param(2026, -32768, "got -32768", id="offset-i16-min"),
+    pytest.param(2026, 40_000, "got 40000", id="offset-beyond-i16"),
+]
+
+
+def _entry_points(tmp_path: Path) -> dict[str, Callable[[int, int], object]]:
+    """Each Python entry point that takes a year and an offset, as one call."""
+    path = tmp_path / "rec.mie"
+    path.write_bytes(conformance_input("basic-multi-record"))
+    msg = next(iter(MieFileReader(path)))
+
+    def render(year: int, offset: int) -> TimeRender:
+        return TimeRender(OutputTimeFormat.ISO, year, offset)
+
+    def opts(year: int, offset: int) -> WriteOptions:
+        return WriteOptions(time_render=render(year, offset))
+
+    return {
+        "format_with": lambda y, o: msg.timestamp.format_with(render(y, o)),
+        "message_to_row": lambda y, o: message_to_row(msg, render(y, o)),
+        "write_csv": lambda y, o: write_csv([msg], tmp_path / "w.csv", opts(y, o)),
+        "write_csv-stream": lambda y, o: write_csv([msg], io.StringIO(), opts(y, o)),
+        "write_csv_split": lambda y, o: write_csv_split([msg], tmp_path / "s.csv", opts(y, o)),
+        "columns": lambda y, o: columns([msg], year=y, utc_offset_minutes=o),
+        "to_dict": lambda y, o: msg.to_dict(year=y, utc_offset_minutes=o),
+    }
+
+
+@pytest.mark.requirement("L3-PY-024")
+@pytest.mark.requirement("L2-WRT-026")
+@pytest.mark.parametrize(("year", "offset", "message"), _OUT_OF_RANGE)
+def test_every_entry_point_rejects_an_out_of_range_year_or_offset(
+    tmp_path: Path, year: int, offset: int, message: str
+) -> None:
+    """A bad value is a ValueError at every entry point, before any output.
+
+    Before the core check was shared, a TimeRender went to the formatter
+    unchecked -- year 10000 rendered ``10000-07-10T...`` and offset 5000
+    rendered ``+83:20`` -- and only ``columns`` checked, through a copy that
+    passed -32768.
+    """
+    for name, call in _entry_points(tmp_path).items():
+        with pytest.raises(ValueError, match=message):
+            call(year, offset)
+        assert not list(tmp_path.glob("*.csv*")), f"{name} wrote output"
+
+
+@pytest.mark.requirement("L3-PY-024")
+@pytest.mark.parametrize("year", [YEAR_MIN, YEAR_MAX])
+@pytest.mark.parametrize("offset", [-1439, 0, 1439])
+def test_every_entry_point_accepts_the_range_limits(tmp_path: Path, year: int, offset: int) -> None:
+    for call in _entry_points(tmp_path).values():
+        call(year, offset)
+
+
+@pytest.mark.requirement("L3-PY-024")
+@pytest.mark.parametrize("year", [0, 10_000, 2**40])
+def test_reader_rejects_an_out_of_range_calendar_year(tmp_path: Path, year: int) -> None:
+    path = tmp_path / "rec.mie"
+    path.write_bytes(conformance_input("basic-multi-record"))
+    with pytest.raises(ValueError, match=f"year must be in .*, got {year}"):
+        MieFileReader(path, calendar_year=year)
+    assert list(MieFileReader(path, calendar_year=YEAR_MAX))

@@ -216,6 +216,88 @@ impl TimeRender {
     pub fn doy() -> Self {
         Self::default()
     }
+
+    /// A rendering whose year and offset are known to be in range -- the checked
+    /// way to build one from values nobody has validated yet.
+    ///
+    /// The fields stay public, so a literal can still hold anything; a value
+    /// out of range there renders a five-digit year or an offset like `+83:20`.
+    /// The CLI and config loader check as they parse, and the Python bindings
+    /// build every rendering through this. The inputs are `i64` so a caller
+    /// holding a wider integer -- a Python `int` -- gets a range error rather
+    /// than having to narrow first and report an overflow instead.
+    ///
+    /// # Errors
+    ///
+    /// [`TimeRenderError`] when `year` is outside [`YEAR_MIN`]`..=`[`YEAR_MAX`]
+    /// or `utc_offset_minutes` outside +/-[`MAX_UTC_OFFSET_MINUTES`].
+    pub fn new(
+        format: OutputTimeFormat,
+        year: Option<i64>,
+        utc_offset_minutes: i64,
+    ) -> Result<Self, TimeRenderError> {
+        Ok(Self {
+            format,
+            year: year.map(check_year).transpose()?,
+            utc_offset_minutes: check_utc_offset(utc_offset_minutes)?,
+        })
+    }
+}
+
+/// A year or UTC offset outside the range a rendering can represent.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TimeRenderError {
+    /// The year is outside [`YEAR_MIN`]`..=`[`YEAR_MAX`] (L2-WRT-026 clause 1).
+    YearOutOfRange(i64),
+    /// The offset is outside +/-[`MAX_UTC_OFFSET_MINUTES`] (L2-CFG-012).
+    UtcOffsetOutOfRange(i64),
+}
+
+impl std::fmt::Display for TimeRenderError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::YearOutOfRange(y) => {
+                write!(f, "year must be in [{YEAR_MIN}, {YEAR_MAX}], got {y}")
+            }
+            Self::UtcOffsetOutOfRange(m) => write!(
+                f,
+                "utc_offset_minutes must be in [-{MAX_UTC_OFFSET_MINUTES}, \
+                 {MAX_UTC_OFFSET_MINUTES}], got {m}"
+            ),
+        }
+    }
+}
+
+impl std::error::Error for TimeRenderError {}
+
+/// The one year-range check (L2-WRT-026 clause 1). The CLI, the config loader
+/// and the Python bindings all call it, each wording the failure its own way.
+///
+/// # Errors
+///
+/// [`TimeRenderError::YearOutOfRange`] outside [`YEAR_MIN`]`..=`[`YEAR_MAX`].
+pub fn check_year(year: i64) -> Result<u16, TimeRenderError> {
+    match u16::try_from(year) {
+        Ok(y) if (YEAR_MIN..=YEAR_MAX).contains(&y) => Ok(y),
+        _ => Err(TimeRenderError::YearOutOfRange(year)),
+    }
+}
+
+/// The one UTC-offset range check. Compared in `i64`, never through `abs()`:
+/// the `columns()` binding once tested `i16::abs(m) > 1439`, and `i16::MIN`
+/// has no positive counterpart -- a release build wrapped it back to itself,
+/// which is less than 1439, so -32768 passed.
+///
+/// # Errors
+///
+/// [`TimeRenderError::UtcOffsetOutOfRange`] outside +/-[`MAX_UTC_OFFSET_MINUTES`].
+pub fn check_utc_offset(minutes: i64) -> Result<i16, TimeRenderError> {
+    let limit = i64::from(MAX_UTC_OFFSET_MINUTES);
+    if (-limit..=limit).contains(&minutes) {
+        i16::try_from(minutes).map_err(|_| TimeRenderError::UtcOffsetOutOfRange(minutes))
+    } else {
+        Err(TimeRenderError::UtcOffsetOutOfRange(minutes))
+    }
 }
 
 /// Why a calendar rendering could not be produced (L2-WRT-026).
@@ -250,6 +332,10 @@ pub enum CalendarError {
 pub const YEAR_MIN: u16 = 1;
 /// See [`YEAR_MIN`].
 pub const YEAR_MAX: u16 = 9999;
+
+/// The largest UTC offset magnitude, in minutes: `+23:59` / `-23:59`, the most
+/// the `+HH:MM` grammar of L2-CFG-012 can spell.
+pub const MAX_UTC_OFFSET_MINUTES: i16 = 23 * 60 + 59;
 
 /// Days in each month of a common year, January first.
 const COMMON_YEAR_MONTH_LENGTHS: [u16; 12] = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
@@ -1370,6 +1456,53 @@ mod tests {
         assert_eq!(format_utc_offset(60), "+01:00");
         assert_eq!(format_utc_offset(-1), "-00:01");
         assert_eq!(format_utc_offset(1439), "+23:59");
+    }
+
+    /// Requirements: L2-WRT-026, L2-CFG-012
+    #[test]
+    fn time_render_new_checks_year_and_offset_ranges() {
+        let iso = OutputTimeFormat::Iso;
+        let ok = TimeRender::new(iso, Some(2026), -300).unwrap();
+        assert_eq!((ok.year, ok.utc_offset_minutes), (Some(2026), -300));
+        assert_eq!(TimeRender::new(iso, None, 0).unwrap().year, None);
+
+        // Both ends of each range are inside it.
+        for year in [1, 9999] {
+            assert_eq!(check_year(year), Ok(u16::try_from(year).unwrap()));
+        }
+        for minutes in [-1439, 0, 1439] {
+            assert_eq!(
+                check_utc_offset(minutes),
+                Ok(i16::try_from(minutes).unwrap())
+            );
+        }
+
+        for year in [0, 10_000, -1, i64::from(u16::MAX) + 1, i64::MIN, i64::MAX] {
+            assert_eq!(check_year(year), Err(TimeRenderError::YearOutOfRange(year)));
+            assert!(TimeRender::new(iso, Some(year), 0).is_err(), "{year}");
+        }
+        // i16::MIN is the case `abs()` got wrong: it has no positive i16, so a
+        // release build wrapped it to itself and it compared below 1439.
+        for minutes in [-1440, 1440, 5000, i64::from(i16::MIN), 40_000, i64::MIN] {
+            assert_eq!(
+                check_utc_offset(minutes),
+                Err(TimeRenderError::UtcOffsetOutOfRange(minutes))
+            );
+            assert!(
+                TimeRender::new(iso, Some(2026), minutes).is_err(),
+                "{minutes}"
+            );
+        }
+
+        // The wording the Python bindings raise as ValueError.
+        assert_eq!(
+            TimeRenderError::YearOutOfRange(0).to_string(),
+            "year must be in [1, 9999], got 0"
+        );
+        assert_eq!(
+            TimeRenderError::UtcOffsetOutOfRange(-32768).to_string(),
+            "utc_offset_minutes must be in [-1439, 1439], got -32768"
+        );
     }
 
     fn sample_irig() -> IrigTimestamp {

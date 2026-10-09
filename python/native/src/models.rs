@@ -111,9 +111,18 @@ fn message_format_from(value: u8) -> PyResult<MessageFormat> {
     })
 }
 
-/// A Python `TimeRender` (still a Python dataclass) as the decoder's own.
-fn time_render(render: &Bound<'_, PyAny>) -> PyResult<TimeRender> {
-    let format = match render.getattr("format")?.extract::<u8>()? {
+/// The one place the bindings build a decoder `TimeRender`: every Python
+/// entry point that renders a timestamp -- `format_with`, `message_to_row`,
+/// `write_csv` (to a path or a stream) and `write_csv_split` -- comes through
+/// here, so each gets the core's range checks (`TimeRender::new`). The year
+/// and offset arrive as `i64` so an out-of-range Python `int` is reported as
+/// out of range, not as a failed narrowing (L3-PY-024).
+pub(crate) fn render_from(
+    format: u8,
+    year: Option<i64>,
+    utc_offset_minutes: i64,
+) -> PyResult<TimeRender> {
+    let format = match format {
         0 => OutputTimeFormat::Doy,
         1 => OutputTimeFormat::Iso,
         2 => OutputTimeFormat::Dom,
@@ -123,11 +132,17 @@ fn time_render(render: &Bound<'_, PyAny>) -> PyResult<TimeRender> {
             )));
         }
     };
-    Ok(TimeRender {
-        format,
-        year: render.getattr("year")?.extract()?,
-        utc_offset_minutes: render.getattr("utc_offset_minutes")?.extract()?,
-    })
+    TimeRender::new(format, year, utc_offset_minutes)
+        .map_err(|err| PyValueError::new_err(err.to_string()))
+}
+
+/// A Python `TimeRender` (still a Python dataclass) as the decoder's own.
+fn time_render(render: &Bound<'_, PyAny>) -> PyResult<TimeRender> {
+    render_from(
+        render.getattr("format")?.extract()?,
+        render.getattr("year")?.extract()?,
+        render.getattr("utc_offset_minutes")?.extract()?,
+    )
 }
 
 static CALENDAR_UNAVAILABLE: PyOnceLock<Py<PyType>> = PyOnceLock::new();
@@ -806,8 +821,8 @@ impl PyMieMessage {
         py: Python<'py>,
         fields: Option<Bound<'py, PyAny>>,
         standard_tick_rate_hz: Option<f64>,
-        year: Option<u16>,
-        utc_offset_minutes: i16,
+        year: Option<i64>,
+        utc_offset_minutes: i64,
     ) -> PyResult<Bound<'py, PyDict>> {
         let spec = crate::table::Spec::new(
             py,
