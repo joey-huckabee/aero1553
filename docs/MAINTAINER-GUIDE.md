@@ -34,6 +34,7 @@ aero1553/
 │       ├── manifest.json   case catalog
 │       ├── inputs/*.hex    reviewable hex fixtures (NOT committed binaries)
 │       ├── expected/*.csv  byte-exact CSV oracles
+│       ├── expected/*.stderr  exact stderr oracles (none = stderr must be empty)
 │       ├── configs/*.toml  per-case TOML config
 │       └── run.py          the runner
 ├── python/                 Python package (supports 3.10–3.14)
@@ -108,7 +109,7 @@ uv --directory python run pytest
 uv --directory python run python ../tests/conformance/run.py
 ```
 
-The runner reads `tests/conformance/manifest.json`, materializes each `.hex` fixture into a temp `.mie` file, invokes every registered CLI against it, and diffs the produced CSVs against the checked-in oracle (or asserts the exit code for negative cases).
+The runner reads `tests/conformance/manifest.json`, materializes each `.hex` fixture into a temp `.mie` file, invokes every registered CLI against it, and diffs the produced CSVs against the checked-in oracle (or asserts the exit code for negative cases), and every case's stderr against its stderr oracle.
 
 The runner additionally cross-checks the **config parsers** (the hand-rolled Rust and C++ loaders; the Python package runs the Rust one, L3-PY-005): a curated corpus (`config_parity.py`) plus a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts both implementations agree on accept/reject. Both run inside `run.py` — there is no separate command. The fuzzer is deterministic (fixed seed + `MIE_CONFIG_FUZZ_ITERS` iterations, default 100); for a deeper local sweep run `MIE_CONFIG_FUZZ_ITERS=5000 uv --directory python run python ../tests/conformance/run.py` (a *distinct* knob from the reader/dump `MIE_FUZZ_ITERATIONS` in §11's fuzz workflow). A divergence prints the exact config to pin in `config_parity.py`. See `tests/conformance/README.md`.
 
@@ -350,7 +351,7 @@ cargo test --all-targets               # unit + integration + cli together (what
 
 ## 6. Adding a conformance fixture
 
-Cross-implementation conformance fixtures verify byte-identical CSV output (or matching exit code) between Rust and Python. Add a case only for behavior that's specified at L2 as shared.
+Cross-implementation conformance fixtures verify byte-identical CSV output (or matching exit code), and identical stderr, across Rust, Python and C++. Add a case only for behavior that's specified at L2 as shared.
 
 ### Steps
 
@@ -358,7 +359,9 @@ Cross-implementation conformance fixtures verify byte-identical CSV output (or m
 
 2. If the case expects a successful decode (default), generate the CSV oracle. Run both implementations against your fixture and compare manually until they agree, then commit the agreed output to `tests/conformance/expected/<name>.csv`.
 
-3. For negative cases (no oracle, just exit-code check), set `expected_exit` in the manifest and skip the oracle file.
+3. For negative cases (no CSV oracle, just exit-code check), set `expected_exit` in the manifest and skip the oracle file.
+
+   Every case, negative or not, is also held to a stderr oracle, `tests/conformance/expected/<name>.stderr`, with paths as placeholders and `INFO` / `DEBUG` lines left out (see the conformance README's "Stderr oracles"). Generate it with `run.py --update-expected` once all three agree, and review it like the CSV: it is the wording the operator will see. A case that writes nothing to stderr has no file. Don't reach for `expected_stderr_contains`; it is only for a case whose point is that an `INFO` or `DEBUG` line appears.
 
    **Multi-file merge cases** use `"inputs": ["inputs/a.hex", "inputs/b.hex", …]` (a list) instead of the single `"input"` — the runner materializes each hex to its own temp `.mie` and passes them all as positionals to both CLIs (L2-MRG-001). See the `merge-ordered` (oracle) and `merge-incompatible-freerun` (`expected_exit: 6`) cases. Note: the `--allow-partial` merge path needs >64 KB of garbage to force an unrecoverable sync loss, which isn't a small reviewable hex fixture, so it's covered by a library test in each implementation (`merge_allow_partial_*`) rather than a conformance case.
 

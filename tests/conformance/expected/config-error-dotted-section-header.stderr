@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: line 7: dotted section headers ([a.b]) are not supported; use a flat [section] header
+Error: <CONFIG>: line 7: dotted section headers ([a.b]) are not supported; use a flat [section] header

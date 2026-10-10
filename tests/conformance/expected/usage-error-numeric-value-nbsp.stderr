@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --detect-records: "\xC2\xA05"; must be an integer
+Error: invalid --detect-records: "\xC2\xA05"; must be an integer
+Run 'aero1553 --help' for usage.

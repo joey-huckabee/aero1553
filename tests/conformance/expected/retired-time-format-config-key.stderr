@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: decode.time_format was renamed in v3.0.0. Use decode.input_time_format to choose how timestamps are PARSED (auto, irig, standard); use output.output_time_format to choose how they are WRITTEN (doy, iso, dom).
+Error: <CONFIG>: decode.time_format was renamed in v3.0.0. Use decode.input_time_format to choose how timestamps are PARSED (auto, irig, standard); use output.output_time_format to choose how they are WRITTEN (doy, iso, dom).

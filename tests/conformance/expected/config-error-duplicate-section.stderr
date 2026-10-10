@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: line 8: section [decode] declared more than once
+Error: <CONFIG>: line 8: section [decode] declared more than once

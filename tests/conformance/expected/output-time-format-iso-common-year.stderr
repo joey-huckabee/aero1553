@@ -1,0 +1,1 @@
+WARN [aero1553::reader] IRIG day-of-year is being resolved into calendar dates, and that field has a known firmware-dependent discrepancy on some DDC cards (hour/minute/second/microsecond are unaffected). Verify your card model against vendor CSV before relying on these dates -- see docs/VENDOR-CSV-DIFFS.md section 5

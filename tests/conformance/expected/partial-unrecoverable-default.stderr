@@ -1,0 +1,4 @@
+WARN [aero1553::reader] sync lost at 0x90 (type=0x7F wc=63); scanning forward
+ERROR [aero1553::reader] unrecoverable sync loss at 0x90 after 2 messages
+ERROR [aero1553::cli] Unrecoverable mid-file sync loss at offset 0x90 after 1 recovery attempt(s); the decoder could not reacquire sync within the scan window. Pass --allow-partial with an output file (-o) to keep what was decoded as a .partial file.
+Error: Unrecoverable mid-file sync loss at offset 0x90 after 1 recovery attempt(s); the decoder could not reacquire sync within the scan window. Pass --allow-partial with an output file (-o) to keep what was decoded as a .partial file.

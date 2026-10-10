@@ -278,7 +278,7 @@ bool validate_structural_invariants(const TypeWord& tw, const CommandWord& cmd,
             INVARIANT_WORD_COUNT_CAPACITY, SEVERITY_REJECT,
             "TW.word_count = " + text::decimal(tw.word_count) +
                 " is too small for declared payload (need at least " + text::decimal(min_wc) +
-                " for format " + text::decimal(static_cast<uint64_t>(msg_fmt)) +
+                " for " + message_format_name(msg_fmt) +
                 " with data_word_count = " + text::decimal(cmd.data_word_count) + ")");
         return false;
     }

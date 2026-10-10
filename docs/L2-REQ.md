@@ -1164,7 +1164,7 @@ An invalid value SHALL be a usage error (exit `4`). The same overflow rule appli
 #### L2-CLI-022
 
 **Parent**: L1-CLI-001
-**Statement**: For the same configuration file and command line, every implementation SHALL write the same diagnostics to stderr: the same lines, in the same order, with the same text. Paths are the one exception -- each implementation SHALL repeat a path as it was given -- and so are messages that carry an operating-system error's own text. This SHALL cover every error the configuration loader reports, the unknown-key WARN (L2-CFG-009), every usage error, and the help and version text; and for help and version, stdout as well as stderr. Every line SHALL end with a line feed alone, on every platform. In particular:
+**Statement**: For the same configuration file and command line, every implementation SHALL write the same diagnostics to stderr: the same lines, in the same order, with the same text. Paths are the one exception -- each implementation SHALL repeat a path as it was given -- and so are messages that carry an operating-system error's own text. This SHALL cover every error the configuration loader reports, the unknown-key WARN (L2-CFG-009), every usage error, and the help and version text; and for help and version, stdout as well as stderr. It SHALL equally cover everything a `decode`, `count` or `dump` run writes to stderr at `WARN` and above, and the status lines it writes whatever the level, such as `count`'s `counted N messages in <path>`. The text of `INFO` and `DEBUG` lines is not covered. Every line SHALL end with a line feed alone, on every platform. In particular:
 
 - A usage error (exit `4`) SHALL be reported as every other error is -- an `ERROR` log line and an `Error: <message>` line -- followed by the one line `Run 'aero1553 --help' for usage.`, and not by the help text, wherever in the run the error was found. An invocation with no arguments at all SHALL instead print the help text to stderr and exit `4`; arguments that name no command are an ordinary usage error.
 - The whole command line SHALL be parsed before `--log-level` is applied, so the same error is reported first and logged at the same level.
@@ -1177,6 +1177,8 @@ An invalid value SHALL be a usage error (exit `4`). The same overflow rule appli
 **Rationale**: The rule had been that diagnostic wording may drift, because operators read the CSV and the exit code. But operators also read the errors, search for them, and paste them into reports, and a site that runs two implementations should not have to learn two vocabularies for the same mistake. Unchecked, the drift was wide: when the two CLIs' stderr was first compared, it differed for 60 of the 79 configuration snippets in the shared corpus. Most of the difference was C++ naming the file and Rust not, but behind it were real defects -- C++ printed the rejected value `1e400`, which overflows to infinity, as an empty string; both implementations repeated a non-ASCII key to the console byte for byte, against L2-CLI-014; Rust escaped a quote inside a value and C++ did not, so `"a"b"` read as two values; and the wording comparison is what exposed the four disagreements over what a file means that L2-CFG-013 now settles. Quoting byte by byte rather than character by character is what lets the C++ implementation, which sees only bytes, agree with the others on a non-ASCII character. A decimal is repeated as written because no rendering of a parsed double is produced alike by every implementation, and the literal is what the operator will search the file for.
 
 The usage layer had drifted further, and in its shape as well as its words. When the CLIs' output for 84 command lines was first compared, they agreed on every exit code and on the text of none: the Rust and C++ help texts were 130 and 75 lines and had nothing in common but the flags; C++ followed every usage error with its help and logged an `ERROR` line first, while Rust logged nothing and printed help only after errors it found while parsing; C++ applied `--log-level` before parsing the subcommand, so `--log-level NOPE count x --bogus` reported a different mistake in each; and both repeated a non-ASCII option to the console raw. The help after a usage error went because it buried the error: 130 lines of help put the one line that said what was wrong off the top of the terminal. Rust's help text was kept as the one text because it is the one the Python package's users already saw and the more complete of the two. Line endings are part of the contract because on Windows the C++ binary wrote stderr in text mode, ending every diagnostic CRLF where Rust and Python write LF, so a redirected log differed in every line.
+
+The decoder's own warnings and errors were brought under the rule last, because the conformance runner checked them by substring: three cases in four asserted nothing about stderr, and the rest matched one phrase each. When every case's stderr was first compared whole, on Windows and on Linux, the three implementations already agreed on all of it but one message, where C++ named the message format `format 1` and Rust and Python `Receive`; that case's substring stopped a word short of the difference. Agreement that nothing holds is agreement by accident, so the runner now compares every case's stderr exactly and against a committed oracle (L2-CONF-002, L2-CONF-003). `INFO` and `DEBUG` lines stay outside it: they narrate the run for whoever is debugging it, and holding their text to a contract would make every change to them a cross-implementation change.
 **Verification Method**: Test (T)
 
 ---
@@ -1295,14 +1297,14 @@ This is the same argument L2-WRT-022 makes for the canonical-order stage — the
 #### L2-CONF-002
 
 **Parent**: L1-CONF-001
-**Statement**: The conformance runner SHALL invoke both maintained CLIs and require byte-identical CSV output.
+**Statement**: The conformance runner SHALL invoke every maintained CLI and require byte-identical CSV output, and identical stderr once run-specific paths are replaced by placeholders and `INFO` and `DEBUG` lines are left out (L2-CLI-022).
 **Rationale**: Byte-identical output is the only contract that prevents silent drift between implementations. "Almost identical" allows trailing whitespace or rounding differences that compound over time.
 **Verification Method**: Test (T)
 
 #### L2-CONF-003
 
 **Parent**: L1-CONF-001
-**Statement**: Each implementation's output SHALL match the checked-in CSV oracle.
+**Statement**: Each implementation's output SHALL match the checked-in CSV oracle, and its stderr the checked-in stderr oracle; a case with no stderr oracle SHALL write nothing to stderr.
 **Rationale**: The oracle is the third party in the diff — it ensures both implementations agree with a frozen expected output, not just with each other.
 **Verification Method**: Test (T)
 

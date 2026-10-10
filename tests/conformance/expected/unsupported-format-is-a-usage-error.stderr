@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --format: "json"; valid: csv
+Error: invalid --format: "json"; valid: csv
+Run 'aero1553 --help' for usage.

@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: Invalid [decode]: expected a table, not a value
+Error: <CONFIG>: Invalid [decode]: expected a table, not a value

@@ -1,0 +1,5 @@
+WARN [aero1553::reader] L2-SYN anomaly at 0x0: Status RT = 0 does not match Cmd RT = 15 (raw Status = 0x0000); possible bus interference
+WARN [aero1553::reader] L2-SYN structural invariant violation at 0x10: TW.word_count = 8 is too small for declared payload (need at least 37 for Receive with data_word_count = 32); skipping record
+WARN [aero1553::reader] L2-SYN structural invariant violation at 0x20: TW.word_count = 8 is too small for declared payload (need at least 37 for Receive with data_word_count = 32); skipping record
+WARN [aero1553::reader] L2-SYN structural invariant violation at 0x30: TW.word_count = 8 is too small for declared payload (need at least 37 for Receive with data_word_count = 32); skipping record
+WARN [aero1553::reader] L2-SYN structural invariant violation at 0x40: TW.word_count = 8 is too small for declared payload (need at least 37 for Receive with data_word_count = 32); skipping record

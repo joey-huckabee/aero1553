@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --exclude-types: Type code out of range: "0x100"
+Error: --exclude-types: Type code out of range: "0x100"
+Run 'aero1553 --help' for usage.

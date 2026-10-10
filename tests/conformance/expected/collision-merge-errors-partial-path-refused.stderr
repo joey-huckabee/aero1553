@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] derived output path <INPUT1> resolves to merge input <INPUT1>; choose a different output path
+Error: derived output path <INPUT1> resolves to merge input <INPUT1>; choose a different output path

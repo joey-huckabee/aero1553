@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --collapse-window-us: "99999999999999999999"; must be an integer
+Error: invalid --collapse-window-us: "99999999999999999999"; must be an integer
+Run 'aero1553 --help' for usage.

@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Record error at offset 0xB2: Record requires 72 bytes but only 4 bytes remain in file
+Error: Record error at offset 0xB2: Record requires 72 bytes but only 4 bytes remain in file

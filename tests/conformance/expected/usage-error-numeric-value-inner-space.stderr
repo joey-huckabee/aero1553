@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --year: "20 26"; must be an integer
+Error: invalid --year: "20 26"; must be an integer
+Run 'aero1553 --help' for usage.

@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --output-time-format: "elapsed"; valid: doy, iso, dom
+Error: invalid --output-time-format: "elapsed"; valid: doy, iso, dom
+Run 'aero1553 --help' for usage.

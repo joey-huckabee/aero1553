@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: line 5: dotted keys (a.b = ...) are not supported; use a [section] header
+Error: <CONFIG>: line 5: dotted keys (a.b = ...) are not supported; use a [section] header

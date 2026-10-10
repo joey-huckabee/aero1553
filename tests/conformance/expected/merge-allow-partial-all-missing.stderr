@@ -1,0 +1,4 @@
+WARN [aero1553::cli] merge: input <INPUT0> could not be opened; truncating it from the merge (--allow-partial): MIE file not found: <INPUT0>
+WARN [aero1553::cli] merge: input <INPUT1> could not be opened; truncating it from the merge (--allow-partial): MIE file not found: <INPUT1>
+ERROR [aero1553::cli] MIE file not found: <INPUT0>
+Error: MIE file not found: <INPUT0>

@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: Invalid merge.max_collapse_survivors: 0. Valid range: [1, 1048576]
+Error: <CONFIG>: Invalid merge.max_collapse_survivors: 0. Valid range: [1, 1048576]

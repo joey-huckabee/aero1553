@@ -127,12 +127,11 @@ def test_conformance_manifest_has_cases_with_oracles() -> None:
         #   'expected'                 — the main output, byte-exact;
         #   'expected_partial'         — an --allow-partial case, whose output
         #                                lands at <output>.partial;
-        #   'expected_stdout_contains' — a substring, for output that is not
-        #                                byte-comparable across implementations.
-        #                                Help text is the case it exists for:
-        #                                its shape differs by design, so only
-        #                                its presence can be asserted.
-        if case.get("expected_exit", 0) == 0 and "expected_stdout_contains" not in case:
+        #   'compare_stdout'           — stdout, compared across the
+        #                                implementations; for a case ending in
+        #                                help, whose text cli_message_parity
+        #                                already pins.
+        if case.get("expected_exit", 0) == 0 and not case.get("compare_stdout"):
             oracle_key = "expected" if "expected" in case else "expected_partial"
             assert oracle_key in case, f"case {name!r} missing 'expected'/'expected_partial'"
             oracle = expected_dir / Path(case[oracle_key]).name

@@ -1,0 +1,2 @@
+WARN [aero1553::reader] auto-detected timestamp format: Irig (Ambiguous: IRIG=4 STD=4 over 2 record(s)) -- using best guess; pass --input-time-format to force the choice or --strict to reject ambiguous files
+WARN [aero1553::reader] sync lost at 0x0 (type=0x02 wc=8); scanning forward

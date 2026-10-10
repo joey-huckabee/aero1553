@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Output path resolves to the same file as the input (<INPUT0>); decoding in-place is unsafe with a memory-mapped reader. Choose a different output path.
+Error: Output path resolves to the same file as the input (<INPUT0>); decoding in-place is unsafe with a memory-mapped reader. Choose a different output path.

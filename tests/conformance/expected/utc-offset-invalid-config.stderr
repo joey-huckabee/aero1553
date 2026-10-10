@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: Invalid output.utc_offset: "+24:00". Valid: Z, or +HH:MM / -HH:MM with HH in [0, 23] and MM in [0, 59]
+Error: <CONFIG>: Invalid output.utc_offset: "+24:00". Valid: Z, or +HH:MM / -HH:MM with HH in [0, 23] and MM in [0, 59]

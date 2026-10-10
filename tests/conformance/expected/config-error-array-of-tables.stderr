@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: line 3: array-of-tables headers ([[...]]) are not supported
+Error: <CONFIG>: line 3: array-of-tables headers ([[...]]) are not supported

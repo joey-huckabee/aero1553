@@ -223,6 +223,19 @@ shared behavior) holds at any compatible version pair. See
   - New check `tests/conformance/cli_message_parity.py` compares exit code,
     stdout and stderr for 84 command lines across all three, and the config
     checks now compare usage-error text too.
+- **The conformance suite checks every case's stderr exactly** (L2-CLI-022,
+  L2-CONF-002, L2-CONF-003). It had matched one substring per case, and only in
+  57 of the 207 cases. Each case's stderr is now compared across all three
+  implementations and with a committed oracle, `expected/<case>.stderr`. Paths
+  are replaced by placeholders, INFO and DEBUG lines are left out, and line
+  endings are compared. A case with no oracle must write nothing to stderr.
+  Comparing whole outputs found one divergence, which is fixed here: a word
+  count too small for its payload was reported by C++ as `need at least 37
+  for format 1`, where Rust and Python say `for Receive`. That case's
+  substring had stopped one word short of it. The two cases that end in help
+  now compare the whole stdout across the implementations too (the new
+  `compare_stdout` field). They had checked only that it contained `decode`,
+  a check written when the help texts still differed.
 
 ### Maintenance
 

@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --standard-tick-rate-hz: 0; must be a finite value greater than 0
+Error: invalid --standard-tick-rate-hz: 0; must be a finite value greater than 0
+Run 'aero1553 --help' for usage.

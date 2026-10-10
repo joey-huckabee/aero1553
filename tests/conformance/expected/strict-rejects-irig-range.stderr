@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Record error at offset 0x48: IRIG hour is out of range (raw_type=0x2402)
+Error: Record error at offset 0x48: IRIG hour is out of range (raw_type=0x2402)

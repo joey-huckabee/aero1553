@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Record error at offset 0x48: L2-SYN structural invariant violation: Type 0x02 (BC->RT) requires Cmd direction = Receive; got Transmit (raw Cmd = 0x7D7E)
+Error: Record error at offset 0x48: L2-SYN structural invariant violation: Type 0x02 (BC->RT) requires Cmd direction = Receive; got Transmit (raw Cmd = 0x7D7E)

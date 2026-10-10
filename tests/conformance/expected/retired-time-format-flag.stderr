@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --time-format was split in v3.0.0 and is no longer accepted. Use --input-time-format auto|irig|standard to choose how timestamps are PARSED from the file, or --output-time-format doy|iso|dom to choose how they are WRITTEN to the CSV.
+Error: --time-format was split in v3.0.0 and is no longer accepted. Use --input-time-format auto|irig|standard to choose how timestamps are PARSED from the file, or --output-time-format doy|iso|dom to choose how they are WRITTEN to the CSV.
+Run 'aero1553 --help' for usage.

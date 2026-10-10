@@ -1,0 +1,3 @@
+ERROR [aero1553::reader] first record after header detection is truncated at 0x0: declared 72 bytes, only 20 available
+ERROR [aero1553::cli] Record error at offset 0x0: First record after header detection is truncated -- Type Word declares 72 bytes but only 20 bytes remain in file
+Error: Record error at offset 0x0: First record after header detection is truncated -- Type Word declares 72 bytes but only 20 bytes remain in file
