@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from broken_pipe import check_broken_pipe
+from cli_message_parity import check_cli_message_parity
 from config_fuzz import check_config_parser_fuzz
 from config_parity import check_config_parser_parity
 from config_path_parity import check_config_path_parity
@@ -819,10 +820,13 @@ def main() -> int:
             # the three implementations actually disagreed.
             (temp / "glob-parity-source.mie").write_bytes(parity_input.read_bytes())
             check_glob_parity(invocations, temp)
+            # What the command line itself is told: usage errors, help and
+            # version, compared byte for byte (L2-CLI-022).
+            check_cli_message_parity(invocations, parity_input, temp)
         else:
             # A differential check needs something to differ from.
             print(
-                "SKIP config-parser-parity / -fuzz / -path / glob-parity "
+                "SKIP config-parser-parity / -fuzz / -path / glob-parity / cli-message-parity "
                 f"(needs two or more implementations; have {len(impls)})"
             )
 

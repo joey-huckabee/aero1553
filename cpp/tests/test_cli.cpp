@@ -233,6 +233,28 @@ TEST_CASE("unknown commands and options are usage errors", "[cli][L3-CPP-014]") 
     REQUIRE(mie::cli::run(args("count")) == mie::cli::EXIT_USAGE);
 }
 
+TEST_CASE("a usage error is the error and a pointer to --help", "[cli][L2-CLI-022]") {
+    // Not the help itself: 130 lines after the error scrolled it off the
+    // screen. Only a bare invocation still gets the help, on stderr, exit 4.
+    std::string out;
+    std::string err;
+    REQUIRE(run_capturing(args("frobnicate"), out, err) == mie::cli::EXIT_USAGE);
+    CHECK(out.empty());
+    const std::string tail =
+        "Error: unknown command \"frobnicate\"; expected decode, count or dump\n"
+        "Run 'aero1553 --help' for usage.\n";
+    REQUIRE(err.size() >= tail.size());
+    CHECK(err.substr(err.size() - tail.size()) == tail);
+    CHECK(err.find("USAGE:") == std::string::npos);
+
+    REQUIRE(run_capturing(args("--log-level", "INFO"), out, err) == mie::cli::EXIT_USAGE);
+    CHECK(err.find("Error: no command given; expected decode, count or dump\n") !=
+          std::string::npos);
+
+    REQUIRE(run_capturing(Args(), out, err) == mie::cli::EXIT_USAGE);
+    CHECK(err == mie::cli::help_text());
+}
+
 TEST_CASE("a valued flag given no value is a usage error", "[cli][L3-CPP-014]") {
     // The trailing-flag case: `--output` as the last token has nothing after
     // it. Reading past the end would be a crash; treating the absence as an

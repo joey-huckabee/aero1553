@@ -190,6 +190,39 @@ shared behavior) holds at any compatible version pair. See
     compare stderr as well as the verdict and fail on a non-ASCII byte. The
     corpus gained 85 snippets, including integers past 64
     bits, `inf` / `nan` / `1e400`, and Unicode names and blanks.
+- **The command line reads the same from every implementation** (L2-CLI-022).
+  Rust and C++ agreed on the exit code of every usage error and on the text
+  of almost none. **Behaviour change** for all three, so scripts that match
+  usage errors or parse the help may need updating:
+  - **A usage error no longer prints the help.** It prints the `ERROR` log
+    line, `Error: <message>`, and `Run 'aero1553 --help' for usage.` The help
+    (130 lines) had scrolled the error itself off the screen. Rust printed it
+    only for errors found while parsing, C++ for all of them and with an
+    extra `ERROR` line Rust did not log. `aero1553` with no arguments still
+    prints the help, to stderr, exit 4; arguments that name no command now
+    say `no command given; expected decode, count or dump`.
+  - **One help text.** C++ printed its own 75-line help; it now prints Rust's,
+    which Python users already saw.
+  - **One wording per message**, Rust's made consistent:
+    `invalid --FLAG: "x"; must be an integer`,
+    `invalid --FLAG: N; valid range: [LO, HI]`,
+    `invalid --FLAG: N; must be a non-negative integer`,
+    `invalid --FLAG: "v"; valid: a, b`, `unknown decode option: --x`,
+    `unknown command "x"; expected decode, count or dump`, and
+    `--exclude-types: Invalid message type: ...` (the config message, naming
+    the flag). A rejected `--standard-tick-rate-hz` is repeated as written
+    (`1e400`, not `inf`); `--config` with no value says `requires a value`
+    like every other flag; a second `count` input is reported where it
+    stands; a non-ASCII option or value is escaped.
+  - `--delta-scope " global"` is now refused, as it already was in C++: Rust
+    alone trimmed that one value, with Unicode rules.
+  - C++ now parses the whole command line before applying `--log-level`, as
+    Rust does, so both report the same mistake first.
+  - **C++ on Windows writes stderr with LF line endings**, as it already did
+    stdout, instead of CRLF (L3-CPP-005).
+  - New check `tests/conformance/cli_message_parity.py` compares exit code,
+    stdout and stderr for 84 command lines across all three, and the config
+    checks now compare usage-error text too.
 
 ### Maintenance
 

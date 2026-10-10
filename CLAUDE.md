@@ -265,7 +265,7 @@ All fallible APIs return `Result<T, MieError>`. `MieError` is a single enum (not
   on GCC 4.8.5, not a compile check — don't reduce it to `make all`.
 - **Only the C++ platform layer touches the OS.** Five concerns live behind
   `cpp/include/mie/platform.hpp` — mapping the input, atomic output, directory
-  enumeration, binary stdout, path identity. Nothing else may include
+  enumeration, binary stdout and stderr, path identity. Nothing else may include
   `<windows.h>` or `<sys/mman.h>`; `scripts/assert-platform-confined.sh` enforces
   it. If a new OS capability is needed, add it to the header and implement it in
   **both** backends — Windows is a shipping target, not a build that happens to

@@ -36,18 +36,18 @@ compared value:
     error) or exit 4 (usage) depending on where the value was caught, so the
     verdict rather than the code is what must agree. Exit codes are still
     carried into the failure text, because they are usually the fastest clue
-    to why a divergence happened. A rejection every implementation classed as
-    a usage error (exit 4) is the one exception: what follows a usage error is
-    the usage layer's contract, not the config loader's, and is compared
-    separately.
+    to why a divergence happened.
 
-  * `config_path_parity` compares the EXACT exit code, because its cases pin
-    specific codes rather than mere admissibility, and the diagnostics.
+  * `config_path_parity` and `cli_message_parity` compare the EXACT exit
+    code, because their cases pin specific codes rather than mere
+    admissibility, and the diagnostics; `cli_message_parity` compares stdout
+    too, which is where help and version go.
 
-The diagnostics were not compared until L7: the rule was that wording may
-drift. That let the config errors of two implementations differ in 60 of 79
-corpus snippets, and hid a C++ message that printed an infinite value as an
-empty string.
+The diagnostics were not compared until L2-CLI-022: the rule had been that
+wording may drift. That let the config errors of two implementations differ in
+60 of 79 corpus snippets, hid a C++ message that printed an infinite value as
+an empty string, and left the usage layer agreeing on the exit code of every
+case and on the wording of almost none.
 """
 
 from __future__ import annotations
@@ -107,22 +107,21 @@ def normalized_stderr(stderr: bytes, paths: Mapping[str, str]) -> str:
     Bytes that are not UTF-8 survive as lone surrogates, so they still compare
     and still fail `describe_stderr_problems`'s ASCII check.
 
-    A line's terminator is not compared: on Windows the C++ binary's stderr is
-    a text-mode stream, which ends each line CRLF where Rust writes LF. L2-CLI-022
-    is about what a line says; the terminator is a separate question about how
-    the stream is opened. A diagnostic never carries a raw CR of its own -- one
-    the operator wrote is shown as ``\\x0D`` -- so this cannot hide a difference
-    in content.
+    Line endings ARE compared. On Windows the C++ binary once wrote stderr in
+    text mode, ending every line CRLF where Rust and Python write LF; it now
+    opens stderr in binary mode, as it already did stdout.
     """
-    text = stderr.decode("utf-8", "surrogateescape").replace("\r\n", "\n")
+    text = stderr.decode("utf-8", "surrogateescape")
     for path, placeholder in sorted(paths.items(), key=lambda item: -len(item[0])):
         text = text.replace(path, placeholder)
     return text
 
 
 def _shown(text: str) -> str:
-    """`text` printable on any console: non-ASCII as Python escapes."""
-    return text.encode("ascii", "backslashreplace").decode("ascii")
+    """`text` printable on any console: non-ASCII as Python escapes, and a
+    carriage return made visible, so two texts that differ only in their line
+    endings do not print identically."""
+    return text.encode("ascii", "backslashreplace").decode("ascii").replace("\r", "\\r")
 
 
 def describe_stderr_problems(stderrs: Mapping[str, str], *, compare: bool = True) -> str | None:
@@ -139,14 +138,14 @@ def describe_stderr_problems(stderrs: Mapping[str, str], *, compare: bool = True
     problems = [
         f"{impl} wrote non-ASCII: {_shown(line)}"
         for impl, text in stderrs.items()
-        for line in text.splitlines()
+        for line in text.split("\n")
         if not line.isascii()
     ]
     groups = group_by_value(stderrs)
     if compare and len(groups) > 1:
         parts = []
         for text, impls in groups.items():
-            lines = text.splitlines()
+            lines = text.split("\n")
             body = "\n".join(f"        | {_shown(line)}" for line in lines) or "        | (empty)"
             parts.append(f"      {', '.join(impls)}:\n{body}")
         problems.append("stderr differs:\n" + "\n".join(parts))

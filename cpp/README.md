@@ -160,7 +160,7 @@ Python implementations:
   Catch2 is test-only and vendored (`VENDORED.md`).
 - **The platform layer is the only thing that touches the OS.** Five concerns
   live behind `include/mie/platform.hpp` — mapping the input, atomic output,
-  directory enumeration, binary stdout, path identity — and nothing else may
+  directory enumeration, binary stdout and stderr, path identity — and nothing else may
   include `<windows.h>` or `<sys/mman.h>`. Enforced by
   `../scripts/assert-platform-confined.sh`.
 - **Never locale-sensitive.** `DELTA` is formatted `%.6f`, whose decimal

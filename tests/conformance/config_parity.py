@@ -325,11 +325,8 @@ def check_config_parser_parity(
             # corpus or specification problem, not an implementation one.
             failures.append(f"{name}: {describe_agreement(classes, codes)}, expected {expect}")
         else:
-            # L2-CLI-022 / L2-CLI-014. After a usage error (exit 4) only the
-            # ASCII rule is checked here: what follows a usage error belongs
-            # to the usage layer, not the config loader (see differential.py).
-            usage = set(codes.values()) == {4}
-            problems = describe_stderr_problems(stderrs, compare=not usage)
+            # L2-CLI-022 / L2-CLI-014: the same diagnostics, all ASCII.
+            problems = describe_stderr_problems(stderrs)
             if problems is not None:
                 failures.append(f"{name}: {problems}")
     if failures:

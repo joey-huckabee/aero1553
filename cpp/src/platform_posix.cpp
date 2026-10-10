@@ -473,7 +473,7 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
     return true;
 }
 
-void prepare_stdout() {
+void prepare_output_streams() {
     // POSIX streams do not translate line endings, so there is no binary mode
     // to set. What there is to do is SIGPIPE: left at its default, a closed
     // downstream pipe kills the process (exit 141) before the failed write can

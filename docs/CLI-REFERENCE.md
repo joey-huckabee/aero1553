@@ -133,6 +133,21 @@ given wherever a file is named -- an input, `--output`, `--config`,
 that is not valid Unicode is a usage error (exit `4`), and a message that
 quotes one shows it escaped in ASCII (`in\xFF.mie`). (`L2-CLI-021`)
 
+### What a usage error prints
+
+A command line the CLI cannot accept exits `4` and says what is wrong, then
+where to look -- it does not print the whole help:
+
+```text
+ERROR [aero1553::cli] unknown decode option: --bogus
+Error: unknown decode option: --bogus
+Run 'aero1553 --help' for usage.
+```
+
+Only `aero1553` with no arguments at all prints the help, to stderr, and still
+exits `4`. Every implementation prints these lines, the help and the version
+identically, with LF line endings on every platform (`L2-CLI-022`).
+
 ### `--`: everything after this is a file name
 
 A file whose name begins with a dash cannot be passed as an ordinary argument —

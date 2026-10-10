@@ -24,6 +24,7 @@ use crate::models::{
 };
 use crate::order::OrderIterExt;
 use crate::reader::{MieFileReader, ReaderOptions};
+use crate::text::{escape_bytes, quote};
 use crate::writer::{WriteOptions, write_csv, write_csv_split};
 use crate::{log_error, log_info, log_warn};
 
@@ -535,6 +536,7 @@ fn run_command(argv: Vec<String>) -> u8 {
 
     match result {
         Ok(code) => code,
+        Err(e) if e.code == exit_code::USAGE => die(&e.message),
         Err(e) => {
             log_error!("{}", e.message);
             eprintln!("Error: {}", e.message);
@@ -543,10 +545,40 @@ fn run_command(argv: Vec<String>) -> u8 {
     }
 }
 
+/// The line every usage error ends with (L2-CLI-022).
+///
+/// It replaced the whole help text, which a usage error used to be followed by
+/// -- 130 lines, so the one line that said what was wrong had scrolled off the
+/// top of the terminal before the operator looked. Help is one flag away, and
+/// this says which.
+const USAGE_HINT: &str = "Run 'aero1553 --help' for usage.";
+
+/// Report a usage error and return its exit code (`4`).
+///
+/// Every usage error, whenever it is found -- while parsing, or by a runner
+/// that validates a combination after parsing -- reads the same way: the
+/// `ERROR` log line and `Error:` line every other failure prints, then
+/// [`USAGE_HINT`]. Rust once printed help after errors found while parsing and
+/// not after the rest, and C++ printed it after all of them.
 fn die(msg: &str) -> u8 {
-    eprintln!("Error: {msg}\n\n{HELP}");
+    log_error!("{msg}");
+    eprintln!("Error: {msg}");
+    eprintln!("{USAGE_HINT}");
     exit_code::USAGE
 }
+
+/// An option the subcommand does not have, as typed -- `--no-mux=true`
+/// reports itself in full -- with any byte outside printable ASCII escaped
+/// (L2-CLI-014).
+fn unknown_option(command: &str, token: &str) -> String {
+    format!(
+        "unknown {command} option: {}",
+        escape_bytes(token.as_bytes())
+    )
+}
+
+/// What a command line that names no command is told, once it has arguments.
+const NO_COMMAND: &str = "no command given; expected decode, count or dump";
 
 /// True for any accepted spelling of the version flag: the short `-V` / `-v`,
 /// or a `--version` long flag in any letter case (`--version`, `--VERSION`,
@@ -568,6 +600,7 @@ fn is_version_flag(arg: &str) -> bool {
 /// immediately — help or version was printed, or the command line was a usage
 /// error (including no subcommand at all).
 fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Result<String, u8> {
+    let mut first = true;
     loop {
         // Peek, because the first non-flag token is the SUBCOMMAND and belongs
         // to the caller. Split a clone so the joined and separated spellings
@@ -575,9 +608,17 @@ fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Resul
         // parsed in this separate loop, so before the cursor each spelling had
         // a second, independent implementation.
         let Some(peeked) = iter.peek().cloned() else {
-            eprint!("{HELP}");
-            return Err(exit_code::USAGE);
+            // No arguments at all is a request for orientation, and gets the
+            // help -- on stderr, with exit 4, because a script that runs the
+            // tool with nothing has a bug that exit 0 would hide. Arguments
+            // that never reach a command are an ordinary usage error.
+            if first {
+                eprint!("{HELP}");
+                return Err(exit_code::USAGE);
+            }
+            return Err(die(NO_COMMAND));
         };
+        first = false;
         let a = Arg::split(peeked);
         match a.name.as_str() {
             "-h" | "--help" if a.bare() => {
@@ -601,10 +642,7 @@ fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Resul
                 iter.next(); // the separator itself
                 return match iter.next() {
                     Some(token) => Ok(token),
-                    None => {
-                        eprint!("{HELP}");
-                        Err(exit_code::USAGE)
-                    }
+                    None => Err(die(NO_COMMAND)),
                 };
             }
             "--log-level" => {
@@ -623,9 +661,10 @@ fn parse_global_flags(iter: &mut ArgIter<'_>, globals: &mut GlobalArgs) -> Resul
             "--config" => {
                 iter.next();
                 match a.path_value("--config", iter) {
-                    // Its own message: a path, not a generic value.
                     Ok(v) => globals.config = Some(v),
-                    Err(_) => return Err(die("--config requires a path")),
+                    // The message every value-taking flag gives (L2-CLI-022);
+                    // `--config` once had its own, "requires a path".
+                    Err(message) => return Err(die(&message)),
                 }
             }
             _ => {
@@ -714,7 +753,10 @@ fn parse_subcommand(cmd_token: &str, iter: &mut ArgIter<'_>) -> Result<Command, 
                 print!("{HELP}");
                 return Err(exit_code::SUCCESS);
             }
-            Err(die(&format!("Unknown command: {other:?}")))
+            Err(die(&format!(
+                "unknown command {}; expected decode, count or dump",
+                crate::text::quote(other)
+            )))
         }
     }
 }
@@ -825,10 +867,13 @@ fn next_value(name: &str, iter: &mut ArgIter<'_>) -> Result<String, String> {
     // here, without adding a variant to the public `ParseError`.
     let failure = match iter.peek() {
         None => format!("{name} requires a value"),
-        Some(token) if looks_like_option(token) => format!(
-            "{name} requires a value, but the next argument is an option: {token}; \
-             to pass it as a value, write {name}={token}"
-        ),
+        Some(token) if looks_like_option(token) => {
+            let token = escape_bytes(token.as_bytes());
+            format!(
+                "{name} requires a value, but the next argument is an option: {token}; \
+                 to pass it as a value, write {name}={token}"
+            )
+        }
         // `peek` returned `Some`, so `next` cannot be `None`.
         Some(_) => return Ok(iter.next().unwrap_or_default()),
     };
@@ -931,17 +976,47 @@ impl Arg {
 /// The digits are checked before `from_str_radix`, which also accepts a sign
 /// after the prefix: `0x+1` parsed as 1 here, and nowhere else.
 fn parse_int_value(s: &str, name: &str) -> Result<usize, String> {
-    let s = s.trim_ascii();
-    let parsed = if let Some(hex) = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")) {
+    let t = s.trim_ascii();
+    let parsed = if let Some(hex) = t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
         if hex.bytes().all(|b| b.is_ascii_hexdigit()) {
             usize::from_str_radix(hex, 16).ok()
         } else {
             None
         }
     } else {
-        s.parse::<usize>().ok()
+        t.parse::<usize>().ok()
     };
-    parsed.ok_or_else(|| format!("{name} expected integer, got {s:?}"))
+    match parsed {
+        Some(n) => Ok(n),
+        // A negative number is a number: say what is wrong with it.
+        None => match t.parse::<i64>() {
+            Ok(n) if n < 0 => Err(format!(
+                "invalid {name}: {n}; must be a non-negative integer"
+            )),
+            _ => Err(not_an_integer(name, s)),
+        },
+    }
+}
+
+/// What a flag says when its value is not an integer at all (L2-CLI-022).
+fn not_an_integer(name: &str, value: &str) -> String {
+    format!("invalid {name}: {}; must be an integer", quote(value))
+}
+
+/// A decimal integer flag value within `[lo, hi]`.
+///
+/// One routine for every bounded integer flag, so the "not a number" and "out
+/// of range" messages read the same for each. Parsed as `i64`, so `-1` reports
+/// the range rather than failing to parse, as it does in C++.
+fn parse_ranged(s: &str, name: &str, lo: i64, hi: i64) -> Result<i64, String> {
+    let n: i64 = s
+        .trim_ascii()
+        .parse()
+        .map_err(|_| not_an_integer(name, s))?;
+    if !(lo..=hi).contains(&n) {
+        return Err(format!("invalid {name}: {n}; valid range: [{lo}, {hi}]"));
+    }
+    Ok(n)
 }
 
 /// Parse a MIL-STD-1553 RT address or subaddress filter value: [0, 31].
@@ -952,9 +1027,7 @@ fn parse_int_value(s: &str, name: &str) -> Result<usize, String> {
 fn parse_rt_sa_value(s: &str, name: &str) -> Result<u8, String> {
     parse_int_value(s, name).and_then(|n| match u8::try_from(n) {
         Ok(v) if v <= 31 => Ok(v),
-        _ => Err(format!(
-            "{name} value out of MIL-STD-1553 range [0, 31]: {n}"
-        )),
+        _ => Err(format!("invalid {name}: {n}; valid range: [0, 31]")),
     })
 }
 
@@ -988,13 +1061,16 @@ fn push_filter<T>(
 }
 
 /// One `--exclude-types` / `--include-types` element → a message-type code.
-fn parse_type_filter(v: &str) -> Result<u8, ParseError> {
-    parse_type_name(v).map_err(|e| e.0.into())
+///
+/// The message is the config loader's, prefixed with the flag: the same words
+/// reach the operator from a config file, where there is no flag to name.
+fn parse_type_filter(v: &str, flag: &str) -> Result<u8, ParseError> {
+    parse_type_name(v).map_err(|e| format!("{flag}: {}", e.0).into())
 }
 
 /// One `--exclude-buses` / `--include-buses` element → a `Bus`.
-fn parse_bus_filter(v: &str) -> Result<crate::models::Bus, ParseError> {
-    parse_bus_name(v).map_err(|e| e.0.into())
+fn parse_bus_filter(v: &str, flag: &str) -> Result<crate::models::Bus, ParseError> {
+    parse_bus_name(v).map_err(|e| format!("{flag}: {}", e.0).into())
 }
 
 fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
@@ -1108,12 +1184,12 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             "--exclude-types" => push_filter(
                 &a.value("--exclude-types", iter)?,
                 &mut args.exclude_types,
-                parse_type_filter,
+                |v| parse_type_filter(v, "--exclude-types"),
             )?,
             "--include-types" => push_filter(
                 &a.value("--include-types", iter)?,
                 &mut args.include_types,
-                parse_type_filter,
+                |v| parse_type_filter(v, "--include-types"),
             )?,
             "--exclude-rts" => push_filter(
                 &a.value("--exclude-rts", iter)?,
@@ -1128,12 +1204,12 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             "--exclude-buses" => push_filter(
                 &a.value("--exclude-buses", iter)?,
                 &mut args.exclude_buses,
-                parse_bus_filter,
+                |v| parse_bus_filter(v, "--exclude-buses"),
             )?,
             "--include-buses" => push_filter(
                 &a.value("--include-buses", iter)?,
                 &mut args.include_buses,
-                parse_bus_filter,
+                |v| parse_bus_filter(v, "--include-buses"),
             )?,
             "--exclude-subaddresses" => push_filter(
                 &a.value("--exclude-subaddresses", iter)?,
@@ -1149,7 +1225,7 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             // `raw`, not `name`: the message quotes what was typed, so
             // `--no-mux=true` reports itself in full.
             _ if a.name.starts_with('-') => {
-                return Err(format!("unknown decode option: {}", a.raw).into());
+                return Err(unknown_option("decode", &a.raw).into());
             }
             // Positional input path(s). One or more is accepted; more than one
             // resolved input triggers the time-sorted merge (L2-MRG-001).
@@ -1199,7 +1275,7 @@ fn parse_count(iter: &mut ArgIter<'_>) -> Result<PathBuf, ParseError> {
         match a.name.as_str() {
             "-h" | "--help" if a.bare() => return Err(ParseError::HelpRequested),
             _ if a.name.starts_with('-') => {
-                return Err(format!("unknown count option: {}", a.raw).into());
+                return Err(unknown_option("count", &a.raw).into());
             }
             _ => {
                 if path.is_some() {
@@ -1245,7 +1321,7 @@ fn parse_dump(iter: &mut ArgIter<'_>) -> Result<DumpArgs, ParseError> {
             }
             "-h" | "--help" if a.bare() => return Err(ParseError::HelpRequested),
             _ if a.name.starts_with('-') => {
-                return Err(format!("unknown dump option: {}", a.raw).into());
+                return Err(unknown_option("dump", &a.raw).into());
             }
             _ => {
                 if input_seen {
@@ -1264,24 +1340,34 @@ fn parse_dump(iter: &mut ArgIter<'_>) -> Result<DumpArgs, ParseError> {
 }
 
 fn parse_input_time_format_arg(s: &str) -> Result<TimestampFormat, String> {
-    TimestampFormat::from_name_ci(s)
-        .ok_or_else(|| format!("invalid --input-time-format: {s:?}; valid: auto, irig, standard"))
+    TimestampFormat::from_name_ci(s).ok_or_else(|| {
+        format!(
+            "invalid --input-time-format: {}; valid: auto, irig, standard",
+            quote(s)
+        )
+    })
 }
 
 fn parse_output_time_format_arg(s: &str) -> Result<OutputTimeFormat, String> {
-    OutputTimeFormat::from_name_ci(s)
-        .ok_or_else(|| format!("invalid --output-time-format: {s:?}; valid: doy, iso, dom"))
+    OutputTimeFormat::from_name_ci(s).ok_or_else(|| {
+        format!(
+            "invalid --output-time-format: {}; valid: doy, iso, dom",
+            quote(s)
+        )
+    })
 }
 
 /// L2-CLI-018: `--year YYYY`, range-checked at parse time so a bad value is a
 /// usage error rather than a malformed cell a hundred thousand rows later.
 fn parse_year_arg(s: &str) -> Result<u16, String> {
-    let invalid = || format!("invalid --year: {s:?}; valid range: [{YEAR_MIN}, {YEAR_MAX}]");
-    // Parsed as `u32` first so that an out-of-range four-plus-digit year
-    // reports the range rather than an integer-overflow message; the range
-    // itself is the one shared check.
-    let value: u32 = s.trim_ascii().parse().map_err(|_| invalid())?;
-    check_year(i64::from(value)).map_err(|_| invalid())
+    // Parsed as `i64` so that any integer -- negative, or four-plus digits --
+    // reports the range rather than a parse failure; the range itself is the
+    // one shared check.
+    let n: i64 = s
+        .trim_ascii()
+        .parse()
+        .map_err(|_| not_an_integer("--year", s))?;
+    check_year(n).map_err(|_| format!("invalid --year: {n}; valid range: [{YEAR_MIN}, {YEAR_MAX}]"))
 }
 
 /// L2-CLI-018: `--utc-offset Z|+HH:MM|-HH:MM`, shared with the config loader's
@@ -1289,8 +1375,9 @@ fn parse_year_arg(s: &str) -> Result<u16, String> {
 fn parse_utc_offset_arg(s: &str) -> Result<i16, String> {
     crate::config::parse_utc_offset(s).map_err(|_| {
         format!(
-            "invalid --utc-offset: {s:?}; valid: Z, or +HH:MM / -HH:MM \
-             with HH in [0, 23] and MM in [0, 59]"
+            "invalid --utc-offset: {}; valid: Z, or +HH:MM / -HH:MM \
+             with HH in [0, 23] and MM in [0, 59]",
+            quote(s)
         )
     })
 }
@@ -1323,7 +1410,7 @@ fn parse_output_format_arg(s: &str) -> Result<String, String> {
     if s == "csv" {
         return Ok(s.to_string());
     }
-    Err(format!("invalid --format: {s:?}; valid: csv"))
+    Err(format!("invalid --format: {}; valid: csv", quote(s)))
 }
 
 /// L2-DEC-015: validate the `--detect-records` argument against the
@@ -1332,35 +1419,31 @@ fn parse_output_format_arg(s: &str) -> Result<String, String> {
 /// duplicating the validation here surfaces malformed CLI input with a
 /// clear error before the config layer is even consulted.
 fn parse_detect_records(s: &str) -> Result<usize, String> {
-    let n: usize = s
-        .trim_ascii()
-        .parse()
-        .map_err(|_| format!("invalid --detect-records: {s:?}; must be an integer"))?;
-    if !(crate::config::DETECT_RECORDS_MIN..=crate::config::DETECT_RECORDS_MAX).contains(&n) {
-        return Err(format!(
-            "invalid --detect-records: {n}; valid range: [{}, {}]",
-            crate::config::DETECT_RECORDS_MIN,
-            crate::config::DETECT_RECORDS_MAX
-        ));
-    }
-    Ok(n)
+    ranged_usize(
+        s,
+        "--detect-records",
+        crate::config::DETECT_RECORDS_MIN,
+        crate::config::DETECT_RECORDS_MAX,
+    )
+}
+
+/// [`parse_ranged`] over `usize` bounds, for the flags that size something.
+fn ranged_usize(s: &str, name: &str, lo: usize, hi: usize) -> Result<usize, String> {
+    let wide = |n: usize| i64::try_from(n).unwrap_or(i64::MAX);
+    let n = parse_ranged(s, name, wide(lo), wide(hi))?;
+    // In range, so non-negative and no larger than `hi`.
+    Ok(usize::try_from(n).unwrap_or(hi))
 }
 
 /// L2-SYN-026: validate the `--lookahead-records` argument against
 /// `[1, 32]`. Same shape as `parse_detect_records`.
 fn parse_lookahead_records(s: &str) -> Result<usize, String> {
-    let n: usize = s
-        .trim_ascii()
-        .parse()
-        .map_err(|_| format!("invalid --lookahead-records: {s:?}; must be an integer"))?;
-    if !(crate::config::LOOKAHEAD_RECORDS_MIN..=crate::config::LOOKAHEAD_RECORDS_MAX).contains(&n) {
-        return Err(format!(
-            "invalid --lookahead-records: {n}; valid range: [{}, {}]",
-            crate::config::LOOKAHEAD_RECORDS_MIN,
-            crate::config::LOOKAHEAD_RECORDS_MAX
-        ));
-    }
-    Ok(n)
+    ranged_usize(
+        s,
+        "--lookahead-records",
+        crate::config::LOOKAHEAD_RECORDS_MIN,
+        crate::config::LOOKAHEAD_RECORDS_MAX,
+    )
 }
 
 /// L2-DEC-017 / L2-CLI-012: validate the `--standard-tick-rate-hz`
@@ -1369,13 +1452,18 @@ fn parse_lookahead_records(s: &str) -> Result<usize, String> {
 /// inputs with the same shape of message: the rate must be a finite,
 /// strictly-positive frequency.
 fn parse_standard_tick_rate_hz(s: &str) -> Result<f64, String> {
-    let hz: f64 = s
-        .trim_ascii()
-        .parse()
-        .map_err(|_| format!("invalid --standard-tick-rate-hz: {s:?}; must be a number"))?;
+    let written = s.trim_ascii();
+    let hz: f64 = written.parse().map_err(|_| {
+        format!(
+            "invalid --standard-tick-rate-hz: {}; must be a number",
+            quote(s)
+        )
+    })?;
+    // Repeated as written, as the config loader does: `1e400` was reported as
+    // `inf`, which is not what the operator typed (L2-CLI-022).
     if !hz.is_finite() || hz <= 0.0 {
         return Err(format!(
-            "invalid --standard-tick-rate-hz: {hz}; must be a finite value greater than 0"
+            "invalid --standard-tick-rate-hz: {written}; must be a finite value greater than 0"
         ));
     }
     Ok(hz)
@@ -1391,60 +1479,53 @@ fn parse_mux_delimiter(s: &str) -> Result<String, String> {
 fn parse_mux_field(s: &str) -> Result<i64, String> {
     s.trim_ascii()
         .parse::<i64>()
-        .map_err(|_| format!("invalid --mux-field: {s:?}; must be an integer"))
+        .map_err(|_| not_an_integer("--mux-field", s))
 }
 
 /// `--max-sort-group` (L2-WRT-022): cap on one buffered equal-timestamp run.
 /// Range-checked here so a bad value is a usage error (exit 4) rather than a
 /// silent clamp, mirroring `--detect-records`.
 fn parse_max_sort_group(s: &str) -> Result<usize, String> {
-    let n: usize = s
-        .trim_ascii()
-        .parse()
-        .map_err(|_| format!("invalid --max-sort-group: {s:?}; must be an integer"))?;
-    if !(crate::order::MAX_SORT_GROUP_MIN..=crate::order::MAX_SORT_GROUP_MAX).contains(&n) {
-        return Err(format!(
-            "invalid --max-sort-group: {n}; valid range: [{}, {}]",
-            crate::order::MAX_SORT_GROUP_MIN,
-            crate::order::MAX_SORT_GROUP_MAX
-        ));
-    }
-    Ok(n)
+    ranged_usize(
+        s,
+        "--max-sort-group",
+        crate::order::MAX_SORT_GROUP_MIN,
+        crate::order::MAX_SORT_GROUP_MAX,
+    )
 }
 
 /// `--max-collapse-survivors` (L2-MRG-008): cap on the de-duplication survivor
 /// set. Range-checked here so a bad value is a usage error (exit 4) rather than
 /// a silent clamp, mirroring `--max-sort-group`.
 fn parse_max_collapse_survivors(s: &str) -> Result<usize, String> {
-    let n: usize = s
-        .trim_ascii()
-        .parse()
-        .map_err(|_| format!("invalid --max-collapse-survivors: {s:?}; must be an integer"))?;
-    if !(crate::merge::MAX_COLLAPSE_SURVIVORS_MIN..=crate::merge::MAX_COLLAPSE_SURVIVORS_MAX)
-        .contains(&n)
-    {
-        return Err(format!(
-            "invalid --max-collapse-survivors: {n}; valid range: [{}, {}]",
-            crate::merge::MAX_COLLAPSE_SURVIVORS_MIN,
-            crate::merge::MAX_COLLAPSE_SURVIVORS_MAX
-        ));
-    }
-    Ok(n)
+    ranged_usize(
+        s,
+        "--max-collapse-survivors",
+        crate::merge::MAX_COLLAPSE_SURVIVORS_MIN,
+        crate::merge::MAX_COLLAPSE_SURVIVORS_MAX,
+    )
 }
 
 /// `--delta-scope` (L2-MRG-005). Shares `DeltaScope::from_name_ci` with the
 /// config loader so the CLI and TOML accept exactly the same spellings.
 fn parse_delta_scope(s: &str) -> Result<crate::models::DeltaScope, String> {
-    crate::models::DeltaScope::from_name_ci(s.trim())
-        .ok_or_else(|| format!("invalid --delta-scope: {s:?}. Valid: per-file, global"))
+    // Not trimmed, like every other name: Rust alone trimmed this one, with
+    // Unicode `str::trim`, so `" global"` was accepted here and refused in C++.
+    crate::models::DeltaScope::from_name_ci(s).ok_or_else(|| {
+        format!(
+            "invalid --delta-scope: {}; valid: per-file, global",
+            quote(s)
+        )
+    })
 }
 
 fn parse_collapse_window_us(s: &str) -> Result<i64, String> {
     match s.trim_ascii().parse::<i64>() {
         Ok(n) if n >= 0 => Ok(n),
-        _ => Err(format!(
-            "invalid --collapse-window-us: {s:?}; must be a non-negative integer"
+        Ok(n) => Err(format!(
+            "invalid --collapse-window-us: {n}; must be a non-negative integer"
         )),
+        Err(_) => Err(not_an_integer("--collapse-window-us", s)),
     }
 }
 
@@ -1464,7 +1545,8 @@ fn apply_log_level(source: &str, value: &str) -> Result<(), String> {
             Ok(())
         }
         None => Err(format!(
-            "invalid {source}: {value:?}; valid: {}",
+            "invalid {source}: {}; valid: {}",
+            quote(value),
             log::LEVEL_NAMES
         )),
     }
@@ -1861,10 +1943,12 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
         crate::merge::expand_glob(pattern).map_err(|e| {
             // A wildcard in the directory part is a malformed pattern, refused
             // before any I/O: the command line is wrong, so exit 4, not 1.
+            // The pattern is a path, repeated as typed (L2-CLI-022): `{:?}`
+            // doubled every backslash of a Windows path.
             if e.kind() == std::io::ErrorKind::InvalidInput {
-                CliError::usage(format!("--glob {pattern:?}: {e}"))
+                CliError::usage(format!("--glob \"{pattern}\": {e}"))
             } else {
-                CliError::runtime(format!("failed to expand --glob {pattern:?}: {e}"))
+                CliError::runtime(format!("failed to expand --glob \"{pattern}\": {e}"))
             }
         })?
     } else {
@@ -1874,7 +1958,7 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
     if paths.is_empty() {
         return Err(CliError::usage(match (&args.manifest, &args.glob) {
             (Some(m), _) => format!("manifest {} contains no input paths", m.display()),
-            (_, Some(g)) => format!("--glob {g:?} matched no files"),
+            (_, Some(g)) => format!("--glob \"{g}\" matched no files"),
             _ => "decode requires at least one input file".to_string(),
         }));
     }
