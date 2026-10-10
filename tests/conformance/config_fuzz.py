@@ -3,7 +3,8 @@
 The static ``config_parity.py`` corpus only tests forms a human enumerated —
 which is exactly why config divergences kept being found one at a time. This
 module instead *generates* many small TOML-ish config documents and drives each
-through both CLIs, asserting they agree on accept vs reject. It searches the
+through both CLIs, asserting they agree on accept vs reject and write the same diagnostics. It
+searches the
 edges (odd numeric literals, string escapes, exotic structures) so CI finds a
 divergence before a reviewer does.
 
@@ -20,7 +21,12 @@ import random
 import subprocess
 from pathlib import Path
 
-from differential import classify, describe_divergence
+from differential import (
+    classify,
+    describe_divergence,
+    describe_stderr_problems,
+    normalized_stderr,
+)
 
 _DEFAULT_SEED = 20260711  # fixed → reproducible CI runs
 # Each iteration spawns both CLIs, so keep the default modest for CI wall-clock;
@@ -159,6 +165,19 @@ _VALUES = [
     '["a\\", b"]',
     '["x,y", "z"]',
     '["p\\"q"]',
+    # L7: forms whose verdict or message differed between Rust and C++ once
+    # the messages were compared.
+    "tru",  # starts like a boolean
+    "1e400",  # overflows to infinity
+    "inf",
+    "-1.5",
+    "[[1, 2]]",  # a nested array that the splitter cuts in two
+    '"\\\u00e9"',  # a bad escape whose byte is not ASCII
+    '"\u0131nfo"',  # a dotless i, which Unicode upper-casing maps to I
+    '["0x+1"]',  # a signed hex type code
+    '["0x1FF", "0xZZ"]',
+    '["\u017fpurious_data"]',  # a long s, which upper-cases to S
+    "true\u00a0",  # a no-break space after the value
 ]
 
 
@@ -172,7 +191,8 @@ def _make_document(rng: random.Random) -> str:
         for _ in range(rng.randint(0, 4)):
             key = rng.choice(_KEYS)
             val = rng.choice(_VALUES)
-            sep = rng.choice(["=", " = ", "  =  "])
+            # A tab and a no-break space (L2-CFG-010: only spaces and tabs are blanks).
+            sep = rng.choice(["=", " = ", "  =  ", "\t=\t", "\u00a0= "])
             trailing = rng.choice(["", "  # comment", " "])
             lines.append(f"{key}{sep}{val}{trailing}")
         if rng.random() < 0.15:
@@ -204,19 +224,29 @@ def check_config_parser_fuzz(
         cfg.write_text(doc, encoding="utf-8")
         classes: dict[str, str] = {}
         codes: dict[str, int] = {}
+        stderrs: dict[str, str] = {}
         for impl, prefix in invocations.items():
             out = temp / f"fuzz-{i}-{impl}.csv"
             result = subprocess.run(
                 [*prefix, "--config", str(cfg), "decode", str(input_mie), "-o", str(out)],
                 cwd=root,
                 capture_output=True,
-                text=True,
                 check=False,
                 timeout=30,
             )
             codes[impl] = result.returncode
             classes[impl] = classify(result.returncode)
+            stderrs[impl] = normalized_stderr(
+                result.stderr,
+                {str(cfg): "<CONFIG>", str(out): "<OUTPUT>", str(input_mie): "<INPUT>"},
+            )
         divergence = describe_divergence(classes, codes)
+        if divergence is None:
+            # L2-CLI-022 / L2-CLI-014: the diagnostics too, ASCII and alike --
+            # except that after a usage error only the ASCII rule is checked
+            # here, the text being the usage layer's contract (differential.py).
+            usage = set(codes.values()) == {4}
+            divergence = describe_stderr_problems(stderrs, compare=not usage)
         if divergence is not None:
             # The generating document is reproduced verbatim and indented: a
             # fuzz finding is only actionable if it can be pasted straight into

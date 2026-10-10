@@ -152,6 +152,44 @@ shared behavior) holds at any compatible version pair. See
   the result never arrived. The base class now keeps the arguments each
   exception was made with and is rebuilt from them, so the copy has the same
   class, message and attributes; classes added later inherit it.
+- **Rust and C++ agree on what a config file means** (L2-CFG-013). Comparing
+  their diagnostics (below) turned up four places where the same file was
+  read differently:
+  - **Blanks.** Rust trimmed every Unicode space around keys and values, so
+    `level<no-break space>= "INFO"` set the level in Rust and was an error in
+    C++. Only spaces and tabs are blanks now, as for `--manifest` lines and
+    the MUX field. **Behaviour change** for Rust and Python: such a line is
+    now a config error (exit 5).
+  - **Encoding.** A config file that is not UTF-8 was an error in Rust and
+    accepted by C++. It is now an error in both: `<path>: not valid UTF-8`.
+  - **Name case.** Rust upper-cased the log level and type names with Unicode
+    rules, under which a dotless i becomes `I` and a long s `S`, so
+    `level = "ınfo"` was accepted. Names now match by ASCII case only.
+  - **Hex type codes.** Rust accepted a sign after `0x` (`"0x+1"` was type 1).
+    A hex code is now `0x` followed by hex digits only.
+- **Config diagnostics read the same from every implementation**
+  (L2-CLI-022, L2-CLI-014). Their stderr differed for 60 of the 79 snippets
+  in the shared config corpus. **Behaviour change** -- the wording of config
+  errors and of the unknown-key warning has changed, so scripts that match
+  on them may need updating:
+  - Every error about a file's contents now begins with the file's path, in
+    Rust and Python as in C++.
+  - A repeated value is quoted one way: in double quotes, `"` and `\`
+    escaped, and any byte outside printable ASCII as `\xNN`. Before this, C++
+    showed `"a"b"` unescaped, and both printed a non-ASCII key to the
+    console raw.
+  - A rejected `standard_tick_rate_hz` is repeated as written. C++ printed
+    `0.000000` where Rust printed `0`, and printed `1e400` as an empty string.
+  - The unknown-key warning is `unknown config key 'decode.bogus' at line 2;
+    ignored` everywhere, and the type, bus and RT/subaddress errors, a value
+    that only starts like a boolean (`tru`) and a nested array each have one
+    wording. `Config path is not a regular file` and `Cannot read config
+    file` are the shared spellings of those two errors.
+  - When a section has several bad keys, both report the same one first.
+  - `config_parity.py`, `config_fuzz.py` and `config_path_parity.py` now
+    compare stderr as well as the verdict and fail on a non-ASCII byte. The
+    corpus gained 85 snippets, including integers past 64
+    bits, `inf` / `nan` / `1e400`, and Unicode names and blanks.
 
 ### Maintenance
 

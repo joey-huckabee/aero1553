@@ -116,7 +116,9 @@ bool is_known_key(const std::string& section, const std::string& key) {
 
 namespace {
 
-std::string quoted(const std::string& s) { return "\"" + s + "\""; }
+/// A value repeated in a diagnostic, by the rule every implementation shares
+/// (`text::quote`, L2-CLI-022).
+std::string quoted(const std::string& s) { return text::quote(s); }
 
 /// A key's fully-qualified name, for a diagnostic that names the offender.
 std::string qualified(const std::string& section, const std::string& key) {
@@ -178,17 +180,18 @@ bool get_int(const toml::Document& doc, const std::string& section, const std::s
 /// `1000000.0` for a rate. Deliberately asymmetric: an integer key does NOT
 /// accept a float, because `detect_records = 8.0` is a mistake worth naming.
 bool get_number(const toml::Document& doc, const std::string& section, const std::string& key,
-                double& out) {
-    toml::Value found;
-    if (!doc.get(section, key, found)) {
+                double& out, std::string& written) {
+    toml::Entry entry;
+    if (!doc.get_entry(section, key, entry)) {
         return false;
     }
-    if (found.is_float()) {
-        out = found.as_float();
+    written = entry.written;
+    if (entry.value.is_float()) {
+        out = entry.value.as_float();
         return true;
     }
-    if (found.is_integer()) {
-        out = static_cast<double>(found.as_integer());
+    if (entry.value.is_integer()) {
+        out = static_cast<double>(entry.value.as_integer());
         return true;
     }
     throw ConfigError("[" + section + "] " + key + " must be a number");
@@ -214,7 +217,10 @@ std::size_t require_int_range(int64_t value, const std::string& key, std::size_t
     return static_cast<std::size_t>(value);
 }
 
-double require_positive_finite(double value, const std::string& key) {
+/// The message repeats the value as `written` in the file. It once rendered the
+/// parsed double with `fixed6`, which printed `0.000000` where Rust printed `0`
+/// -- and printed `1e400`, which overflows to infinity, as an empty string.
+double require_positive_finite(double value, const std::string& written, const std::string& key) {
     // Both halves matter. A non-finite rate would make every converted
     // timestamp a NaN, and a zero or negative one would invert the timeline.
 #if defined(_WIN32)
@@ -223,7 +229,7 @@ double require_positive_finite(double value, const std::string& key) {
     const bool finite = std::isfinite(value);
 #endif
     if (!finite || value <= 0.0) {
-        throw ConfigError("Invalid " + key + ": " + text::fixed6(value) +
+        throw ConfigError("Invalid " + key + ": " + written +
                           ". Must be a finite value greater than 0");
     }
     return value;
@@ -292,18 +298,22 @@ uint8_t parse_type_name(const std::string& name) {
     // A hex code, so a recording carrying a type this build does not name can
     // still be filtered.
     if (trimmed.size() > 2 && trimmed[0] == '0' && (trimmed[1] == 'x' || trimmed[1] == 'X')) {
-        uint32_t value = 0;
+        // Every digit is checked before any range verdict, so `0x1FFZ` is an
+        // invalid type rather than an out-of-range one, as in Rust.
+        bool all_hex = true;
         for (std::size_t i = 2; i < trimmed.size(); ++i) {
-            const int digit = text::ascii_hex_value(trimmed[i]);
-            if (digit < 0 || value > 0xFF) {
-                throw ConfigError("Invalid message type: " + quoted(name));
+            all_hex = all_hex && text::ascii_hex_value(trimmed[i]) >= 0;
+        }
+        if (all_hex) {
+            uint32_t value = 0;
+            for (std::size_t i = 2; i < trimmed.size(); ++i) {
+                value = value * 16 + static_cast<uint32_t>(text::ascii_hex_value(trimmed[i]));
+                if (value > 0xFF) {
+                    throw ConfigError("Type code out of range: " + quoted(name));
+                }
             }
-            value = value * 16 + static_cast<uint32_t>(digit);
+            return static_cast<uint8_t>(value);
         }
-        if (value > 0xFF) {
-            throw ConfigError("Type code out of range: " + quoted(name));
-        }
-        return static_cast<uint8_t>(value);
     }
 
     throw ConfigError("Invalid message type: " + quoted(name) +
@@ -362,28 +372,32 @@ uint8_t parse_small_int(const toml::Value& value, const char* key) {
 // --- Section loaders. One per [section], so no single function carries the
 // --- whole schema and each can be read against its CONFIG-REFERENCE entry.
 
+// Each loader checks its keys in the order Rust's does, because the first bad
+// key is the one reported: C++ once checked `irig_day_advisory` before `level`
+// and `max_sort_group` before `year`, so a file with two mistakes was reported
+// differently by each implementation (L2-CLI-022).
+
 void apply_logging(const toml::Document& doc, DecoderConfig& config) {
+    std::string level;
+    if (get_string(doc, "logging", "level", level)) {
+        log::Level parsed = log::LEVEL_WARN;
+        if (!log::level_from_name(level, parsed)) {
+            throw ConfigError("Invalid logging.level: " + quoted(level) +
+                              ". Valid: " + log::LEVEL_NAMES);
+        }
+        // Stored uppercased, matching the other implementations, so a later
+        // comparison does not have to be case-insensitive too.
+        std::string upper;
+        for (std::size_t i = 0; i < level.size(); ++i) {
+            upper += text::ascii_upper(level[i]);
+        }
+        config.log_level = upper;
+    }
+
     bool advisory = false;
     if (get_bool(doc, "logging", "irig_day_advisory", advisory)) {
         config.irig_day_advisory = advisory;
     }
-
-    std::string level;
-    if (!get_string(doc, "logging", "level", level)) {
-        return;
-    }
-    log::Level parsed = log::LEVEL_WARN;
-    if (!log::level_from_name(level, parsed)) {
-        throw ConfigError("Invalid logging.level: " + quoted(level) +
-                          ". Valid: " + log::LEVEL_NAMES);
-    }
-    // Stored uppercased, matching the other implementations, so a later
-    // comparison does not have to be case-insensitive too.
-    std::string upper;
-    for (std::size_t i = 0; i < level.size(); ++i) {
-        upper += text::ascii_upper(level[i]);
-    }
-    config.log_level = upper;
 }
 
 void apply_decode(const toml::Document& doc, DecoderConfig& config) {
@@ -435,9 +449,10 @@ void apply_decode(const toml::Document& doc, DecoderConfig& config) {
                                                      LOOKAHEAD_RECORDS_MIN, LOOKAHEAD_RECORDS_MAX);
     }
     double rate = 0.0;
-    if (get_number(doc, "decode", "standard_tick_rate_hz", rate)) {
+    std::string written;
+    if (get_number(doc, "decode", "standard_tick_rate_hz", rate, written)) {
         config.standard_tick_rate_hz =
-            require_positive_finite(rate, "decode.standard_tick_rate_hz");
+            require_positive_finite(rate, written, "decode.standard_tick_rate_hz");
     }
 }
 
@@ -452,11 +467,6 @@ void apply_output(const toml::Document& doc, DecoderConfig& config) {
     bool flag = false;
     if (get_bool(doc, "output", "no_clobber", flag)) {
         config.no_clobber = flag;
-    }
-    int64_t number = 0;
-    if (get_int(doc, "output", "max_sort_group", number)) {
-        config.max_sort_group = require_int_range(number, "output.max_sort_group",
-                                                  MAX_SORT_GROUP_MIN, MAX_SORT_GROUP_MAX);
     }
     // L2-CFG-012 / L2-WRT-025: which rendering the TIME_STAMP column uses.
     std::string rendering;
@@ -486,6 +496,11 @@ void apply_output(const toml::Document& doc, DecoderConfig& config) {
                               "MM in [0, 59]");
         }
         config.utc_offset_minutes = minutes;
+    }
+    int64_t number = 0;
+    if (get_int(doc, "output", "max_sort_group", number)) {
+        config.max_sort_group = require_int_range(number, "output.max_sort_group",
+                                                  MAX_SORT_GROUP_MIN, MAX_SORT_GROUP_MAX);
     }
 }
 
@@ -643,7 +658,7 @@ DecoderConfig load_config(const Optional<std::string>& path) {
     if (platform::file_metadata(file, size, is_regular, err) && !is_regular) {
         // A directory, a device, a pipe. Reading it would either fail opaquely
         // or -- worse, for a character device -- block forever.
-        throw ConfigError("Config file is not a regular file: " + file);
+        throw ConfigError("Config path is not a regular file: " + file);
     }
 
     // Through the platform layer, not std::fopen. On Windows the CRT reads a
@@ -655,6 +670,12 @@ DecoderConfig load_config(const Optional<std::string>& path) {
         throw ConfigError("Cannot read config file: " + file + ": " + err.message);
     }
     const std::string text_in(raw.begin(), raw.end());
+    // TOML is UTF-8 (TOML 1.0). This loader read the bytes and accepted a file
+    // Rust and Python could not even read, so the three disagreed on whether
+    // it was a config at all.
+    if (!text::is_valid_utf8(text_in)) {
+        throw ConfigError(file + ": not valid UTF-8");
+    }
 
     try {
         return parse_into_config(text_in);

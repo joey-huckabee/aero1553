@@ -539,17 +539,17 @@ SPURIOUS_DATA records have no subaddress and are unaffected.
 
 ## Unknown keys
 
-Per L2-CFG-009, unknown top-level TOML keys produce a `WARN` at load time naming the offending `[section] key` but **do not fail the load**. This is forward-compatible: an older binary opening a newer config logs the unknown keys it doesn't understand and continues with the keys it does.
+Per L2-CFG-009, unknown top-level TOML keys produce a `WARN` at load time naming the offending key and its line but **do not fail the load**. This is forward-compatible: an older binary opening a newer config logs the unknown keys it doesn't understand and continues with the keys it does.
 
 Examples that produce a WARN but still load:
 
 ```toml
 [output]
 format = "csv"
-unknown_thing = true   # WARN: unknown key [output] unknown_thing
+unknown_thing = true   # WARN: unknown config key 'output.unknown_thing' at line 3; ignored
 
 [filter]
-exclude_subdresses = [0]   # WARN: typo of exclude_subaddresses
+exclude_subdresses = [0]   # WARN: unknown config key 'filter.exclude_subdresses' at line 6; ignored
 ```
 
 Use the `WARN`-level log to catch typos in your config without an explicit schema validator.
@@ -580,7 +580,21 @@ Per L2-CFG-010, all schema validation (type checks, range checks, enum membershi
 
 This means a config file is either fully accepted (with optional WARN lines for unknown keys) or fully rejected at the very start of CLI invocation, before any file mmap or output write occurs. There is no class of "config error surfacing mid-decode."
 
-When a load-time validation fails, the CLI exits `5` (the configuration-error class, L1-EXIT-008 / L2-CLI-011) with a stderr message naming the offending key and the rule it broke, and creates no output file.
+When a load-time validation fails, the CLI exits `5` (the configuration-error class, L1-EXIT-008 / L2-CLI-011) with a stderr message naming the offending key and the rule it broke, and creates no output file. The message begins with the config file's path, and it reads the same from every implementation (L2-CLI-022):
+
+```text
+Error: /etc/aero1553/site.toml: Invalid decode.detect_records: 0. Valid range: [1, 32]
+```
+
+A value the message repeats is quoted in double quotes, with any byte outside printable ASCII written as `\xNN` -- so `strïct = true` is reported as `unsupported key "str\xC3\xAFct"` -- and a rejected decimal is repeated exactly as you wrote it.
+
+---
+
+## File format
+
+A config file is **UTF-8** text (TOML 1.0); a file in any other encoding is a configuration error (exit `5`), reported as `<path>: not valid UTF-8`. Lines may end in LF or CRLF.
+
+The parser removes **spaces and tabs only** around a line, a key, a value and an array item (L2-CFG-013). Any other character is content, including a no-break space (U+00A0) or an ideographic space (U+3000) that an editor or a copy from a web page may slip in -- so `level<no-break space>= "INFO"` is an unsupported key, not a level setting. Names the schema matches regardless of case (log levels, type names, buses, enum values) are compared by ASCII case only.
 
 ---
 

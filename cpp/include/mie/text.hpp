@@ -90,6 +90,20 @@ std::string trim_ascii_blank(const std::string& s);
 /// as U+00A0 are NOT whitespace here, in either implementation.
 std::string trim_ascii_whitespace(const std::string& s);
 
+/// `s` as printable ASCII, for a diagnostic that repeats what the operator
+/// wrote (L2-CLI-014, L2-CLI-022). A printable ASCII byte stands for itself,
+/// except `"` and `\`, which are written `\"` and `\\`; every other byte is
+/// `\xNN` in upper-case hex. Mirrors `text::escape_bytes` in rust/src/text.rs,
+/// which also works byte by byte, so a non-ASCII character reads the same in
+/// both: an e-acute is `\xC3\xA9`.
+std::string escape_bytes(const std::string& s);
+
+/// `s` escaped by `escape_bytes` and wrapped in double quotes: the one form in
+/// which a diagnostic repeats a value, a key or a line the operator wrote.
+/// Before it, a value was quoted as-is, so a quote inside it read as the end of
+/// the value and a non-ASCII byte reached the console raw.
+std::string quote(const std::string& s);
+
 /// Whether `s` is well-formed UTF-8.
 ///
 /// Exists because a `std::string` is a byte sequence and the other two

@@ -80,14 +80,23 @@ Document::Document() = default;
 
 void Document::add(const Entry& entry) { entries_.push_back(entry); }
 
-bool Document::get(const std::string& section, const std::string& key, Value& out) const {
+bool Document::get_entry(const std::string& section, const std::string& key, Entry& out) const {
     for (std::size_t i = 0; i < entries_.size(); ++i) {
         if (entries_[i].section == section && entries_[i].key == key) {
-            out = entries_[i].value;
+            out = entries_[i];
             return true;
         }
     }
     return false;
+}
+
+bool Document::get(const std::string& section, const std::string& key, Value& out) const {
+    Entry entry;
+    if (!get_entry(section, key, entry)) {
+        return false;
+    }
+    out = entry.value;
+    return true;
 }
 
 bool Document::contains(const std::string& section, const std::string& key) const {
@@ -218,9 +227,9 @@ bool fail(ParseError& error, std::size_t line, const std::string& message) {
     return false;
 }
 
-/// A value rendered for a diagnostic, quoted the way the other implementations
-/// quote it so the three read alike.
-std::string quoted(const std::string& s) { return "\"" + s + "\""; }
+/// A value rendered for a diagnostic, by the rule every implementation shares
+/// (`text::quote`, L2-CLI-022).
+std::string quoted(const std::string& s) { return text::quote(s); }
 
 /// Strip a trailing `# comment`, preserving a `#` inside a quoted string.
 std::string strip_comment(const std::string& line) {
@@ -276,7 +285,10 @@ bool parse_string(const std::string& s, std::size_t line, std::string& out, Pars
             } else if (next == 't') {
                 result += '\t';
             } else {
-                return fail(error, line, std::string("bad escape \\") + next);
+                // One byte, escaped: a non-ASCII character shows as its lead
+                // byte, as in Rust, rather than reaching the console raw.
+                return fail(error, line,
+                            "bad escape \\" + text::escape_bytes(std::string(1, next)));
             }
         } else if (c == '"') {
             return fail(error, line, "unescaped quote in string");
@@ -448,7 +460,7 @@ bool parse_section_header(const std::string& stripped, std::size_t line,
     }
     if (!is_plain_identifier(section)) {
         return fail(error, line,
-                    "unsupported section header [" + section +
+                    "unsupported section header [" + text::escape_bytes(section) +
                         "]; use a flat [section] name (letters, digits, underscore)");
     }
     // The TOML spec forbids defining a table twice. Without this the second
@@ -464,7 +476,7 @@ bool parse_section_header(const std::string& stripped, std::size_t line,
 }
 
 bool parse_key_value(const std::string& line_text, std::size_t line, std::string& key, Value& value,
-                     ParseError& error) {
+                     std::string& written, ParseError& error) {
     const std::string::size_type eq = line_text.find('=');
     if (eq == std::string::npos) {
         return fail(error, line, "expected '=' in " + quoted(line_text));
@@ -486,6 +498,7 @@ bool parse_key_value(const std::string& line_text, std::size_t line, std::string
         return fail(error, line,
                     "unsupported key " + quoted(key) + "; keys must be simple identifiers");
     }
+    written = value_text;
     return parse_value(value_text, line, value, error);
 }
 
@@ -528,7 +541,7 @@ bool parse(const std::string& text_in, Document& out, ParseError& error) {
         Entry entry;
         entry.section = section;
         entry.line = line_number;
-        if (!parse_key_value(line, line_number, entry.key, entry.value, error)) {
+        if (!parse_key_value(line, line_number, entry.key, entry.value, entry.written, error)) {
             return false;
         }
         if (out.contains(entry.section, entry.key)) {

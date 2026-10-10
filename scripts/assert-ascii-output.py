@@ -323,15 +323,22 @@ def _is_docstring(toks: list, idx: int) -> bool:
 
 # Escapes that denote a codepoint. Octal is included because C++ accepts it and
 # \342\200\224 is the same em dash by another spelling.
+#
+# Each must start at a backslash that is not itself escaped: an even run of
+# backslashes before it (none, or `\\` pairs) and no backslash before that. A
+# literal `"\\xC3"` is a backslash followed by the text `xC3` -- what a
+# diagnostic writes to SHOW an escaped byte (L2-CLI-022) -- and matching it as
+# the escape `\xC3` reported ASCII as non-ASCII.
+_UNESCAPED = r"(?<!\\)(?:\\\\)*"
 ESCAPE_PATTERNS = (
-    (re.compile(r"\\x([0-9A-Fa-f]{2})"), 16, r"\xHH"),
-    (re.compile(r"\\u\{([0-9A-Fa-f]+)\}"), 16, r"\u{...}"),
-    (re.compile(r"\\u([0-9A-Fa-f]{4})"), 16, r"\uXXXX"),
-    (re.compile(r"\\U([0-9A-Fa-f]{8})"), 16, r"\UXXXXXXXX"),
-    (re.compile(r"\\([0-7]{1,3})"), 8, r"\NNN"),
+    (re.compile(_UNESCAPED + r"\\x([0-9A-Fa-f]{2})"), 16, r"\xHH"),
+    (re.compile(_UNESCAPED + r"\\u\{([0-9A-Fa-f]+)\}"), 16, r"\u{...}"),
+    (re.compile(_UNESCAPED + r"\\u([0-9A-Fa-f]{4})"), 16, r"\uXXXX"),
+    (re.compile(_UNESCAPED + r"\\U([0-9A-Fa-f]{8})"), 16, r"\UXXXXXXXX"),
+    (re.compile(_UNESCAPED + r"\\([0-7]{1,3})"), 8, r"\NNN"),
 )
 
-NAMED_ESCAPE = re.compile(r"\\N\{([^}]*)\}")
+NAMED_ESCAPE = re.compile(_UNESCAPED + r"\\N\{([^}]*)\}")
 
 
 def violations_in(lit: Literal) -> list[tuple[int, str]]:
