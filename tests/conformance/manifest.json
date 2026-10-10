@@ -1245,7 +1245,7 @@
         "--nonsense",
         "--help"
       ],
-      "expected_stdout_contains": "decode"
+      "compare_stdout": true
     },
     {
       "name": "help-outranks-a-value-validator",
@@ -1255,7 +1255,7 @@
         "abc",
         "--help"
       ],
-      "expected_stdout_contains": "decode"
+      "compare_stdout": true
     },
     {
       "name": "help-does-not-rescue-a-failed-value-consumption",

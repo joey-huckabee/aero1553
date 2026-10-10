@@ -59,12 +59,15 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     "mode": str,
     "args": list,
     "expected_stderr_contains": str,
-    # Substring the payload on STDOUT must contain. Lets a case assert an
-    # exit-0 outcome whose output is not byte-comparable across
-    # implementations -- help text, whose shape differs by design (Python
-    # prints per-subcommand help, Rust one combined screen). Supplying it
-    # stands in for "expected", which such a case cannot have.
-    "expected_stdout_contains": str,
+    # The payload is STDOUT, not the CSV: it must be non-empty and the same
+    # bytes in every implementation. For a case that ends in help, whose text
+    # `cli_message_parity` already pins; it stands in for "expected", which
+    # such a case has no use for. It replaced a substring check
+    # ("stdout contains 'decode'") written while the help texts differed --
+    # Python's per subcommand, Rust's one screen, C++'s its own -- and so could
+    # not be compared. Since v4.0.0 Python runs Rust's CLI, and since L7 C++
+    # prints Rust's help, so the whole text can be.
+    "compare_stdout": bool,
     "expected_exit": int,
     # Content written to the destination BEFORE the run, so the overwrite
     # contract can be pinned: `no_clobber` is off by default, so a decode must
@@ -473,7 +476,7 @@ def run_command(
         return None, result.stderr
     if payload_is_stdout:
         # The case asserts on stdout instead of a CSV -- see
-        # ``expected_stdout_contains``. `decode` still needs its `-o`, so the
+        # ``compare_stdout``. `decode` still needs its `-o`, so the
         # destination exists and is simply not what is being compared; a run
         # that printed help never created it, and that is not a failure here.
         return result.stdout, result.stderr
@@ -1026,7 +1029,7 @@ def main() -> int:
                     impl.label,
                     expected_exit=expected_exit,
                     read_path=read_path,
-                    payload_is_stdout="expected_stdout_contains" in case,
+                    payload_is_stdout=bool(case.get("compare_stdout")),
                 )
 
             # L1-OUT-002 / L2-WRT-014, asserted on EVERY case rather than only
@@ -1094,18 +1097,19 @@ def main() -> int:
                             f"{stderr_needle!r}\n--- stderr ---\n{captured}"
                         )
 
-            stdout_needle = case.get("expected_stdout_contains")
-            if stdout_needle:
-                for impl in running:
-                    payload = produced[impl.name]
-                    text = payload.decode("utf-8", "replace") if payload else ""
-                    if stdout_needle not in text:
-                        raise AssertionError(
-                            f"{name}: {impl.label} stdout does not contain "
-                            f"{stdout_needle!r}; got {text[:400]!r}"
-                        )
+            if case.get("compare_stdout"):
+                reference = running[0]
+                if not produced[reference.name]:
+                    raise AssertionError(f"{name}: {reference.label} wrote nothing to stdout")
+                for impl in running[1:]:
+                    require_equal(
+                        produced[reference.name] or b"",
+                        produced[impl.name] or b"",
+                        f"{name} {reference.label} stdout",
+                        f"{name} {impl.label} stdout",
+                    )
                 passed += 1
-                print(f"PASS {name} (stdout contains {stdout_needle!r})")
+                print(f"PASS {name} (stdout identical)")
                 continue
 
             if expected_exit != 0:

@@ -232,7 +232,10 @@ shared behavior) holds at any compatible version pair. See
   Comparing whole outputs found one divergence, which is fixed here: a word
   count too small for its payload was reported by C++ as `need at least 37
   for format 1`, where Rust and Python say `for Receive`. That case's
-  substring had stopped one word short of it.
+  substring had stopped one word short of it. The two cases that end in help
+  now compare the whole stdout across the implementations too (the new
+  `compare_stdout` field). They had checked only that it contained `decode`,
+  a check written when the help texts still differed.
 
 ### Maintenance
 
