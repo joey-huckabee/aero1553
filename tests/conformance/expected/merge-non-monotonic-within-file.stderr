@@ -1,0 +1,2 @@
+WARN [aero1553::reader] non-monotonic timestamp at 0x90 for RT/MSG key 0x000F0B00: prev_us=16646090000400 curr_us=16646090000150 (further out-of-order occurrences for this key suppressed)
+WARN [aero1553::merge] merge: input #0 (<INPUT0>) is not internally time-sorted: timestamp stepped backward (prev_us=16646090000400 curr_us=16646090000150) -- merged output may be out of order for this input (further occurrences suppressed)

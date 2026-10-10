@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --year: 10000; valid range: [1, 9999]
+Error: invalid --year: 10000; valid range: [1, 9999]
+Run 'aero1553 --help' for usage.

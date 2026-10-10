@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Record error at offset 0x48: errored record has no Error Word: word count 5 ends at the Command Word (needs at least 6)
+Error: Record error at offset 0x48: errored record has no Error Word: word count 5 ends at the Command Word (needs at least 6)

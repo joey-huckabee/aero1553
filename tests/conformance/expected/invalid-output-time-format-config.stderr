@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: Invalid output_time_format: "elapsed". Valid: doy, iso, dom
+Error: <CONFIG>: Invalid output_time_format: "elapsed". Valid: doy, iso, dom

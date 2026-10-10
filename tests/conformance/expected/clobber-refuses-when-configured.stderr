@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Refusing to overwrite existing file <OUTPUT> (--no-clobber or output.no_clobber is set). Remove the file or unset the flag to proceed.
+Error: Refusing to overwrite existing file <OUTPUT> (--no-clobber or output.no_clobber is set). Remove the file or unset the flag to proceed.

@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] unknown command "--HELP"; expected decode, count or dump
+Error: unknown command "--HELP"; expected decode, count or dump
+Run 'aero1553 --help' for usage.

@@ -1,0 +1,3 @@
+ERROR [aero1553::reader] timestamp-format auto-detection is ambiguous in <INPUT0> starting at offset 0x0: IRIG=4 STD=4 over 2 record(s) -- strict mode rejects ambiguous files; pass --input-time-format to force the choice
+ERROR [aero1553::cli] Timestamp-format auto-detection is ambiguous starting at offset 0x0 (IRIG score: 4, Standard score: 4 over 2 record(s) probed). Pass --input-time-format irig or --input-time-format standard to force the choice, or verify the file is actually an MIE recording.
+Error: Timestamp-format auto-detection is ambiguous starting at offset 0x0 (IRIG score: 4, Standard score: 4 over 2 record(s) probed). Pass --input-time-format irig or --input-time-format standard to force the choice, or verify the file is actually an MIE recording.

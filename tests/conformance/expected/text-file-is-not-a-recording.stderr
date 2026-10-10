@@ -1,0 +1,3 @@
+WARN [aero1553::reader] first record after header detection is truncated at 0xC: declared 104 bytes, only 27 available -- no records decoded
+ERROR [aero1553::cli] No valid MIE records found in <INPUT0> (scanned first 39 bytes). The file may not be an MIE recording, or the records may begin past the scan window.
+Error: No valid MIE records found in <INPUT0> (scanned first 39 bytes). The file may not be an MIE recording, or the records may begin past the scan window.

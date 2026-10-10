@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: Invalid input_time_format: "potato". Valid: auto, irig, standard
+Error: <CONFIG>: Invalid input_time_format: "potato". Valid: auto, irig, standard

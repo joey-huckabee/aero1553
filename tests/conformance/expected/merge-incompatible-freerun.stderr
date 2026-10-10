@@ -1,0 +1,3 @@
+WARN [aero1553::reader] freerun timestamp at 0x0
+ERROR [aero1553::cli] Cannot time-merge input #1 (<INPUT1>): leads with a freerun IRIG record (no calendar time). Multi-file merge requires every input to be calendar-locked IRIG (Standard-format, freerun IRIG, and mixed-format sets cannot be ordered on a common absolute timeline).
+Error: Cannot time-merge input #1 (<INPUT1>): leads with a freerun IRIG record (no calendar time). Multi-file merge requires every input to be calendar-locked IRIG (Standard-format, freerun IRIG, and mixed-format sets cannot be ordered on a common absolute timeline).

@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --exclude-subaddresses: 40; valid range: [0, 31]
+Error: invalid --exclude-subaddresses: 40; valid range: [0, 31]
+Run 'aero1553 --help' for usage.

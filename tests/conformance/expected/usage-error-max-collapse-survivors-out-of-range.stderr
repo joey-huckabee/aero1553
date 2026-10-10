@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --max-collapse-survivors: 0; valid range: [1, 1048576]
+Error: invalid --max-collapse-survivors: 0; valid range: [1, 1048576]
+Run 'aero1553 --help' for usage.

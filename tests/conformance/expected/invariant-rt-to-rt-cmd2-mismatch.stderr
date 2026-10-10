@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] Record error at offset 0x48: L2-SYN structural invariant violation: RT-to-RT Cmd2 requires direction = Receive; got Transmit (raw Cmd2 = 0x2D43)
+Error: Record error at offset 0x48: L2-SYN structural invariant violation: RT-to-RT Cmd2 requires direction = Receive; got Transmit (raw Cmd2 = 0x2D43)

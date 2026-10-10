@@ -20,6 +20,7 @@ from cli_message_parity import check_cli_message_parity
 from config_fuzz import check_config_parser_fuzz
 from config_parity import check_config_parser_parity
 from config_path_parity import check_config_path_parity
+from differential import describe_stderr_problems, normalized_stderr
 from glob_parity import check_glob_parity
 from long_paths import check_long_paths
 from output_mode import check_output_mode
@@ -307,6 +308,112 @@ def materialize(
     return written
 
 
+def _readable(stream: bytes | str | None) -> str:
+    """A captured stream as text for a failure message."""
+    if stream is None:
+        return ""
+    if isinstance(stream, str):
+        return stream
+    return stream.decode("utf-8", "replace")
+
+
+# Log lines below WARN are left out of the stderr oracle: L2-CLI-022 leaves the
+# text of the decoder's INFO and DEBUG lines free. A case whose point is that
+# such a line appears asserts it with ``expected_stderr_contains``.
+_FREE_LOG_LEVELS = ("INFO [", "DEBUG [")
+
+
+def stderr_oracle_path(case_name: str) -> Path:
+    """Where a case's stderr oracle lives. No file means stderr must be empty."""
+    return SUITE / "expected" / f"{case_name}.stderr"
+
+
+def path_placeholders(
+    case: dict[str, Any],
+    sources: list[Path],
+    output: Path | None,
+    temp: Path,
+) -> dict[str, str]:
+    """Each run-specific path one implementation was given, mapped to the
+    placeholder that stands for it in the stderr oracle.
+
+    Every implementation repeats a path as it was given (L2-CLI-022), so these
+    are the only parts of the diagnostics that legitimately differ between
+    runs, implementations and hosts. Each implementation writes into a
+    directory of its own under one file name, so a path derived from the
+    destination -- the errors file, a ``.partial`` -- normalises too.
+    """
+    paths = {str(ROOT): "<ROOT>", str(temp): "<TEMP>"}
+    if output is not None:
+        paths[str(output.parent)] = "<OUTDIR>"
+        paths[str(output)] = "<OUTPUT>"
+        paths[str(_errors_path(output))] = "<ERRORS>"
+    for i, src in enumerate(sources):
+        paths[str(src)] = f"<INPUT{i}>"
+    if config := case.get("config"):
+        paths[str((SUITE / config).resolve())] = "<CONFIG>"
+    return paths
+
+
+def comparable_stderr(stderr: bytes, placeholders: dict[str, str]) -> str:
+    """``stderr`` as its oracle holds it: paths replaced by placeholders, and
+    the INFO and DEBUG lines left out. Line endings are kept."""
+    text = normalized_stderr(stderr, placeholders)
+    return "".join(
+        line for line in text.splitlines(keepends=True) if not line.startswith(_FREE_LOG_LEVELS)
+    )
+
+
+def check_stderr(
+    name: str,
+    stderrs: dict[str, str],
+    update: bool,
+) -> None:
+    """Hold every implementation's stderr to the others' and to the oracle.
+
+    Agreement is checked first, so a divergence is reported as two actual
+    outputs side by side, the way the CSV is; then the oracle, which is what
+    catches a line every implementation lost or changed at once.
+
+    Raises:
+        AssertionError: on a divergence, a non-ASCII byte, or a mismatch
+            with the oracle.
+    """
+    problem = describe_stderr_problems(stderrs)
+    if problem:
+        raise AssertionError(f"{name}: {problem}")
+    oracle = stderr_oracle_path(name)
+    agreed = next(iter(stderrs.values()))
+    if update:
+        if agreed:
+            oracle.write_bytes(agreed.encode("utf-8", "surrogateescape"))
+            print(f"UPDATED {oracle.relative_to(ROOT)}")
+        elif oracle.exists():
+            oracle.unlink()
+            print(f"REMOVED {oracle.relative_to(ROOT)}")
+    expected = oracle.read_bytes().decode("utf-8", "surrogateescape") if oracle.exists() else ""
+    problem = describe_stderr_problems({f"oracle {oracle.name}": expected, **stderrs})
+    if problem:
+        raise AssertionError(f"{name}: {problem}")
+
+
+def check_no_stray_stderr_oracles(case_names: set[str]) -> None:
+    """Fail on a stderr oracle whose case is gone or renamed. A missing oracle
+    means "stderr is empty", so one left behind under an old name would
+    otherwise just stop being read.
+
+    Raises:
+        RuntimeError: naming every oracle with no case in the manifest.
+    """
+    stray = sorted(
+        path.name
+        for path in (SUITE / "expected").glob("*.stderr")
+        if path.name[: -len(".stderr")] not in case_names
+    )
+    if stray:
+        raise RuntimeError(f"stderr oracles with no manifest case: {stray}")
+
+
 def run_command(
     command: list[str],
     output: Path | None,
@@ -315,7 +422,7 @@ def run_command(
     expected_exit: int = 0,
     read_path: Path | None = None,
     payload_is_stdout: bool = False,
-) -> tuple[bytes | None, str]:
+) -> tuple[bytes | None, bytes]:
     """Run one implementation's CLI and assert its exit code matches.
 
     Returns ``(payload, stderr)`` where ``payload`` is:
@@ -324,8 +431,12 @@ def run_command(
       - the captured stdout bytes when ``output is None`` (used by the
         ``count`` mode, where stdout *is* the data being compared);
       - ``None`` for negative cases (no payload expected).
-    ``stderr`` is always returned so call sites can run substring
-    checks against the human-readable status lines.
+    ``stderr`` is always returned, for the exact comparison against the
+    case's stderr oracle.
+
+    Both streams are captured as BYTES. Text mode would translate line endings
+    on the way in, and both are compared with theirs: a run that ended its
+    lines CRLF on Windows would have read exactly like one that ended them LF.
 
     Raises:
         RuntimeError: on an unexpected exit code, a command timeout, or a
@@ -337,9 +448,6 @@ def run_command(
             command,
             cwd=ROOT,
             capture_output=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
             check=False,
             timeout=30,
         )
@@ -348,32 +456,30 @@ def run_command(
         raise RuntimeError(
             f"{case_name}: {implementation} exceeded 30 seconds\n"
             f"command: {rendered}\n"
-            f"stdout:\n{exc.stdout or ''}\n"
-            f"stderr:\n{exc.stderr or ''}"
+            f"stdout:\n{_readable(exc.stdout)}\n"
+            f"stderr:\n{_readable(exc.stderr)}"
         ) from exc
     if result.returncode != expected_exit:
         rendered = subprocess.list2cmdline(command)
         raise RuntimeError(
             f"{case_name}: {implementation} exited {result.returncode}, expected {expected_exit}\n"
             f"command: {rendered}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
+            f"stdout:\n{_readable(result.stdout)}\n"
+            f"stderr:\n{_readable(result.stderr)}"
         )
     if expected_exit != 0:
-        # Negative case — no payload expected, but stderr is still
-        # useful for diagnosing why a positive case unexpectedly fell
-        # into this branch.
+        # Negative case — no payload expected; its stderr is what the case
+        # is about.
         return None, result.stderr
     if payload_is_stdout:
         # The case asserts on stdout instead of a CSV -- see
         # ``expected_stdout_contains``. `decode` still needs its `-o`, so the
         # destination exists and is simply not what is being compared; a run
         # that printed help never created it, and that is not a failure here.
-        return result.stdout.encode("utf-8"), result.stderr
+        return result.stdout, result.stderr
     if output is None:
-        # Stdout-comparison mode (e.g. `count`). Encode to bytes so the
-        # comparison helpers downstream can treat all payloads uniformly.
-        return result.stdout.encode("utf-8"), result.stderr
+        # Stdout-comparison mode (e.g. `count`), where stdout is the data.
+        return result.stdout, result.stderr
     # An --allow-partial decode lands its output at ``<output>.partial`` rather
     # than ``<output>``; ``read_path`` points the comparison at the real artifact.
     read_target = read_path if read_path is not None else output
@@ -750,6 +856,7 @@ def main() -> int:
     manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
     for index, case in enumerate(manifest["cases"]):
         validate_case_schema(case, index)
+    check_no_stray_stderr_oracles({case["name"] for case in manifest["cases"]})
 
     impls = select_impls(args)
 
@@ -886,7 +993,12 @@ def main() -> int:
                 elif output_name:
                     outputs[impl.name] = case_dir / impl.name / output_name
                 else:
-                    outputs[impl.name] = temp / f"{name}-{impl.name}.csv"
+                    # One directory per implementation, one file name: a
+                    # destination or a path derived from it then reads the same
+                    # in every implementation's stderr once the directory is
+                    # replaced by its placeholder.
+                    (temp / impl.name).mkdir(exist_ok=True)
+                    outputs[impl.name] = temp / impl.name / f"{name}.csv"
 
             # An --allow-partial case commits to ``<output>.partial``; read that
             # artifact for the comparison and oracle against ``expected_partial``.
@@ -901,7 +1013,7 @@ def main() -> int:
             pre_existing = case.get("pre_existing_output")
 
             produced: dict[str, bytes | None] = {}
-            captured_stderr: dict[str, str] = {}
+            captured_stderr: dict[str, bytes] = {}
             for impl in running:
                 output = outputs[impl.name]
                 if pre_existing is not None and output is not None:
@@ -940,21 +1052,42 @@ def main() -> int:
                             f"a decode must never write to a file it is reading"
                         )
 
-            # Optional stderr substring assertion. Used by ``count`` mode to pin
-            # the "counted N messages in <path>" status line without a byte-exact
-            # comparison, and by negative cases to pin WHICH error was produced
-            # rather than merely that one was.
+            # Every case's stderr, exactly: the same in every implementation
+            # and the same as the committed oracle, `expected/<case>.stderr`
+            # (L2-CLI-022, L2-CONF-002). No oracle means nothing may be written.
             #
-            # This runs BEFORE the negative-case short-circuit below. It used to
-            # sit after it, so on any case with a non-zero ``expected_exit`` the
-            # needle was never evaluated: seven cases carried an assertion that
-            # could not fail, including the ones meant to tell "the value was
-            # rejected" apart from "the whole token was unknown". Proven by
-            # planting an impossible needle -- the case still passed.
+            # This runs BEFORE the negative-case short-circuit below. The
+            # substring check it replaced once sat after it, so on any case with
+            # a non-zero ``expected_exit`` the needle was never evaluated.
+            #
+            # It replaced a substring check because a substring cannot fail on
+            # what it does not mention. Three cases in four had no stderr
+            # assertion at all, so a new stray WARN went unnoticed in each of
+            # them; and one case's needle stopped a word short of a divergence:
+            # C++ said "for format 1" where Rust and Python said "for Receive".
+            check_stderr(
+                name,
+                {
+                    impl.label: comparable_stderr(
+                        captured_stderr[impl.name],
+                        path_placeholders(
+                            case,
+                            per_impl_sources.get(impl.name, sources),
+                            outputs[impl.name],
+                            temp,
+                        ),
+                    )
+                    for impl in running
+                },
+                args.update_expected,
+            )
+
+            # A substring of the RAW stderr, for what the oracle leaves out:
+            # a case whose point is that an INFO or DEBUG line appears.
             stderr_needle = case.get("expected_stderr_contains")
             if stderr_needle:
                 for impl in running:
-                    captured = captured_stderr[impl.name]
+                    captured = _readable(captured_stderr[impl.name])
                     if stderr_needle not in captured:
                         raise AssertionError(
                             f"{name}: {impl.label} stderr does not contain "

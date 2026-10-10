@@ -1,0 +1,5 @@
+WARN [aero1553::reader] sync lost at 0x0 (type=0x02 wc=8); scanning forward
+WARN [aero1553::reader] L2-SYN anomaly at 0x10: Status RT = 0 does not match Cmd RT = 15 (raw Status = 0x0000); possible bus interference
+WARN [aero1553::reader] L2-SYN anomaly at 0x20: Status RT = 0 does not match Cmd RT = 15 (raw Status = 0x0000); possible bus interference
+WARN [aero1553::reader] L2-SYN anomaly at 0x30: Status RT = 0 does not match Cmd RT = 15 (raw Status = 0x0000); possible bus interference
+WARN [aero1553::reader] L2-SYN anomaly at 0x40: Status RT = 0 does not match Cmd RT = 15 (raw Status = 0x0000); possible bus interference

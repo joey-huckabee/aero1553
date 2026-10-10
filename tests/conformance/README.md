@@ -7,11 +7,14 @@ Each case provides:
 
 - a text-based hexadecimal MIE input under `inputs/`;
 - optional shared TOML configuration under `configs/`;
-- expected vendor-compatible CSV output under `expected/`; and
+- expected vendor-compatible CSV output under `expected/`;
+- the expected stderr under `expected/<case>.stderr`, where the case writes any
+  (see [Stderr oracles](#stderr-oracles)); and
 - optional extra CLI arguments in `manifest.json` (the `args` field), passed verbatim to all three CLIs — they share one identical argument surface, which the `cli-surface-parity` gate compares across every implementation.
 
-The runner materializes temporary `.mie` files, invokes both CLIs, and requires
-both outputs to match the checked-in CSV oracle byte-for-byte.
+The runner materializes temporary `.mie` files, invokes every CLI, and requires
+each one's output to match the checked-in CSV oracle byte-for-byte, and its
+stderr to match the stderr oracle.
 
 Run from the repository root, **through uv**:
 
@@ -60,8 +63,8 @@ python tests/conformance/run.py --rust-only --rust-bin <path>           # no aer
 (`--update-expected` still requires both implementations, since it regenerates
 the oracles only after confirming Rust and Python agree.)
 
-When intentionally changing shared CSV behavior, update the checked-in
-oracles only after both implementations produce identical output:
+When intentionally changing shared CSV or diagnostic behavior, update the
+checked-in oracles only after every implementation produces identical output:
 
 ```bash
 uv --directory python run python ../tests/conformance/run.py --update-expected
@@ -151,8 +154,8 @@ array of case objects. Each case object accepts the following fields:
 | `config` | string | no | Optional path to a shared TOML config applied to both implementations. |
 | `mode` | string | no | Either `"decode"` (default — both impls run their decode pipeline; CSV output is compared) or `"count"` (both impls run the `count` subcommand; stdout is compared). |
 | `args` | array of string | no | Additional CLI arguments appended to both invocations verbatim. The Rust and Python CLIs share one argument surface, so a single vector serves both — there is no per-impl argument translation. |
-| `expected_stderr_contains` | string | no | Substring assertion applied to each impl's captured stderr. Used by `mode == "count"` cases to pin the human-readable status line without byte-comparing a temp path. |
-| `expected_exit` | integer | no | Expected exit code for both implementations. Defaults to `0`. Negative cases (exit `1`/`2`/`3` per `L1-EXIT-002`..`L1-EXIT-004`) may omit `expected`; the exit code alone is the assertion. |
+| `expected_stderr_contains` | string | no | Substring the **raw** stderr must contain, for what the stderr oracle leaves out: a case whose point is that an `INFO` or `DEBUG` line appears (`log-level-from-toml-config`). Everything else a case writes to stderr is held by its [stderr oracle](#stderr-oracles), exactly. |
+| `expected_exit` | integer | no | Expected exit code for both implementations. Defaults to `0`. Negative cases (exit `1`/`2`/`3` per `L1-EXIT-002`..`L1-EXIT-004`) may omit `expected`; the exit code and the stderr oracle are the assertion. |
 | `global_args` | array of string | no | Arguments placed **before** the subcommand, where the global flags (`--log-level`, `--config`) are parsed. `args` goes *after* the subcommand, so it cannot reach them — and Rust parses globals in a separate loop from subcommand flags, so both paths need covering independently. |
 | `subcommand_args` | array of string | no | Arguments placed immediately **after** the subcommand and **before** the input paths. `args` goes after the paths and after `-o`, which is too late to exercise anything positional — `--` in particular, whose whole job is to change how the paths that follow it are read. |
 | `expected_stdout_contains` | string | no | Substring the stdout payload must contain, standing in for `expected` when the output is not byte-comparable across implementations. Help text is the case it exists for: its *shape* differs by design (Python prints per-subcommand help, Rust one combined screen), so only its presence can be asserted. |
@@ -160,3 +163,34 @@ array of case objects. Each case object accepts the following fields:
 
 Unknown fields SHALL be rejected by the runner with a clear error so typos do
 not silently disable per-case behavior.
+
+## Stderr oracles
+
+Every case's stderr is compared exactly, in every implementation, on every
+platform (`L2-CLI-022`). The oracle is `expected/<case>.stderr`; a case with no
+such file must write nothing to stderr at all. Before comparing, the runner:
+
+- replaces each run-specific path with a placeholder: `<INPUT0>`, `<INPUT1>`,
+  ... for the inputs, `<OUTPUT>` for the destination, `<ERRORS>` for the
+  split-mode errors file, `<OUTDIR>` for the destination's directory,
+  `<CONFIG>` for the case's config, `<TEMP>` for the run's temporary directory
+  and `<ROOT>` for the repository. Every implementation repeats a path as it
+  was given, so these are the only parts that legitimately differ. A derived
+  path reads as one, e.g. `<OUTPUT>.partial`.
+- leaves out `INFO` and `DEBUG` log lines, whose text `L2-CLI-022` leaves free.
+
+Line endings are compared, not normalised: stderr is captured as bytes, and an
+implementation that ended its lines CRLF on Windows fails.
+
+The implementations are compared with each other first, so a divergence is
+reported as their actual outputs side by side, and then with the oracle, which
+is what catches a line that every implementation lost or changed at once.
+`--update-expected` writes the oracle when every implementation agrees, and
+deletes it when they now agree on writing nothing. An oracle whose case is no
+longer in the manifest fails the run.
+
+This replaced substring assertions. A substring cannot fail on what it does
+not mention: three cases in four had no stderr assertion at all, so a new
+stray WARN in any of them passed, and one case's substring stopped a word short
+of a real divergence -- C++ named the message format `format 1` where Rust and
+Python said `Receive`.

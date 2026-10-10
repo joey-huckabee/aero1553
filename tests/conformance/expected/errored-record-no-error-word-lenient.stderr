@@ -1,0 +1,1 @@
+WARN [aero1553::reader] errored record has no Error Word: word count 5 ends at the Command Word (needs at least 6) at 0x48; skipping record

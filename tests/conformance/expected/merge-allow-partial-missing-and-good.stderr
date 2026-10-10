@@ -1,0 +1,2 @@
+WARN [aero1553::cli] merge: input <INPUT0> could not be opened; truncating it from the merge (--allow-partial): MIE file not found: <INPUT0>
+WARN [aero1553::writer] 1 of 2 merge inputs could not be read and was left out (see the per-input warnings above); wrote 2 rows to <OUTPUT>.partial (--allow-partial)

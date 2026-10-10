@@ -1,0 +1,2 @@
+WARN [aero1553::reader] <INPUT0>: recording contains no records -- the stream opens on the end-of-records terminator (empty capture); writing header-only output
+no records in <INPUT0> (empty recording -- opens on the end-of-records terminator)

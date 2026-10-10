@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --log-level requires a value, but the next argument is an option: -h; to pass it as a value, write --log-level=-h
+Error: --log-level requires a value, but the next argument is an option: -h; to pass it as a value, write --log-level=-h
+Run 'aero1553 --help' for usage.

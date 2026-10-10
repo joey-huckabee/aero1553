@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: line 7: duplicate key 'strict' in section '[decode]'
+Error: <CONFIG>: line 7: duplicate key 'strict' in section '[decode]'

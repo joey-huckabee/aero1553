@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --mux-delimiter requires a value, but the next argument is an option: --no-mux; to pass it as a value, write --mux-delimiter=--no-mux
+Error: --mux-delimiter requires a value, but the next argument is an option: --no-mux; to pass it as a value, write --mux-delimiter=--no-mux
+Run 'aero1553 --help' for usage.

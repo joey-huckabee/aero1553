@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --standard-tick-rate-hz: "0x1p4"; must be a number
+Error: invalid --standard-tick-rate-hz: "0x1p4"; must be a number
+Run 'aero1553 --help' for usage.

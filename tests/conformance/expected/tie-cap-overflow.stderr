@@ -1,0 +1,2 @@
+WARN [aero1553::order] equal-timestamp run at 192:15:54:50.000500 reached the 2-record max_sort_group cap; emitting these records in arrival order and gathering the rest of the run afresh (raise [output] max_sort_group / --max-sort-group to restore canonical RT/MSG order for it)
+WARN [aero1553::order] equal-timestamp run at 192:15:54:50.000500 reached the 2-record max_sort_group cap; emitting these records in arrival order and gathering the rest of the run afresh (raise [output] max_sort_group / --max-sort-group to restore canonical RT/MSG order for it)

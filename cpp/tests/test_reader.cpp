@@ -1291,6 +1291,9 @@ TEST_CASE("a word count too small for the declared payload is rejected", "[reade
     const Walk walk = walk_words(words, mie::ReaderOptions());
     CHECK(walk.messages.size() == 2);
     CHECK(capture.contains("is too small for declared payload"));
+    // The format by name, as Rust's `{:?}` prints it. C++ printed its number,
+    // "for format 1", and every check stopped a word short of it.
+    CHECK(capture.contains("for Receive with data_word_count = 10)"));
 }
 
 TEST_CASE("a set reserved Type Word bit is an anomaly, not a rejection", "[reader][L2-SYN-025]") {

@@ -1,0 +1,4 @@
+WARN [aero1553::reader] freerun timestamp at 0x0
+WARN [aero1553::reader] freerun timestamp at 0x48
+ERROR [aero1553::cli] Cannot render a calendar timestamp: the record at offset 0x0 carries a freerun IRIG timestamp -- the card had no valid IRIG-B lock, so its day and time fields are relative rather than calendar-anchored. IRIG-B carries no year and no timezone, so a calendar rendering is refused rather than guessed at. Use --output-time-format doy to write the day-of-year form instead.
+Error: Cannot render a calendar timestamp: the record at offset 0x0 carries a freerun IRIG timestamp -- the card had no valid IRIG-B lock, so its day and time fields are relative rather than calendar-anchored. IRIG-B carries no year and no timezone, so a calendar rendering is refused rather than guessed at. Use --output-time-format doy to write the day-of-year form instead.

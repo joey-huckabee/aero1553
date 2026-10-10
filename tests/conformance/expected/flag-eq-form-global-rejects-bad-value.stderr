@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --log-level: "bogus"; valid: DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF
+Error: invalid --log-level: "bogus"; valid: DEBUG, INFO, WARNING, WARN, ERROR, CRITICAL, OFF
+Run 'aero1553 --help' for usage.

@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: [decode] input_time_format must be a string
+Error: <CONFIG>: [decode] input_time_format must be a string

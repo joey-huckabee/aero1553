@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --output-time-format iso needs a calendar year, and an MIE recording does not carry one: IRIG-B encodes day-of-year but not the year. Set [output] year = YYYY in a config file or pass --year YYYY. (--output-time-format doy needs no year.)
+Error: --output-time-format iso needs a calendar year, and an MIE recording does not carry one: IRIG-B encodes day-of-year but not the year. Set [output] year = YYYY in a config file or pass --year YYYY. (--output-time-format doy needs no year.)
+Run 'aero1553 --help' for usage.

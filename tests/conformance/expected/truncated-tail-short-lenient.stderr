@@ -1,0 +1,1 @@
+WARN [aero1553::reader] 4 trailing byte(s) at 0xB2 do not hold a complete record (Type Word 0x2402); stopping

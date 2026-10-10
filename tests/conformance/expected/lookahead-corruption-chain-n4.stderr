@@ -1,0 +1,1 @@
+WARN [aero1553::reader] L2-SYN anomaly at 0x40: Status RT = 0 does not match Cmd RT = 15 (raw Status = 0x0000); possible bus interference
