@@ -133,12 +133,12 @@ class TestParseTypeNames:
 
     @pytest.mark.requirement("L2-CFG-007")
     def test_invalid_name_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="Unknown message type"):
+        with pytest.raises(ValueError, match='Invalid message type: "NONEXISTENT"'):
             _filter_config(tmp_path, "exclude_types", '["NONEXISTENT"]')
 
     @pytest.mark.requirement("L2-CFG-007")
     def test_invalid_hex_raises(self, tmp_path: Path) -> None:
-        with pytest.raises(ValueError, match="Invalid hex"):
+        with pytest.raises(ValueError, match='Invalid message type: "0xZZ"'):
             _filter_config(tmp_path, "exclude_types", '["0xZZ"]')
 
     @pytest.mark.requirement("L2-CFG-007")
@@ -155,7 +155,7 @@ class TestParseTypeNames:
     @pytest.mark.requirement("L2-CFG-007")
     def test_hex_out_of_range_raises(self, tmp_path: Path) -> None:
         # 0x100 = 256 > u8 max: rejected, not silently accepted as a no-op filter.
-        with pytest.raises(ValueError, match="Invalid hex"):
+        with pytest.raises(ValueError, match='Type code out of range: "0x100"'):
             _filter_config(tmp_path, "exclude_types", '["0x100"]')
 
     @pytest.mark.requirement("L2-CFG-007")
@@ -1025,13 +1025,13 @@ class TestSchemaValidation:
         self, tmp_path: Path, caplog: pytest.LogCaptureFixture
     ) -> None:
         # A root-level scalar key is unknown (the schema has no root keys); both
-        # implementations warn-and-continue. Rust logs `[] bogus`; Python must
-        # too, rather than dropping it silently.
+        # implementations warn-and-continue, naming the key and its line
+        # (L2-CLI-022), rather than dropping it silently.
         cfg = tmp_path / "root.toml"
         cfg.write_text("bogus = true\n")
         with caplog.at_level("WARNING", logger="aero1553"):
             load_config(cfg)  # accepts (does not raise)
-        assert "[] bogus" in caplog.text
+        assert "unknown config key 'bogus' at line 1; ignored" in caplog.text
 
     @pytest.mark.requirement("L2-CFG-010")
     def test_dotted_section_header_rejected(self, tmp_path: Path) -> None:

@@ -622,3 +622,104 @@ TEST_CASE("the shipped defaults for the record-count knobs", "[config][L2-SYN-02
     CHECK(config.detect_records == 8u);
     CHECK(mie::sync::DEFAULT_LOOKAHEAD_RECORDS == 2u);
 }
+
+// ---------------------------------------------------------------------------
+// The text of a config file (L2-CFG-013) and what a diagnostic repeats of it
+// (L2-CLI-022). Mirrors the tests of the same names in rust/src/config.rs.
+// ---------------------------------------------------------------------------
+
+TEST_CASE("only spaces and tabs are blanks in a config file", "[config][L2-CFG-013]") {
+    CHECK(must_load("[decode]\n\tstrict\t=\ttrue\t\n").strict);
+    // U+00A0, U+2003, U+3000 in UTF-8.
+    const char* const spaces[] = {"\xC2\xA0", "\xE2\x80\x83", "\xE3\x80\x80"};
+    for (std::size_t i = 0; i < 3; ++i) {
+        const std::string s = spaces[i];
+        must_fail("[logging]\nlevel" + s + "= \"INFO\"\n");
+        must_fail("[decode]\nstrict = true" + s + "\n");
+        must_fail("[decode" + s + "]\nstrict = true\n");
+        must_fail("[filter]\nexclude_buses = [\"A" + s + "\"]\n");
+        must_fail("[filter]\nexclude_types = [\"" + s + "BC_TO_RT\"]\n");
+    }
+}
+
+TEST_CASE("a carriage return belongs to the line ending only", "[config][L2-CFG-013]") {
+    CHECK(must_load("[decode]\r\nstrict = true\r\n").strict);
+    CHECK(must_load("[decode]\nstrict = true\r").strict);
+    must_fail("[decode]\nstrict = true\rx\n");
+}
+
+TEST_CASE("names match by ASCII case only", "[config][L2-CFG-013]") {
+    must_load("[logging]\nlevel = \"info\"\n");
+    // A dotless i (U+0131) and a long s (U+017F), which Unicode upper-casing
+    // maps to I and S.
+    must_fail("[logging]\nlevel = \"\xC4\xB1nfo\"\n");
+    CHECK(mie::parse_type_name("spurious_data") == mie::MESSAGE_TYPE_SPURIOUS_DATA);
+    CHECK_THROWS_AS(mie::parse_type_name("spur\xC4\xB1ous_data"), mie::ConfigError);
+    CHECK_THROWS_AS(mie::parse_type_name("\xC5\xBFpurious_data"), mie::ConfigError);
+}
+
+TEST_CASE("a hex type code is 0x and hex digits only", "[config][L2-CFG-013]") {
+    CHECK(mie::parse_type_name("0x02") == 2);
+    CHECK(mie::parse_type_name("0X0000ff") == 0xFF);
+    const char* const bad[] = {"0x", "0x+1", "0x-1", "0xZZ", "0x 1"};
+    for (std::size_t i = 0; i < 5; ++i) {
+        INFO(bad[i]);
+        try {
+            mie::parse_type_name(bad[i]);
+            FAIL("expected a ConfigError");
+        } catch (const mie::ConfigError& error) {
+            CHECK(error.message().find("Invalid message type: ") == 0);
+        }
+    }
+    try {
+        mie::parse_type_name("0x1FF");
+        FAIL("expected a ConfigError");
+    } catch (const mie::ConfigError& error) {
+        CHECK(error.message() == "Type code out of range: \"0x1FF\"");
+    }
+}
+
+TEST_CASE("a config file must be UTF-8", "[config][L2-CFG-013]") {
+    const mie_test::TempFile file("latin1.toml", std::string("[mux]\ndelimiter = \"\xE9\"\n"));
+    try {
+        mie::load_config(mie::Optional<std::string>(file.str()));
+        FAIL("expected a ConfigError");
+    } catch (const mie::ConfigError& error) {
+        CHECK(error.message() == file.str() + ": not valid UTF-8");
+    }
+}
+
+TEST_CASE("diagnostics repeat what was written, in ASCII", "[config][L2-CLI-022][L2-CLI-014]") {
+    struct Case {
+        const char* text;
+        std::string expected;
+    };
+    const Case cases[] = {
+        {"[decode]\nstandard_tick_rate_hz = 1e400\n",
+         "Invalid decode.standard_tick_rate_hz: 1e400. Must be a finite value greater than 0"},
+        {"[decode]\nstandard_tick_rate_hz = 0\n",
+         "Invalid decode.standard_tick_rate_hz: 0. Must be a finite value greater than 0"},
+        {"[decode]\nstr\xC3\xA9"
+         "ct = true\n",
+         "line 2: unsupported key \"str\\xC3\\xA9ct\"; keys must be simple identifiers"},
+        {"[d\xC3\xA9"
+         "code]\n",
+         "line 1: unsupported section header [d\\xC3\\xA9code]; use a flat [section] name "
+         "(letters, digits, underscore)"},
+        {"[mux]\ndelimiter = \"\\\xC3\xA9\"\n", "line 2: bad escape \\\\xC3"},
+        {"[mux]\ndelimiter = \"a\"b\"\n", "line 2: unescaped quote in string"},
+        {"[decode]\nstrict = tru\n", "line 2: cannot parse value \"tru\""},
+        {"[filter]\nexclude_rts = [[1, 2]]\n", "line 2: nested arrays not supported"},
+        {"[filter]\nexclude_buses = [\"c\"]\n", "Invalid bus: \"c\". Valid: A, B"},
+        {"[filter]\nexclude_rts = [32]\n", "exclude_rts entries must be in [0, 31]; got 32"},
+        {"[logging]\nirig_day_advisory = 1\nlevel = \"LOUD\"\n",
+         std::string("Invalid logging.level: \"LOUD\". Valid: ") + mie::log::LEVEL_NAMES},
+    };
+    for (std::size_t i = 0; i < sizeof(cases) / sizeof(cases[0]); ++i) {
+        const std::string message = must_fail(cases[i].text);
+        CHECK(message == cases[i].expected);
+        for (std::size_t j = 0; j < message.size(); ++j) {
+            CHECK(static_cast<unsigned char>(message[j]) < 0x80);
+        }
+    }
+}

@@ -90,6 +90,28 @@ std::string trim_ascii_blank(const std::string& s) {
     return s.substr(begin, end - begin);
 }
 
+std::string escape_bytes(const std::string& s) {
+    static const char digits[] = "0123456789ABCDEF";
+    std::string out;
+    out.reserve(s.size());
+    for (std::size_t i = 0; i < s.size(); ++i) {
+        const unsigned char b = static_cast<unsigned char>(s[i]);
+        if (b == '"' || b == '\\') {
+            out += '\\';
+            out += static_cast<char>(b);
+        } else if (b >= 0x20 && b <= 0x7E) {
+            out += static_cast<char>(b);
+        } else {
+            out += "\\x";
+            out += digits[b >> 4];
+            out += digits[b & 0x0F];
+        }
+    }
+    return out;
+}
+
+std::string quote(const std::string& s) { return "\"" + escape_bytes(s) + "\""; }
+
 std::string trim_ascii_whitespace(const std::string& s) {
     std::size_t begin = 0;
     while (begin < s.size() && is_ascii_whitespace(s[begin])) {

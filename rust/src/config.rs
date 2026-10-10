@@ -31,6 +31,7 @@ use crate::models::{
 };
 use crate::order::{DEFAULT_MAX_SORT_GROUP, MAX_SORT_GROUP_MAX, MAX_SORT_GROUP_MIN};
 use crate::sync::DEFAULT_LOOKAHEAD_RECORDS;
+use crate::text::{escape_bytes, quote, trim_ascii_blank};
 
 /// L2-DEC-015 valid range for `decode.detect_records`. Values outside
 /// this range are rejected at config-load time with a clear error.
@@ -356,9 +357,18 @@ pub fn load_config(path: Option<&Path>) -> Result<DecoderConfig, ConfigError> {
             path.display()
         )));
     }
-    let text = fs::read_to_string(path)
-        .map_err(|e| ConfigError(format!("Reading {}: {}", path.display(), e)))?;
-    parse_into_config(&text)
+    let bytes = fs::read(path)
+        .map_err(|e| ConfigError(format!("Cannot read config file: {}: {e}", path.display())))?;
+    // TOML is UTF-8 (TOML 1.0), and checked as such before parsing rather than
+    // left to `read_to_string`, whose refusal read as an I/O failure. C++ read
+    // the bytes and accepted them, so the two disagreed on whether such a file
+    // was a config at all (L2-CFG-010).
+    let text = String::from_utf8(bytes)
+        .map_err(|_| ConfigError(format!("{}: not valid UTF-8", path.display())))?;
+    // Every message about the contents names the file: a schema message names
+    // the key, and an operator with several config files needs to know which
+    // one (L2-CLI-022).
+    parse_into_config(&text).map_err(|e| ConfigError(format!("{}: {}", path.display(), e.0)))
 }
 
 /// # Errors
@@ -388,10 +398,13 @@ pub fn parse_into_config(text: &str) -> Result<DecoderConfig, ConfigError> {
 /// rather than surfacing later as a silent no-op.
 fn apply_logging_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), ConfigError> {
     if let Some(level) = toml.get_string("logging", "level")? {
-        let upper = level.to_uppercase();
+        // ASCII case only: Unicode upper-casing maps a dotless i to `I`, which
+        // made a dotless-i spelling of `info` a valid level here and nowhere else.
+        let upper = level.to_ascii_uppercase();
         if crate::log::Level::parse(&upper).is_none() {
             return Err(ConfigError(format!(
-                "Invalid logging.level: {level:?}. Valid: {}",
+                "Invalid logging.level: {}. Valid: {}",
+                quote(level),
                 crate::log::LEVEL_NAMES
             )));
         }
@@ -455,8 +468,14 @@ fn apply_decode_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), C
     }
     if let Some(hz) = toml.get_float("decode", "standard_tick_rate_hz")? {
         // L2-DEC-017: the tick rate must be a real, strictly-positive frequency.
-        cfg.standard_tick_rate_hz =
-            Some(require_positive_finite(hz, "decode.standard_tick_rate_hz")?);
+        let written = toml
+            .written("decode", "standard_tick_rate_hz")
+            .unwrap_or_default();
+        cfg.standard_tick_rate_hz = Some(require_positive_finite(
+            hz,
+            written,
+            "decode.standard_tick_rate_hz",
+        )?);
     }
     Ok(())
 }
@@ -477,10 +496,15 @@ fn require_int_range(n: i64, key: &str, lo: usize, hi: usize) -> Result<usize, C
 }
 
 /// Validate a Standard tick rate: finite and strictly positive (L2-DEC-017).
-fn require_positive_finite(hz: f64, key: &str) -> Result<f64, ConfigError> {
+///
+/// The message repeats the value as `written` in the file, not as parsed. A
+/// float has no rendering both implementations produce alike -- Rust printed
+/// `0` and `inf` where C++ printed `0.000000` and, for `1e400`, an empty
+/// string -- and the literal is what the operator will search their file for.
+fn require_positive_finite(hz: f64, written: &str, key: &str) -> Result<f64, ConfigError> {
     if !hz.is_finite() || hz <= 0.0 {
         return Err(ConfigError(format!(
-            "Invalid {key}: {hz}. Must be a finite value greater than 0"
+            "Invalid {key}: {written}. Must be a finite value greater than 0"
         )));
     }
     Ok(hz)
@@ -492,7 +516,8 @@ fn apply_output_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), C
     if let Some(fmt) = toml.get_string("output", "format")? {
         if fmt != "csv" {
             return Err(ConfigError(format!(
-                "Invalid output.format: {fmt:?}. Valid: csv"
+                "Invalid output.format: {}. Valid: csv",
+                quote(fmt)
             )));
         }
         cfg.output_format = fmt.to_string();
@@ -568,7 +593,8 @@ fn apply_merge_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), Co
     if let Some(name) = toml.get_string("merge", "delta_scope")? {
         cfg.delta_scope = DeltaScope::from_name_ci(name).ok_or_else(|| {
             ConfigError(format!(
-                "Invalid merge.delta_scope: {name:?}. Valid: per-file, global"
+                "Invalid merge.delta_scope: {}. Valid: per-file, global",
+                quote(name)
             ))
         })?;
     }
@@ -632,9 +658,17 @@ fn apply_filter_sections(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), 
 /// silently dropped. Non-fatal so forward-compatible additions don't break
 /// older configs.
 fn warn_unknown_keys(toml: &TomlDoc) {
-    for (section, key, _) in &toml.entries {
-        if !is_known_shared_key(section.as_str(), key.as_str()) {
-            crate::log_warn!("unknown TOML key: [{section}] {key}");
+    for entry in &toml.entries {
+        if !is_known_shared_key(&entry.section, &entry.key) {
+            let name = if entry.section.is_empty() {
+                entry.key.clone()
+            } else {
+                format!("{}.{}", entry.section, entry.key)
+            };
+            crate::log_warn!(
+                "unknown config key '{name}' at line {}; ignored",
+                entry.line
+            );
         }
     }
 }
@@ -646,10 +680,11 @@ fn warn_unknown_keys(toml: &TomlDoc) {
 /// truly-unknown root-level key (not a section name) stays a non-fatal
 /// unknown-key WARN (L2-CFG-009).
 fn reject_section_used_as_scalar(toml: &TomlDoc) -> Result<(), ConfigError> {
-    for (section, key, _) in &toml.entries {
-        if section.is_empty() && is_known_section(key) {
+    for entry in &toml.entries {
+        if entry.section.is_empty() && is_known_section(&entry.key) {
             return Err(ConfigError(format!(
-                "Invalid [{key}]: expected a table, not a value"
+                "Invalid [{}]: expected a table, not a value",
+                entry.key
             )));
         }
     }
@@ -708,7 +743,8 @@ fn is_known_shared_key(section: &str, key: &str) -> bool {
 fn parse_time_format(s: &str) -> Result<TimestampFormat, ConfigError> {
     TimestampFormat::from_name_ci(s).ok_or_else(|| {
         ConfigError(format!(
-            "Invalid input_time_format: {s:?}. Valid: auto, irig, standard"
+            "Invalid input_time_format: {}. Valid: auto, irig, standard",
+            quote(s)
         ))
     })
 }
@@ -716,7 +752,8 @@ fn parse_time_format(s: &str) -> Result<TimestampFormat, ConfigError> {
 fn parse_output_time_format(s: &str) -> Result<OutputTimeFormat, ConfigError> {
     OutputTimeFormat::from_name_ci(s).ok_or_else(|| {
         ConfigError(format!(
-            "Invalid output_time_format: {s:?}. Valid: doy, iso, dom"
+            "Invalid output_time_format: {}. Valid: doy, iso, dom",
+            quote(s)
         ))
     })
 }
@@ -735,8 +772,9 @@ fn parse_output_time_format(s: &str) -> Result<OutputTimeFormat, ConfigError> {
 pub fn parse_utc_offset(s: &str) -> Result<i16, ConfigError> {
     let invalid = || {
         ConfigError(format!(
-            "Invalid output.utc_offset: {s:?}. Valid: Z, or +HH:MM / -HH:MM \
-             with HH in [0, 23] and MM in [0, 59]"
+            "Invalid output.utc_offset: {}. Valid: Z, or +HH:MM / -HH:MM \
+             with HH in [0, 23] and MM in [0, 59]",
+            quote(s)
         ))
     };
 
@@ -775,8 +813,9 @@ fn parse_error_mode(s: &str) -> Result<ErrorMode, ConfigError> {
     match s.to_ascii_lowercase().as_str() {
         "separate" => Ok(ErrorMode::Separate),
         "inline" => Ok(ErrorMode::Inline),
-        other => Err(ConfigError(format!(
-            "Invalid error_mode: {other:?}. Valid: separate, inline"
+        _ => Err(ConfigError(format!(
+            "Invalid error_mode: {}. Valid: separate, inline",
+            quote(s)
         ))),
     }
 }
@@ -804,7 +843,10 @@ pub fn parse_type_value(v: &TomlValue) -> Result<u8, ConfigError> {
 /// Returns [`ConfigError`] if the name matches no known message type and is not
 /// a valid `0x`-prefixed hex byte.
 pub fn parse_type_name(s: &str) -> Result<u8, ConfigError> {
-    let upper = s.trim().to_uppercase();
+    // ASCII case and ASCII blanks only: Unicode upper-casing maps a dotless i
+    // to `I` and a long s to `S`, and `str::trim` removes a no-break space --
+    // each made a name valid here that C++ refuses.
+    let upper = trim_ascii_blank(s).to_ascii_uppercase();
     let by_name: &[(&str, u8)] = &[
         ("MODE_COMMAND", MessageType::ModeCommand as u8),
         ("BC_TO_RT", MessageType::BcToRt as u8),
@@ -819,14 +861,23 @@ pub fn parse_type_name(s: &str) -> Result<u8, ConfigError> {
             return Ok(*code);
         }
     }
-    if let Some(rest) = upper.strip_prefix("0X") {
-        return u8::from_str_radix(rest, 16)
-            .map_err(|_| ConfigError(format!("Invalid hex type code: {s:?}")));
+    // `0x` and one or more hex digits, nothing else. `from_str_radix` alone
+    // would also take a sign (`0x+1`), which C++ refuses.
+    if let Some(rest) = upper.strip_prefix("0X")
+        && !rest.is_empty()
+        && rest.bytes().all(|b| b.is_ascii_hexdigit())
+    {
+        let digits = rest.trim_start_matches('0');
+        return match u8::from_str_radix(if digits.is_empty() { "0" } else { digits }, 16) {
+            Ok(code) => Ok(code),
+            Err(_) => Err(ConfigError(format!("Type code out of range: {}", quote(s)))),
+        };
     }
     Err(ConfigError(format!(
-        "Unknown message type: {s:?}. \
+        "Invalid message type: {}. \
          Valid: MODE_COMMAND, BC_TO_RT, RT_TO_BC, RT_TO_RT, \
-         BROADCAST_BC_TO_RT, BROADCAST_RT_TO_RT, SPURIOUS_DATA"
+         BROADCAST_BC_TO_RT, BROADCAST_RT_TO_RT, SPURIOUS_DATA, or 0xNN",
+        quote(s)
     )))
 }
 
@@ -846,10 +897,13 @@ pub fn parse_bus_value(v: &TomlValue) -> Result<Bus, ConfigError> {
 ///
 /// Returns [`ConfigError`] for anything other than `A` or `B`, case-insensitive.
 pub fn parse_bus_name(s: &str) -> Result<Bus, ConfigError> {
-    match s.trim().to_ascii_uppercase().as_str() {
+    match trim_ascii_blank(s).to_ascii_uppercase().as_str() {
         "A" => Ok(Bus::A),
         "B" => Ok(Bus::B),
-        other => Err(ConfigError(format!("Invalid bus: {other:?}. Valid: A, B"))),
+        _ => Err(ConfigError(format!(
+            "Invalid bus: {}. Valid: A, B",
+            quote(s)
+        ))),
     }
 }
 
@@ -866,7 +920,7 @@ fn parse_int_rt_sa(v: &TomlValue, field: &str) -> Result<u8, ConfigError> {
             match u8::try_from(*i) {
                 Ok(v) if v <= 31 => Ok(v),
                 _ => Err(ConfigError(format!(
-                    "{field} value out of MIL-STD-1553 range [0, 31]: {i}"
+                    "{field} entries must be in [0, 31]; got {i}"
                 ))),
             }
         }
@@ -887,17 +941,38 @@ pub enum TomlValue {
 
 #[derive(Debug, Default)]
 pub struct TomlDoc {
-    /// Indexed by `(section, key)` → value. Order-insensitive.
-    entries: Vec<(String, String, TomlValue)>,
+    /// One per `key = value` line, in file order.
+    entries: Vec<TomlEntry>,
+}
+
+/// One binding, with what a diagnostic needs beyond its value.
+#[derive(Debug)]
+struct TomlEntry {
+    /// Empty for a key written before any `[section]` header.
+    section: String,
+    key: String,
+    value: TomlValue,
+    /// 1-based line, so an unknown key can be pointed at.
+    line: usize,
+    /// The value as written, blanks and comment removed, so a message about it
+    /// repeats the operator's text rather than a re-rendering of the parsed
+    /// number (L2-CLI-022).
+    written: String,
 }
 
 impl TomlDoc {
-    #[must_use]
-    pub fn get(&self, section: &str, key: &str) -> Option<&TomlValue> {
+    fn entry(&self, section: &str, key: &str) -> Option<&TomlEntry> {
         self.entries
             .iter()
-            .find(|(s, k, _)| s == section && k == key)
-            .map(|(_, _, v)| v)
+            .find(|e| e.section == section && e.key == key)
+    }
+    #[must_use]
+    pub fn get(&self, section: &str, key: &str) -> Option<&TomlValue> {
+        self.entry(section, key).map(|e| &e.value)
+    }
+    /// The value of `(section, key)` as written in the file.
+    fn written(&self, section: &str, key: &str) -> Option<&str> {
+        self.entry(section, key).map(|e| e.written.as_str())
     }
     /// # Errors
     ///
@@ -989,7 +1064,7 @@ fn parse_section_header(
     let inner = stripped
         .strip_suffix(']')
         .ok_or_else(|| format!("line {lineno}: unterminated section header"))?;
-    let section = inner.trim().to_string();
+    let section = trim_ascii_blank(inner).to_string();
     if section.is_empty() {
         return Err(format!("line {lineno}: empty section name"));
     }
@@ -1005,8 +1080,9 @@ fn parse_section_header(
     // oddly-named sections on Rust while Python rejects them.
     if !is_plain_identifier(&section) {
         return Err(format!(
-            "line {lineno}: unsupported section header [{section}]; use a flat \
-             [section] name (letters, digits, underscore)"
+            "line {lineno}: unsupported section header [{}]; use a flat \
+             [section] name (letters, digits, underscore)",
+            escape_bytes(section.as_bytes())
         ));
     }
     // The TOML spec forbids defining a table twice. Without this the parser
@@ -1025,12 +1101,12 @@ fn parse_section_header(
 /// As with headers, each rejection mirrors a form Python's `tomllib` accepts
 /// syntactically but the loader refuses, so that both implementations agree
 /// (L2-CFG-010).
-fn parse_key_value(line: &str, lineno: usize) -> Result<(String, TomlValue), String> {
+fn parse_key_value(line: &str, lineno: usize) -> Result<(String, TomlValue, String), String> {
     let eq = line
         .find('=')
-        .ok_or_else(|| format!("line {lineno}: expected '=' in {line:?}"))?;
-    let key = line[..eq].trim().to_string();
-    let value_text = line[eq + 1..].trim();
+        .ok_or_else(|| format!("line {lineno}: expected '=' in {}", quote(line)))?;
+    let key = trim_ascii_blank(&line[..eq]).to_string();
+    let value_text = trim_ascii_blank(&line[eq + 1..]);
     if key.is_empty() {
         return Err(format!("line {lineno}: empty key"));
     }
@@ -1046,11 +1122,12 @@ fn parse_key_value(line: &str, lineno: usize) -> Result<(String, TomlValue), Str
     // but would be stored literally on Rust.
     if !is_plain_identifier(&key) {
         return Err(format!(
-            "line {lineno}: unsupported key {key:?}; keys must be simple identifiers"
+            "line {lineno}: unsupported key {}; keys must be simple identifiers",
+            quote(&key)
         ));
     }
     let value = parse_value(value_text, lineno)?;
-    Ok((key, value))
+    Ok((key, value, value_text.to_string()))
 }
 
 /// Message for a repeated `(section, key)`, which Python's `tomllib` raises on
@@ -1079,8 +1156,13 @@ pub fn parse_toml(text: &str) -> Result<TomlDoc, String> {
     let mut section = String::new();
     let mut seen_sections: Vec<String> = Vec::new();
 
-    for (index, raw) in text.lines().enumerate() {
-        let line = strip_comment(raw).trim();
+    // Lines end at `\n`, and one `\r` before it -- or at the end of the file --
+    // belongs to the line ending. `str::lines` keeps a final lone `\r`, and
+    // `str::trim` then removed any Unicode space as well; C++ removes exactly
+    // the `\r`, then spaces and tabs (L2-CFG-010).
+    for (index, raw) in text.split('\n').enumerate() {
+        let raw = raw.strip_suffix('\r').unwrap_or(raw);
+        let line = trim_ascii_blank(strip_comment(raw));
         if line.is_empty() {
             continue;
         }
@@ -1091,15 +1173,17 @@ pub fn parse_toml(text: &str) -> Result<TomlDoc, String> {
             continue;
         }
 
-        let (key, value) = parse_key_value(line, lineno)?;
-        if doc
-            .entries
-            .iter()
-            .any(|(s, k, _)| s == &section && k == &key)
-        {
+        let (key, value, written) = parse_key_value(line, lineno)?;
+        if doc.entry(&section, &key).is_some() {
             return Err(duplicate_key_error(&section, &key, lineno));
         }
-        doc.entries.push((section.clone(), key, value));
+        doc.entries.push(TomlEntry {
+            section: section.clone(),
+            key,
+            value,
+            line: lineno,
+            written,
+        });
     }
 
     Ok(doc)
@@ -1129,15 +1213,31 @@ fn strip_comment(line: &str) -> &str {
     line
 }
 
+/// Any value: a scalar, or a single-line array of scalars.
 fn parse_value(s: &str, lineno: usize) -> Result<TomlValue, String> {
-    let s = s.trim();
+    let s = trim_ascii_blank(s);
+    if s.starts_with('[') {
+        return parse_array(s, lineno);
+    }
+    parse_scalar(s, lineno)
+}
+
+/// A value that is not an array. Split from [`parse_value`] so an array item
+/// can never be one: the item parser has no way back up.
+fn parse_scalar(s: &str, lineno: usize) -> Result<TomlValue, String> {
+    let s = trim_ascii_blank(s);
     if s.is_empty() {
         return Err(format!("line {lineno}: empty value"));
     }
+    // A boolean is exactly `true` or `false`. Anything else that merely starts
+    // like one (`tru`, `falsey`) is just an unparseable value, as in C++.
+    match s {
+        "true" => return Ok(TomlValue::Bool(true)),
+        "false" => return Ok(TomlValue::Bool(false)),
+        _ => {}
+    }
     match s.as_bytes()[0] {
         b'"' => parse_string(s, lineno).map(TomlValue::String),
-        b'[' => parse_array(s, lineno),
-        b't' | b'f' => parse_bool(s, lineno).map(TomlValue::Bool),
         // A numeric literal containing a decimal point or exponent is a
         // float; otherwise an integer. Validate against the TOML number grammar
         // FIRST — `i64`/`f64::from_str` are more permissive than TOML (they
@@ -1145,7 +1245,10 @@ fn parse_value(s: &str, lineno: usize) -> Result<TomlValue, String> {
         // which would silently diverge from Python's strict `tomllib`.
         b'-' | b'+' | b'0'..=b'9' => {
             if !is_toml_number_literal(s) {
-                return Err(format!("line {lineno}: invalid number literal {s:?}"));
+                return Err(format!(
+                    "line {lineno}: invalid number literal {}",
+                    quote(s)
+                ));
             }
             if s.contains('.') || s.contains('e') || s.contains('E') {
                 parse_float(s, lineno).map(TomlValue::Float)
@@ -1153,13 +1256,13 @@ fn parse_value(s: &str, lineno: usize) -> Result<TomlValue, String> {
                 parse_int(s, lineno).map(TomlValue::Int)
             }
         }
-        _ => Err(format!("line {lineno}: cannot parse value {s:?}")),
+        _ => Err(format!("line {lineno}: cannot parse value {}", quote(s))),
     }
 }
 
 fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
     if !s.starts_with('"') || !s.ends_with('"') || s.len() < 2 {
-        return Err(format!("line {lineno}: malformed string {s:?}"));
+        return Err(format!("line {lineno}: malformed string {}", quote(s)));
     }
     let inner = &s[1..s.len() - 1];
     // Minimal escape handling: \", \\, \n, \t
@@ -1172,7 +1275,16 @@ fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
                 Some('\\') => out.push('\\'),
                 Some('n') => out.push('\n'),
                 Some('t') => out.push('\t'),
-                Some(o) => return Err(format!("line {lineno}: bad escape \\{o}")),
+                // The byte after the backslash, as C++ reports it: one
+                // byte, so a non-ASCII character shows as its lead byte.
+                Some(o) => {
+                    let mut lead = [0u8; 4];
+                    let lead = o.encode_utf8(&mut lead).as_bytes()[0];
+                    return Err(format!(
+                        "line {lineno}: bad escape \\{}",
+                        escape_bytes(&[lead])
+                    ));
+                }
                 None => return Err(format!("line {lineno}: trailing backslash")),
             }
         } else if c == '"' {
@@ -1182,14 +1294,6 @@ fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
         }
     }
     Ok(out)
-}
-
-fn parse_bool(s: &str, lineno: usize) -> Result<bool, String> {
-    match s {
-        "true" => Ok(true),
-        "false" => Ok(false),
-        _ => Err(format!("line {lineno}: expected boolean, got {s:?}")),
-    }
 }
 
 /// Validate a numeric literal against the flat schema's TOML number grammar:
@@ -1275,29 +1379,32 @@ fn is_toml_number_literal(s: &str) -> bool {
 
 fn parse_int(s: &str, lineno: usize) -> Result<i64, String> {
     s.parse::<i64>()
-        .map_err(|_| format!("line {lineno}: invalid integer {s:?}"))
+        .map_err(|_| format!("line {lineno}: invalid integer {}", quote(s)))
 }
 
 fn parse_float(s: &str, lineno: usize) -> Result<f64, String> {
     s.parse::<f64>()
-        .map_err(|_| format!("line {lineno}: invalid float {s:?}"))
+        .map_err(|_| format!("line {lineno}: invalid float {}", quote(s)))
 }
 
 fn parse_array(s: &str, lineno: usize) -> Result<TomlValue, String> {
     if !s.starts_with('[') || !s.ends_with(']') {
-        return Err(format!("line {lineno}: malformed array {s:?}"));
+        return Err(format!("line {lineno}: malformed array {}", quote(s)));
     }
-    let inner = s[1..s.len() - 1].trim();
+    let inner = trim_ascii_blank(&s[1..s.len() - 1]);
     if inner.is_empty() {
         return Ok(TomlValue::Array(Vec::new()));
     }
     let mut items = Vec::new();
     for piece in split_array_items(inner) {
-        let v = parse_value(piece.trim(), lineno)?;
-        if matches!(v, TomlValue::Array(_)) {
+        let piece = trim_ascii_blank(&piece);
+        // Checked on the text, before the item is parsed: `[[1, 2]]` splits
+        // into `[1` and `2]`, and parsing the first reported a malformed array
+        // where C++ reported the nesting.
+        if piece.starts_with('[') {
             return Err(format!("line {lineno}: nested arrays not supported"));
         }
-        items.push(v);
+        items.push(parse_scalar(piece, lineno)?);
     }
     Ok(TomlValue::Array(items))
 }
@@ -2043,6 +2150,183 @@ exclude_types = ["UNICORN"]
         match doc.get("decode", "standard_tick_rate_hz") {
             Some(TomlValue::Float(f)) => assert_eq!(*f, 1_500_000.0),
             other => panic!("expected Float(1500000.0), got {other:?}"),
+        }
+    }
+
+    /// The non-ASCII characters these tests need, built at run time: a source
+    /// literal holding one would trip the shipped-literal ASCII gate
+    /// (L2-CLI-014), which scans `#[cfg(test)]` modules too.
+    fn ch(code: u32) -> char {
+        char::from_u32(code).unwrap()
+    }
+
+    /// Requirements: L2-CFG-013
+    #[test]
+    fn only_spaces_and_tabs_are_blanks() {
+        assert!(
+            parse_into_config("[decode]\n\tstrict\t=\ttrue\t\n")
+                .unwrap()
+                .strict
+        );
+        for space in [0xA0, 0x2003, 0x3000] {
+            let s = ch(space);
+            for text in [
+                format!("[logging]\nlevel{s}= \"INFO\"\n"),
+                format!("[decode]\nstrict = true{s}\n"),
+                format!("[decode{s}]\nstrict = true\n"),
+                format!("[filter]\nexclude_buses = [\"A{s}\"]\n"),
+                format!("[filter]\nexclude_types = [\"{s}BC_TO_RT\"]\n"),
+            ] {
+                assert!(parse_into_config(&text).is_err(), "accepted {text:?}");
+            }
+        }
+    }
+
+    /// Requirements: L2-CFG-013
+    #[test]
+    fn a_carriage_return_belongs_to_the_line_ending_only() {
+        assert!(
+            parse_into_config("[decode]\r\nstrict = true\r\n")
+                .unwrap()
+                .strict
+        );
+        assert!(
+            parse_into_config("[decode]\nstrict = true\r")
+                .unwrap()
+                .strict
+        );
+        assert!(parse_into_config("[decode]\nstrict = true\rx\n").is_err());
+    }
+
+    /// Requirements: L2-CFG-013
+    #[test]
+    fn names_match_by_ascii_case_only() {
+        let dotless_i = ch(0x131);
+        let long_s = ch(0x17F);
+        assert!(parse_into_config("[logging]\nlevel = \"info\"\n").is_ok());
+        assert!(parse_into_config(&format!("[logging]\nlevel = \"{dotless_i}nfo\"\n")).is_err());
+        assert_eq!(
+            parse_type_name("spurious_data").unwrap(),
+            MessageType::SpuriousData as u8
+        );
+        assert!(parse_type_name(&format!("spur{dotless_i}ous_data")).is_err());
+        assert!(parse_type_name(&format!("{long_s}purious_data")).is_err());
+    }
+
+    /// Requirements: L2-CFG-013
+    #[test]
+    fn a_hex_type_code_is_0x_and_hex_digits_only() {
+        assert_eq!(parse_type_name("0x02").unwrap(), 2);
+        assert_eq!(parse_type_name("0X0000ff").unwrap(), 0xFF);
+        for bad in ["0x", "0x+1", "0x-1", "0xZZ", "0x 1"] {
+            let err = parse_type_name(bad).unwrap_err();
+            assert!(
+                err.0.starts_with("Invalid message type: "),
+                "{bad}: {}",
+                err.0
+            );
+        }
+        let err = parse_type_name("0x1FF").unwrap_err();
+        assert_eq!(err.0, "Type code out of range: \"0x1FF\"");
+    }
+
+    /// Requirements: L2-CFG-013
+    #[test]
+    fn a_config_file_must_be_utf8() {
+        let dir = std::env::temp_dir().join(format!("mie-cfg-utf8-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("latin1.toml");
+        // Latin-1 e-acute, a lone byte that is not UTF-8, appended at run time
+        // for the ASCII gate's sake.
+        let mut latin1 = b"[mux]\ndelimiter = \"".to_vec();
+        latin1.push(0xE9);
+        latin1.extend_from_slice(b"\"\n");
+        std::fs::write(&path, latin1).unwrap();
+        let err = load_config(Some(&path)).unwrap_err();
+        assert_eq!(err.0, format!("{}: not valid UTF-8", path.display()));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Requirements: L2-CLI-022
+    #[test]
+    fn a_message_about_the_contents_names_the_file() {
+        let dir = std::env::temp_dir().join(format!("mie-cfg-named-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("site.toml");
+        std::fs::write(&path, "[decode]\ndetect_records = 0\n").unwrap();
+        let err = load_config(Some(&path)).unwrap_err();
+        assert_eq!(
+            err.0,
+            format!(
+                "{}: Invalid decode.detect_records: 0. Valid range: [1, 32]",
+                path.display()
+            )
+        );
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// Requirements: L2-CLI-022, L2-CLI-014
+    #[test]
+    fn diagnostics_repeat_what_was_written_in_ascii() {
+        let e_acute = ch(0xE9);
+        let cases = [
+            (
+                "[decode]\nstandard_tick_rate_hz = 1e400\n".to_string(),
+                "Invalid decode.standard_tick_rate_hz: 1e400. Must be a finite value greater than 0"
+                    .to_string(),
+            ),
+            (
+                "[decode]\nstandard_tick_rate_hz = 0\n".to_string(),
+                "Invalid decode.standard_tick_rate_hz: 0. Must be a finite value greater than 0"
+                    .to_string(),
+            ),
+            (
+                format!("[decode]\nstr{e_acute}ct = true\n"),
+                "line 2: unsupported key \"str\\xC3\\xA9ct\"; keys must be simple identifiers"
+                    .to_string(),
+            ),
+            (
+                format!("[d{e_acute}code]\n"),
+                "line 1: unsupported section header [d\\xC3\\xA9code]; use a flat [section] \
+                 name (letters, digits, underscore)"
+                    .to_string(),
+            ),
+            (
+                format!("[mux]\ndelimiter = \"\\{e_acute}\"\n"),
+                "line 2: bad escape \\\\xC3".to_string(),
+            ),
+            (
+                "[mux]\ndelimiter = \"a\"b\"\n".to_string(),
+                "line 2: unescaped quote in string".to_string(),
+            ),
+            (
+                "[decode]\nstrict = tru\n".to_string(),
+                "line 2: cannot parse value \"tru\"".to_string(),
+            ),
+            (
+                "[filter]\nexclude_rts = [[1, 2]]\n".to_string(),
+                "line 2: nested arrays not supported".to_string(),
+            ),
+            (
+                "[filter]\nexclude_buses = [\"c\"]\n".to_string(),
+                "Invalid bus: \"c\". Valid: A, B".to_string(),
+            ),
+            (
+                "[filter]\nexclude_rts = [32]\n".to_string(),
+                "exclude_rts entries must be in [0, 31]; got 32".to_string(),
+            ),
+            (
+                "[logging]\nirig_day_advisory = 1\nlevel = \"LOUD\"\n".to_string(),
+                format!(
+                    "Invalid logging.level: \"LOUD\". Valid: {}",
+                    crate::log::LEVEL_NAMES
+                ),
+            ),
+        ];
+        for (text, expected) in cases {
+            let err = parse_into_config(&text).unwrap_err();
+            assert_eq!(err.0, expected, "for {text:?}");
+            assert!(err.0.is_ascii(), "non-ASCII diagnostic for {text:?}");
         }
     }
 }

@@ -148,6 +148,11 @@ struct Entry {
     /// out-of-range number, an unknown key -- which is most of what a schema
     /// rejects.
     std::size_t line;
+    /// The value as written, blanks and comment removed, so a schema message
+    /// can repeat the operator's text rather than a re-rendering of the parsed
+    /// number -- a double has no rendering every implementation produces alike
+    /// (L2-CLI-022).
+    std::string written;
 
     Entry();
 };
@@ -167,6 +172,8 @@ class Document {
     /// Look up one binding. False when absent; `out` is untouched.
     bool get(const std::string& section, const std::string& key, Value& out) const;
     bool contains(const std::string& section, const std::string& key) const;
+    /// The whole binding, for a caller that needs its line or its text.
+    bool get_entry(const std::string& section, const std::string& key, Entry& out) const;
 
     /// Append. Used by the parser; exposed so a caller can build a document
     /// without parsing text, which is what makes the schema layer testable

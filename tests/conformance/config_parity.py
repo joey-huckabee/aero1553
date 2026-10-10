@@ -6,7 +6,9 @@ flat ``[section]`` + ``key = value`` schema. Aligning them one divergent form at
 a time (a blacklist) does not converge, so this module drives a fixed corpus of
 config snippets through *both* CLIs and asserts they land in the same class —
 either both **accept** (exit 0) or both **reject** (non-zero config/usage error)
-— and that the class matches the schema's intent.
+— and that the class matches the schema's intent. The diagnostics are held to
+the same standard: every implementation must write the same stderr for a
+snippet, run-specific paths aside (L2-CLI-022).
 
 Run automatically by ``run.py`` when both implementations are under test. A
 divergence here is the systematic signal the manual per-bug conformance cases
@@ -18,13 +20,24 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 
-from differential import classify, describe_agreement, describe_divergence
+from differential import (
+    classify,
+    describe_agreement,
+    describe_divergence,
+    describe_stderr_problems,
+    normalized_stderr,
+)
 
 # ``accept`` = a valid config for the flat schema (both CLIs decode, exit 0).
 # ``reject`` = outside the flat schema (both CLIs must refuse with a config or
 # usage error). Every ``reject`` snippet is a full-TOML form ``tomllib`` accepts
 # but the schema does not — the class this corpus exists to keep aligned.
-CORPUS: list[tuple[str, str, str]] = [
+#
+# Every snippet's diagnostics are compared as well as its verdict (L2-CLI-022),
+# so a snippet that reaches a message no other snippet reaches is worth adding
+# even when its verdict is not in doubt. A ``bytes`` snippet is written as is,
+# for content that is not valid UTF-8.
+CORPUS: list[tuple[str, str | bytes, str]] = [
     # ── valid flat forms (accept) ──────────────────────────────────────────
     ("flat-strict", "[decode]\nstrict = true\n", "accept"),
     ("comment-only", "# just a comment\n", "accept"),
@@ -138,6 +151,118 @@ CORPUS: list[tuple[str, str, str]] = [
     # inside the string, so the array has one element — the splitter must not
     # break on it. Under an unknown key both just warn-and-accept.
     ("array-escaped-quote", '[bogus]\nunknown_key = ["a\\", b"]\n', "accept"),
+    # ── T1: integers past 64 bits, every place one can appear ──────────────
+    ("int-i64-max-out-of-range", "[decode]\ndetect_records = 9223372036854775807\n", "reject"),
+    ("int-i64-overflow", "[decode]\ndetect_records = 9223372036854775808\n", "reject"),
+    ("int-huge", "[decode]\ndetect_records = 99999999999999999999999999\n", "reject"),
+    ("int-negative-overflow", "[decode]\ndetect_records = -9223372036854775809\n", "reject"),
+    ("int-overflow-in-array", "[filter]\nexclude_rts = [99999999999999999999]\n", "reject"),
+    ("int-i64-max-unbounded-key", "[merge]\ncollapse_window_us = 9223372036854775807\n", "accept"),
+    ("int-plus-sign", "[decode]\ndetect_records = +40\n", "reject"),
+    # ── T1: non-finite and degenerate floats ───────────────────────────────
+    ("float-inf", "[decode]\nstandard_tick_rate_hz = inf\n", "reject"),
+    ("float-plus-inf", "[decode]\nstandard_tick_rate_hz = +inf\n", "reject"),
+    ("float-neg-inf", "[decode]\nstandard_tick_rate_hz = -inf\n", "reject"),
+    ("float-nan", "[decode]\nstandard_tick_rate_hz = nan\n", "reject"),
+    # Parses (the literal is in TOML's grammar) and overflows to infinity, so it
+    # is the finite check that refuses it -- and the message has to show the
+    # value the operator wrote. C++ printed it as an empty string.
+    ("float-overflow", "[decode]\nstandard_tick_rate_hz = 1e400\n", "reject"),
+    ("float-zero", "[decode]\nstandard_tick_rate_hz = 0.0\n", "reject"),
+    ("float-negative", "[decode]\nstandard_tick_rate_hz = -1.5e3\n", "reject"),
+    ("float-int-zero", "[decode]\nstandard_tick_rate_hz = 0\n", "reject"),
+    ("float-for-int-key", "[decode]\ndetect_records = 8.0\n", "reject"),
+    # ── T1: Unicode in names, values and the blanks around them ───────────
+    ("unicode-key", "[decode]\nstr\u00efct = true\n", "reject"),
+    ("unicode-section", "[d\u00e9code]\nstrict = true\n", "reject"),
+    ("unicode-unknown-section-key", "[bogus]\nb\u00f6gus = 1\n", "reject"),
+    ("unicode-no-equals", "[decode]\nstr\u00efct\n", "reject"),
+    ("unicode-value", '[mux]\ndelimiter = "\u00e9"\n', "accept"),
+    ("unicode-bad-escape", '[mux]\ndelimiter = "\\\u00e9"\n', "reject"),
+    ("unicode-bad-enum", '[merge]\ndelta_scope = "gl\u00f6bal"\n', "reject"),
+    ("unicode-bad-number", "[decode]\ndetect_records = ٤٢\n", "reject"),
+    # Names are matched ASCII-case-insensitively. Rust upper-cased two of them
+    # with Unicode rules, under which a dotless i (U+0131) becomes `I` and a
+    # long s (U+017F) becomes `S`, so these matched `INFO` and `SPURIOUS_DATA`.
+    ("level-dotless-i", '[logging]\nlevel = "\u0131nfo"\n', "reject"),
+    ("type-dotless-i", '[filter]\nexclude_types = ["spur\u0131ous_data"]\n', "reject"),
+    ("type-long-s", '[filter]\nexclude_types = ["\u017fpurious_data"]\n', "reject"),
+    # The blanks around `=` and a value are spaces and tabs only, as for a
+    # manifest line and the MUX field (L2-CFG-010). Rust trimmed every Unicode
+    # space and accepted these; C++ refused them.
+    ("nbsp-before-equals", '[logging]\nlevel\u00a0= "INFO"\n', "reject"),
+    ("nbsp-after-value", "[decode]\nstrict = true\u00a0\n", "reject"),
+    ("em-space-before-key", "[decode]\n\u2003strict = true\n", "reject"),
+    ("ideographic-space-in-header", "[decode\u3000]\nstrict = true\n", "reject"),
+    ("tab-around-equals", "[decode]\n\tstrict\t=\ttrue\t\n", "accept"),
+    ("byte-order-mark", "\ufeff[decode]\nstrict = true\n", "reject"),
+    # A config file is UTF-8 (TOML 1.0). Rust could not read anything else;
+    # C++ read the bytes and accepted them.
+    ("invalid-utf8-in-comment", b"[decode]\nstrict = true # \xff\n", "reject"),
+    ("invalid-utf8-in-value", b'[mux]\ndelimiter = "\xe9"\n', "reject"),
+    # ── line endings ───────────────────────────────────────────────────────
+    ("crlf-lines", "[decode]\r\nstrict = true\r\n", "accept"),
+    ("cr-at-end-of-file", "[decode]\nstrict = true\r", "accept"),
+    ("cr-inside-line", "[decode]\nstrict = true\rx\n", "reject"),
+    # ── values that are not quite booleans ────────────────────────────────
+    ("bool-prefix", "[decode]\nstrict = tru\n", "reject"),
+    ("bool-capitalised", "[decode]\nstrict = True\n", "reject"),
+    ("bool-suffix", "[decode]\nstrict = falsey\n", "reject"),
+    ("bool-in-array", "[filter]\nexclude_rts = [true]\n", "reject"),
+    # ── array shapes ───────────────────────────────────────────────────────
+    ("nested-array", "[filter]\nexclude_rts = [[1], 2]\n", "reject"),
+    ("nested-array-split-by-comma", "[filter]\nexclude_rts = [[1, 2]]\n", "reject"),
+    ("unterminated-array", "[filter]\nexclude_rts = [1, 2\n", "reject"),
+    ("empty-array-item", "[filter]\nexclude_rts = [1, , 2]\n", "reject"),
+    # ── [filter] entries ───────────────────────────────────────────────────
+    ("type-name", '[filter]\nexclude_types = ["bc_to_rt"]\n', "accept"),
+    ("type-hex", '[filter]\nexclude_types = ["0x02"]\n', "accept"),
+    ("type-int", "[filter]\nexclude_types = [2]\n", "accept"),
+    ("type-unknown-name", '[filter]\nexclude_types = ["BOGUS"]\n', "reject"),
+    ("type-hex-bad-digit", '[filter]\nexclude_types = ["0xZZ"]\n', "reject"),
+    ("type-hex-empty", '[filter]\nexclude_types = ["0x"]\n', "reject"),
+    ("type-hex-signed", '[filter]\nexclude_types = ["0x+1"]\n', "reject"),
+    ("type-hex-too-big", '[filter]\nexclude_types = ["0x1FF"]\n', "reject"),
+    ("type-int-too-big", "[filter]\nexclude_types = [256]\n", "reject"),
+    ("type-int-negative", "[filter]\nexclude_types = [-1]\n", "reject"),
+    ("type-not-scalar", "[filter]\nexclude_types = [1.5]\n", "reject"),
+    ("bus-valid-padded", '[filter]\nexclude_buses = [" a "]\n', "accept"),
+    ("bus-unknown", '[filter]\nexclude_buses = ["c"]\n', "reject"),
+    ("bus-not-string", "[filter]\nexclude_buses = [1]\n", "reject"),
+    ("rt-too-big", "[filter]\nexclude_rts = [32]\n", "reject"),
+    ("rt-negative", "[filter]\nexclude_rts = [-1]\n", "reject"),
+    ("rt-not-int", '[filter]\nexclude_rts = ["1"]\n', "reject"),
+    ("sa-too-big", "[filter]\nexclude_subaddresses = [40]\n", "reject"),
+    ("filter-not-array", "[filter]\nexclude_rts = 1\n", "reject"),
+    # ── messages for the remaining value checks ───────────────────────────
+    ("bad-level", '[logging]\nlevel = "LOUD"\n', "reject"),
+    ("bad-error-mode", '[decode]\nerror_mode = "both"\n', "reject"),
+    ("bad-output-format", '[output]\nformat = "json"\n', "reject"),
+    ("bad-input-time-format", '[decode]\ninput_time_format = "gps"\n', "reject"),
+    ("empty-delimiter", '[mux]\ndelimiter = ""\n', "reject"),
+    ("negative-collapse-window", "[merge]\ncollapse_window_us = -1\n", "reject"),
+    ("float-as-string", '[decode]\nstandard_tick_rate_hz = "1e6"\n', "reject"),
+    ("empty-value", "[decode]\nstrict =\n", "reject"),
+    ("empty-key", "[decode]\n= true\n", "reject"),
+    ("no-equals", "[decode]\nstrict\n", "reject"),
+    ("trailing-backslash", '[mux]\ndelimiter = "a\\"\n', "reject"),
+    ("unescaped-quote", '[mux]\ndelimiter = "a"b"\n', "reject"),
+    # ── which error is reported when there are several ───────────────────
+    # The keys of a section are checked in one order everywhere; C++ checked
+    # [logging] and [output] in a different order from Rust.
+    ("two-errors-logging", '[logging]\nirig_day_advisory = 1\nlevel = "LOUD"\n', "reject"),
+    ("two-errors-output", "[output]\nmax_sort_group = 0\nyear = 0\n", "reject"),
+    (
+        "two-errors-across-sections",
+        '[merge]\ndelta_scope = "x"\n[logging]\nlevel = "x"\n',
+        "reject",
+    ),
+    ("parse-error-after-schema-error", "[output]\nyear = 0\n[decode\n", "reject"),
+    # ── unknown keys: accepted with a WARN, which must read the same ──────
+    ("unknown-key", "[decode]\nbogus = 1\n", "accept"),
+    ("unknown-section", "[bogus]\nx = 1\n", "accept"),
+    ("unknown-root-key", "bogus = 1\n", "accept"),
+    ("two-unknown-keys", "[decode]\nb = 1\na = 2\n", "accept"),
 ]
 
 
@@ -162,9 +287,10 @@ def check_config_parser_parity(
     failures: list[str] = []
     for name, toml, expect in CORPUS:
         cfg = temp / f"parity-{name}.toml"
-        cfg.write_text(toml, encoding="utf-8")
+        cfg.write_bytes(toml if isinstance(toml, bytes) else toml.encode("utf-8"))
         classes: dict[str, str] = {}
         codes: dict[str, int] = {}
+        stderrs: dict[str, str] = {}
         for impl, prefix in invocations.items():
             out = temp / f"parity-{name}-{impl}.csv"
             command = [
@@ -180,12 +306,15 @@ def check_config_parser_parity(
                 command,
                 cwd=root,
                 capture_output=True,
-                text=True,
                 check=False,
                 timeout=30,
             )
             codes[impl] = result.returncode
             classes[impl] = classify(result.returncode)
+            stderrs[impl] = normalized_stderr(
+                result.stderr,
+                {str(cfg): "<CONFIG>", str(out): "<OUTPUT>", str(input_mie): "<INPUT>"},
+            )
 
         divergence = describe_divergence(classes, codes)
         if divergence is not None:
@@ -195,6 +324,14 @@ def check_config_parser_parity(
             # a divergence: every parser agreeing on the wrong answer is a
             # corpus or specification problem, not an implementation one.
             failures.append(f"{name}: {describe_agreement(classes, codes)}, expected {expect}")
+        else:
+            # L2-CLI-022 / L2-CLI-014. After a usage error (exit 4) only the
+            # ASCII rule is checked here: what follows a usage error belongs
+            # to the usage layer, not the config loader (see differential.py).
+            usage = set(codes.values()) == {4}
+            problems = describe_stderr_problems(stderrs, compare=not usage)
+            if problems is not None:
+                failures.append(f"{name}: {problems}")
     if failures:
         raise AssertionError("config-parser parity failures:\n  " + "\n  ".join(failures))
     print(f"PASS config-parser-parity ({len(CORPUS)} snippets across {', '.join(invocations)})")

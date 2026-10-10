@@ -34,7 +34,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from differential import describe_divergence
+from differential import describe_divergence, describe_stderr_problems, normalized_stderr
 
 #: A case yields ``(path to pass to --config, expected exit code, message
 #: substring both implementations must print)``, or ``None`` to skip itself on
@@ -169,12 +169,14 @@ def check_config_path_parity(
                 [*prefix, "--config", cfg_path, "decode", str(input_mie), "-o", str(out)],
                 cwd=root,
                 capture_output=True,
-                text=True,
                 check=False,
                 timeout=30,
             )
             codes[impl] = result.returncode
-            stderrs[impl] = result.stderr
+            stderrs[impl] = normalized_stderr(
+                result.stderr,
+                {cfg_path: "<CONFIG>", str(out): "<OUTPUT>", str(input_mie): "<INPUT>"},
+            )
 
         divergence = describe_divergence({impl: f"exit {code}" for impl, code in codes.items()})
         if divergence is not None:
@@ -192,6 +194,10 @@ def check_config_path_parity(
                     failures.append(
                         f"{name}: {impl} stderr missing {expect_msg!r} — got {err.strip()[:160]!r}"
                     )
+        # L2-CLI-022: and the whole of what they wrote must agree.
+        text_divergence = describe_stderr_problems(stderrs)
+        if text_divergence is not None:
+            failures.append(f"{name}: {text_divergence}")
 
     if failures:
         raise AssertionError("config-path parity failures:\n  " + "\n  ".join(failures))

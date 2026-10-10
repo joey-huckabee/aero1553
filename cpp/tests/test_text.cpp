@@ -75,6 +75,25 @@ TEST_CASE("trim removes blanks from both ends only", "[text]") {
     CHECK(txt::trim_ascii_blank("   ") == "");
 }
 
+TEST_CASE("quote writes every byte as printable ASCII", "[text][L2-CLI-014][L2-CLI-022]") {
+    CHECK(txt::quote("per-file") == "\"per-file\"");
+    CHECK(txt::quote("") == "\"\"");
+    CHECK(txt::quote("a\"b\\c") == "\"a\\\"b\\\\c\"");
+    CHECK(txt::quote("a\tb\r\n") == "\"a\\x09b\\x0D\\x0A\"");
+    CHECK(txt::quote("~ \x7f") == "\"~ \\x7F\"");
+    // Byte by byte, upper-case hex: the spelling Rust's escape_bytes produces.
+    CHECK(txt::quote("\xC3\xA9") == "\"\\xC3\\xA9\"");
+    CHECK(txt::quote("\xEF\xBB\xBF") == "\"\\xEF\\xBB\\xBF\"");
+    CHECK(txt::escape_bytes(std::string(1, '\xFF') + "a") == "\\xFFa");
+    for (int b = 0; b < 256; ++b) {
+        const std::string escaped = txt::escape_bytes(std::string(1, static_cast<char>(b)));
+        for (std::size_t i = 0; i < escaped.size(); ++i) {
+            CHECK(escaped[i] >= 0x20);
+            CHECK(escaped[i] <= 0x7E);
+        }
+    }
+}
+
 TEST_CASE("decimal formatting handles zero and the boundaries", "[text]") {
     CHECK(txt::decimal(0) == "0");
     CHECK(txt::decimal(1) == "1");
