@@ -242,11 +242,8 @@ def check_config_parser_fuzz(
             )
         divergence = describe_divergence(classes, codes)
         if divergence is None:
-            # L2-CLI-022 / L2-CLI-014: the diagnostics too, ASCII and alike --
-            # except that after a usage error only the ASCII rule is checked
-            # here, the text being the usage layer's contract (differential.py).
-            usage = set(codes.values()) == {4}
-            divergence = describe_stderr_problems(stderrs, compare=not usage)
+            # L2-CLI-022 / L2-CLI-014: the diagnostics too, ASCII and alike.
+            divergence = describe_stderr_problems(stderrs)
         if divergence is not None:
             # The generating document is reproduced verbatim and indented: a
             # fuzz finding is only actionable if it can be pasted straight into

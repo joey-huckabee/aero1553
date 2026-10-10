@@ -551,12 +551,17 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
     return true;
 }
 
-void prepare_stdout() {
+void prepare_output_streams() {
     // Without this the CRT rewrites every newline into CRLF on the way out,
     // which breaks every stdout conformance oracle on Windows alone while the
     // file-destination oracles keep passing -- a split that is very hard to
     // read as "one missing call".
     ::_setmode(::_fileno(stdout), _O_BINARY);
+    // stderr too. Rust and Python write its lines with LF on every platform,
+    // so a diagnostic redirected to a file differed from theirs in every line
+    // ending (L2-CLI-022) -- and a log that interleaves this tool's lines with
+    // another's got mixed line endings.
+    ::_setmode(::_fileno(stderr), _O_BINARY);
 }
 
 bool canonical_path(const std::string& utf8_path, std::string& out, OsError& err) {

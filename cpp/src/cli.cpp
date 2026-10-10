@@ -28,82 +28,147 @@ namespace {
 
 const char* const kVersion = "4.0.0";
 
+// The help text, character for character the Rust implementation's `HELP`
+// in rust/src/cli.rs, which is the canonical one: help is part of what
+// every implementation must print alike (L2-CLI-022), and
+// tests/conformance/cli_message_parity.py compares the two byte for byte.
+// Edit both together. This one was its own 75-line text until then.
 const char* const kHelp =
     "aero1553 -- DDC MIL-STD-1553 MIE binary decoder\n"
     "\n"
     "USAGE:\n"
-    "    aero1553 [GLOBAL] <COMMAND> [OPTIONS]\n"
+    "  aero1553 [--log-level L] [--config PATH] <command> [options]\n"
     "\n"
     "COMMANDS:\n"
-    "    decode <FILE>...  Decode a recording to CSV; 2+ inputs are merged\n"
-    "    count <FILE>      Count decodable records\n"
-    "    dump <FILE>       Hex dump: raw bytes or a record-aware view\n"
+    "  decode <INPUT>... Decode MIE file(s) to CSV (2+ inputs -> time-sorted merge)\n"
+    "  count  <INPUT>    Print message count (no CSV)\n"
+    "  dump   <INPUT>    Hex dump (raw or record-aware)\n"
     "\n"
     "GLOBAL OPTIONS:\n"
-    "    --config <PATH>   TOML configuration file\n"
-    "    --log-level <L>   DEBUG, INFO, WARNING, ERROR, CRITICAL, OFF\n"
-    "    --no-irig-day-advisory\n"
-    "                      Never emit the one-time IRIG day-of-year advisory.\n"
-    "                      It is logged at INFO, so it is already silent at\n"
-    "                      the default level; this suppresses it at\n"
-    "                      INFO/DEBUG too\n"
-    "    -h, --help        Print this help\n"
-    "    -V, --version     Print the version\n"
+    "  --log-level LEVEL                     DEBUG|INFO|WARNING|WARN|ERROR|\n"
+    "                                        CRITICAL|OFF (default WARNING;\n"
+    "                                        case-insensitive; CRITICAL/OFF silence)\n"
+    "  --config PATH                         TOML configuration file\n"
+    "  --no-irig-day-advisory                Never emit the one-time IRIG\n"
+    "                                        day-of-year advisory. It is logged at\n"
+    "                                        INFO, so it is already silent at the\n"
+    "                                        default level; this suppresses it at\n"
+    "                                        INFO/DEBUG too (L2-LOG-001)\n"
+    "  -V, -v, --version                     Print version and exit\n"
+    "  -h, --help                            Print this help and exit\n"
     "\n"
     "DECODE OPTIONS:\n"
-    "    -o, --output <PATH>          Destination CSV; omit it to write stdout\n"
-    "    --strict                     Reject on the first anomaly\n"
-    "    --input-time-format <F>      How timestamps are PARSED: auto, irig,\n"
-    "                                 standard\n"
-    "    --output-time-format <F>     How TIME_STAMP is WRITTEN: doy (default,\n"
-    "                                 the vendor rendering), iso, dom. iso and\n"
-    "                                 dom need a year. L2-WRT-025\n"
-    "    --year <YYYY>                Calendar year for the IRIG day-of-year\n"
-    "                                 field, 1-9999. An MIE file carries no\n"
-    "                                 year, so iso and dom require one; doy\n"
-    "                                 ignores it. L2-WRT-026\n"
-    "    --utc-offset <O>             Zone for the iso rendering: Z (default,\n"
-    "                                 UTC), +HH:MM or -HH:MM. IRIG-B carries\n"
-    "                                 no timezone. L2-WRT-025\n"
-    "    --separate-errors            Errored rows to <stem>_errors.csv\n"
-    "    --allow-partial              Commit <dest>.partial on sync loss\n"
-    "    --no-clobber                 Refuse to overwrite the destination\n"
-    "    --format <F>                 Output format (csv)\n"
-    "    --detect-records <N>         Timestamp-probe size, 1-32\n"
-    "    --lookahead-records <N>      Validation look-ahead depth, 1-32\n"
-    "    --standard-tick-rate-hz <H>  Calibrate Standard timestamps\n"
-    "    --max-sort-group <N>         Canonical-order run cap, 1-1048576\n"
-    "    --max-collapse-survivors <N> Collapse survivor-set cap, 1-1048576\n"
-    "    --no-mux                     Leave the MUX column empty\n"
-    "    --mux-delimiter <S>          MUX field delimiter\n"
-    "    --mux-field <N>              MUX field index; negative counts back\n"
-    "    --exclude-types <LIST>       Drop these message types\n"
-    "    --exclude-rts <LIST>         Drop these RT addresses\n"
-    "    --exclude-buses <LIST>       Drop these buses (A, B)\n"
-    "    --exclude-subaddresses <L>   Drop these subaddresses\n"
-    "    --include-types <LIST>       Keep only these message types\n"
-    "    --include-rts <LIST>         Keep only these RT addresses\n"
-    "    --include-buses <LIST>       Keep only these buses\n"
-    "    --include-subaddresses <L>   Keep only these subaddresses\n"
+    "  -o, --output PATH                     Output CSV (default stdout)\n"
+    "  --manifest PATH                       Read input paths from a file (one per\n"
+    "                                        line; blank/#-comment lines ignored).\n"
+    "                                        Mutually exclusive with positionals /\n"
+    "                                        --glob (L2-MRG-001)\n"
+    "  --glob PATTERN                        Expand a single-directory *|? filename\n"
+    "                                        glob (no recursion). Mutually exclusive\n"
+    "                                        with positionals / --manifest\n"
+    "  --separate-errors                     Route errored/spurious records to a\n"
+    "                                        separate <stem>_errors.csv. Default:\n"
+    "                                        every record inline in the main CSV\n"
+    "                                        with ERROR/ERROR_CODE populated\n"
+    "  --no-clobber                          Refuse to overwrite an existing\n"
+    "                                        output file (L2-WRT-017)\n"
+    "  --allow-partial                       On unrecoverable mid-file sync\n"
+    "                                        loss, write a <output>.partial\n"
+    "                                        file and exit 0 instead of 3\n"
+    "                                        (L1-EXIT-004)\n"
+    "  --input-time-format auto|irig|standard\n"
+    "                                        How timestamps are PARSED from the\n"
+    "                                        file. Default auto (case-insensitive)\n"
+    "  --output-time-format doy|iso|dom      How TIME_STAMP is WRITTEN to the CSV.\n"
+    "                                        doy (default) DAY:HH:MM:SS.uuuuuu, the\n"
+    "                                        vendor rendering; iso\n"
+    "                                        YYYY-MM-DDTHH:MM:SS.uuuuuu plus zone;\n"
+    "                                        dom DD:HH:MM:SS.uuuuuu. iso and dom\n"
+    "                                        need a year. L2-WRT-025\n"
+    "  --year YYYY                           Calendar year used to resolve the IRIG\n"
+    "                                        day-of-year field (range 1..=9999). An\n"
+    "                                        MIE file carries no year, so iso and\n"
+    "                                        dom require one; doy ignores it.\n"
+    "                                        L2-WRT-026\n"
+    "  --utc-offset Z|+HH:MM|-HH:MM          Zone designator for the iso rendering\n"
+    "                                        (default Z, meaning UTC). IRIG-B\n"
+    "                                        carries no timezone, so this states\n"
+    "                                        what the recording could not. L2-WRT-025\n"
+    "  --detect-records N                    Records probed by timestamp-\n"
+    "                                        format auto-detection (1..=32,\n"
+    "                                        default 8). L2-DEC-015.\n"
+    "  --lookahead-records N                 Total records checked by sync\n"
+    "                                        validation per call (1 candidate\n"
+    "                                        + N-1 look-ahead, range 1..=32,\n"
+    "                                        default 2). L2-SYN-026.\n"
+    "  --standard-tick-rate-hz HZ            Standard-counter frequency in Hz.\n"
+    "                                        When set, Standard timestamps are\n"
+    "                                        converted to microseconds and join\n"
+    "                                        DELTA tracking. Must be > 0\n"
+    "                                        (default: unset -> empty DELTA for\n"
+    "                                        Standard). L2-DEC-017.\n"
+    "  --strict                              Raise on invalid records\n"
+    "  --format csv                          Output format (csv only at present)\n"
+    "  --no-mux                              Leave the MUX column empty\n"
+    "                                        (vendor-exact). Default: MUX is\n"
+    "                                        derived from the file name (L2-WRT-020)\n"
+    "  --mux-delimiter D                     MUX field separator (default '.')\n"
+    "  --mux-field N                         0-based MUX field index; negative\n"
+    "                                        counts from the end (default 4)\n"
+    "  --collapse-duplicates                 Collapse the same bus transaction seen\n"
+    "                                        by multiple recorders into one row\n"
+    "                                        (multi-file merge only). Default: off\n"
+    "  --collapse-window-us N                Timestamp tolerance in microseconds for\n"
+    "                                        collapsing (default 0 = exact match)\n"
+    "  --delta-scope per-file|global         Scope DELTA is measured over in a\n"
+    "                                        multi-file merge (default per-file:\n"
+    "                                        each gap is to the previous same-key\n"
+    "                                        record from its OWN file, matching a\n"
+    "                                        single-file decode). global measures\n"
+    "                                        across the merged timeline. No effect\n"
+    "                                        on a single input. L2-MRG-005.\n"
+    "  --max-sort-group N                    Max consecutive same-TIME_STAMP records\n"
+    "                                        buffered to order rows by RT then MSG\n"
+    "                                        (range 1..=1048576, default 65536). Use 1\n"
+    "                                        to disable reordering and emit raw\n"
+    "                                        capture order. L2-WRT-022.\n"
+    "  --max-collapse-survivors N            Max records the --collapse-duplicates\n"
+    "                                        window retains at once (range\n"
+    "                                        1..=1048576, default 4096). Bounds the\n"
+    "                                        set by COUNT where the window bounds it\n"
+    "                                        by TIME. Past the cap collapsing is\n"
+    "                                        best-effort, with one WARN. L2-MRG-008.\n"
+    "  --exclude-types VAL                   Comma-separated names or 0xNN\n"
+    "  --exclude-rts VAL                     Comma-separated RT addresses\n"
+    "  --exclude-buses VAL                   Comma-separated A|B\n"
+    "  --exclude-subaddresses VAL            Comma-separated subaddresses\n"
+    "  --include-types VAL                   (same syntax as --exclude-types)\n"
+    "  --include-rts VAL\n"
+    "  --include-buses VAL\n"
+    "  --include-subaddresses VAL\n"
     "\n"
-    "MERGE OPTIONS (two or more inputs):\n"
-    "    --manifest <PATH>            Read input paths from a file, one per line\n"
-    "    --glob <PATTERN>             Expand a single-directory *|? filename glob\n"
-    "    --delta-scope <S>            per-file (default) or global\n"
-    "    --collapse-duplicates        Drop a record another recorder already saw\n"
-    "    --collapse-window-us <N>     Timestamp tolerance for collapsing (default 0)\n"
-    "\n"
-    "  Positional inputs, --manifest and --glob are mutually exclusive.\n"
+    "  Filter flags accept ONE value (comma-separable). Repeat the flag to\n"
+    "  accumulate. `--include-rts 15,31` and `--include-rts 15 --include-rts 31`\n"
+    "  are equivalent. Appending `=value` (e.g. `--include-rts=15`) also works.\n"
     "\n"
     "DUMP OPTIONS:\n"
-    "    --raw                        Raw hex+ASCII instead of the record view\n"
-    "    --offset <N>                 Start at this byte offset\n"
-    "    --length <N>                 Bytes to show (--raw only)\n"
-    "    --records <N>                Stop after this many records\n"
+    "  --raw                                 Raw hex dump (no record parsing)\n"
+    "  --offset N                            Start offset (decimal or 0xHEX)\n"
+    "  --length N                            Bytes to dump, raw mode (decimal or 0xHEX)\n"
+    "  --records N                           Max records, record mode (decimal or 0xHEX)\n"
     "\n"
-    "EXIT CODES:\n"
-    "    0 success   1 runtime   2 no records   3 sync loss\n"
-    "    4 usage     5 config    6 merge-incompatible\n";
+    "EXAMPLES:\n"
+    "  aero1553 decode rec.mie -o out.csv\n"
+    "  aero1553 decode rec.mie --separate-errors --include-rts 15\n"
+    "  aero1553 decode a.mie b.mie c.mie -o merged.csv   # time-sorted merge\n"
+    "  aero1553 decode --glob 'recordings/*.mie' -o merged.csv\n"
+    "  aero1553 count rec.mie\n"
+    "  aero1553 dump rec.mie --records 10\n";
+
+/// The line every usage error ends with, in place of the help text that
+/// used to follow one and scroll the error itself off the screen. Rust's
+/// `USAGE_HINT` (L2-CLI-022).
+const char* const kUsageHint = "Run 'aero1553 --help' for usage.";
 
 /// A failure carrying the exit code it maps to, so a config problem (5) is not
 /// flattened into a generic runtime error (1).
@@ -115,6 +180,14 @@ struct CliError {
 };
 
 CliError usage_error(const std::string& message) { return CliError(EXIT_USAGE, message); }
+
+/// An option the subcommand does not have, as typed -- `--no-mux=true`
+/// reports itself in full -- with any byte outside printable ASCII escaped
+/// (L2-CLI-014). Rust's `unknown_option`; C++ said `unknown option X` for two
+/// of the three subcommands and named the subcommand for the third.
+std::string unknown_option(const char* command, const std::string& token) {
+    return std::string("unknown ") + command + " option: " + text::escape_bytes(token);
+}
 
 /// Thrown by a subcommand parser when it sees `-h`/`--help`.
 ///
@@ -185,7 +258,7 @@ bool write_out(std::FILE* stream, const std::string& text) {
 /// all begin like one and are therefore values. That is the point -- such a
 /// token is far likelier to be a mistyped number than a flag, and letting it
 /// through means the flag's OWN validator reports it, so `--mux-field -1a`
-/// says "requires a number, got -1a" rather than the much less helpful "the
+/// says `invalid --mux-field: "-1a"; must be an integer` rather than the less helpful "the
 /// next argument is an option".
 ///
 /// THIS RULE IS VERSION-DEPENDENT IN PYTHON AND WE PIN THE NEWER ONE. Through
@@ -316,7 +389,7 @@ class ArgReader {
         }
         if (looks_like_option(args_[at_])) {
             // Hard stop: see abandon_rest(). A later `-h` must not rescue this.
-            const std::string offender = args_[at_];
+            const std::string offender = text::escape_bytes(args_[at_]);
             abandon_rest();
             throw usage_error(std::string(name) + " requires a value, but the next argument is" +
                               " an option: " + offender + "; to pass it as a value, write " + name +
@@ -337,7 +410,7 @@ class ArgReader {
             }
             if (looks_like_option(args_[at_])) {
                 // Hard stop: see abandon_rest().
-                const std::string offender = args_[at_];
+                const std::string offender = text::escape_bytes(args_[at_]);
                 abandon_rest();
                 throw usage_error(std::string(name) + " requires a value, but the next argument" +
                                   " is an option: " + offender + "; to pass it as a value," +
@@ -363,13 +436,15 @@ class ArgReader {
 /// numeric flag and in both implementations (Rust trims with `trim_ascii`).
 /// Rejects trailing junk, which `atoi` accepts, and a value outside int64_t,
 /// which `strtoll` saturated to the nearest bound and accepted.
+///
+/// The messages are Rust's, word for word (L2-CLI-022): `invalid FLAG: "x";
+/// must be an integer`, and `invalid FLAG: N; valid range: [LO, HI]` from
+/// `parse_ranged`. C++ had its own for each, and an empty value had a third.
 int64_t parse_integer(const std::string& text, const char* flag) {
-    if (text.empty()) {
-        throw usage_error(std::string(flag) + " requires a number, got an empty value");
-    }
     int64_t value = 0;
     if (!text::parse_int64(text::trim_ascii_whitespace(text), value)) {
-        throw usage_error(std::string(flag) + " requires a number, got \"" + text + "\"");
+        throw usage_error(std::string("invalid ") + flag + ": " + text::quote(text) +
+                          "; must be an integer");
     }
     return value;
 }
@@ -378,9 +453,9 @@ std::size_t parse_ranged(const std::string& text, const char* flag, std::size_t 
                          std::size_t hi) {
     const int64_t value = parse_integer(text, flag);
     if (value < static_cast<int64_t>(lo) || value > static_cast<int64_t>(hi)) {
-        throw usage_error(
-            std::string(flag) + " must be in [" + text::decimal(static_cast<uint64_t>(lo)) + ", " +
-            text::decimal(static_cast<uint64_t>(hi)) + "], got " + text::decimal_signed(value));
+        throw usage_error(std::string("invalid ") + flag + ": " + text::decimal_signed(value) +
+                          "; valid range: [" + text::decimal(static_cast<uint64_t>(lo)) + ", " +
+                          text::decimal(static_cast<uint64_t>(hi)) + "]");
     }
     return static_cast<std::size_t>(value);
 }
@@ -400,32 +475,26 @@ const char* const kRetiredTimeFormatMessage =
 /// L2-CLI-018: `--year YYYY`, range-checked at parse time so a bad value is a
 /// usage error rather than a malformed cell far into the output.
 int parse_year_argument(const std::string& text) {
-    const int64_t value = parse_integer(text, "--year");
-    if (value < YEAR_MIN || value > YEAR_MAX) {
-        throw usage_error(std::string("invalid --year: \"") + text + "\"; valid range: [" +
-                          text::decimal(static_cast<uint64_t>(YEAR_MIN)) + ", " +
-                          text::decimal(static_cast<uint64_t>(YEAR_MAX)) + "]");
-    }
-    return static_cast<int>(value);
+    return static_cast<int>(parse_ranged(text, "--year", static_cast<std::size_t>(YEAR_MIN),
+                                         static_cast<std::size_t>(YEAR_MAX)));
 }
 
 double parse_tick_rate(const std::string& text) {
-    if (text.empty()) {
-        throw usage_error("--standard-tick-rate-hz requires a value");
-    }
     // Rust's f64 grammar first: strtod alone also takes hexadecimal floats
     // (`0x10`, `0x1p4`) that Rust refuses.
     const std::string trimmed = text::trim_ascii_whitespace(text);
     if (!text::is_rust_float_literal(trimmed)) {
-        throw usage_error("--standard-tick-rate-hz requires a number, got \"" + text + "\"");
+        throw usage_error("invalid --standard-tick-rate-hz: " + text::quote(text) +
+                          "; must be a number");
     }
     const double value = std::strtod(trimmed.c_str(), nullptr);
     // Finite AND positive, as L2-CLI-012 requires. `inf` and `1e400` (which
     // overflows to infinity) used to pass the positivity test alone; NaN
     // fails it, since every comparison with NaN is false.
+    // Repeated as written, as the config loader does (L2-CLI-022).
     if (!(value > 0.0) || !std::isfinite(value)) {
-        throw usage_error("--standard-tick-rate-hz must be a finite value greater than 0, got \"" +
-                          text + "\"");
+        throw usage_error("invalid --standard-tick-rate-hz: " + trimmed +
+                          "; must be a finite value greater than 0");
     }
     return value;
 }
@@ -492,8 +561,8 @@ uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
     }
     // Not an unsigned number: a negative one gets the specific complaint.
     const int64_t signed_value = parse_integer(text_value, flag);
-    throw usage_error(std::string(flag) + " must be non-negative, got " +
-                      text::decimal_signed(signed_value));
+    throw usage_error(std::string("invalid ") + flag + ": " + text::decimal_signed(signed_value) +
+                      "; must be a non-negative integer");
 }
 
 /// A filter list element that must be a 0-31 wire field, in decimal or as
@@ -501,8 +570,8 @@ uint64_t parse_non_negative(const std::string& text_value, const char* flag) {
 uint8_t parse_small(const std::string& text, const char* flag) {
     const uint64_t value = parse_non_negative(text, flag);
     if (value > 31) {
-        throw usage_error(std::string(flag) + " values must be in [0, 31], got " +
-                          text::decimal(value));
+        throw usage_error(std::string("invalid ") + flag + ": " + text::decimal(value) +
+                          "; valid range: [0, 31]");
     }
     return static_cast<uint8_t>(value);
 }
@@ -585,29 +654,29 @@ DecodeArgs parse_decode(ArgReader& reader) {
             // apart two recorders' clocks can be, not a resource limit.
             const int64_t window = parse_integer(value, "--collapse-window-us");
             if (window < 0) {
-                throw usage_error("--collapse-window-us must be non-negative, got " +
-                                  text::decimal_signed(window));
+                throw usage_error("invalid --collapse-window-us: " + text::decimal_signed(window) +
+                                  "; must be a non-negative integer");
             }
             args.overrides.collapse_window_us = static_cast<uint64_t>(window);
         } else if (reader.take_value("--delta-scope", value)) {
             DeltaScope scope = DELTA_SCOPE_PER_FILE;
             if (!delta_scope_from_name(value, scope)) {
-                throw usage_error("--delta-scope must be per-file or global, got \"" + value +
-                                  "\"");
+                throw usage_error("invalid --delta-scope: " + text::quote(value) +
+                                  "; valid: per-file, global");
             }
             args.overrides.delta_scope = scope;
         } else if (reader.take_value("--input-time-format", value)) {
             TimestampFormat format = TIMESTAMP_AUTO;
             if (!timestamp_format_from_name(value, format)) {
-                throw usage_error("--input-time-format must be auto, irig or standard, got \"" +
-                                  value + "\"");
+                throw usage_error("invalid --input-time-format: " + text::quote(value) +
+                                  "; valid: auto, irig, standard");
             }
             args.overrides.input_time_format = format;
         } else if (reader.take_value("--output-time-format", value)) {
             OutputTimeFormat rendering = OUTPUT_TIME_DOY;
             if (!output_time_format_from_name(value, rendering)) {
-                throw usage_error("--output-time-format must be doy, iso or dom, got \"" + value +
-                                  "\"");
+                throw usage_error("invalid --output-time-format: " + text::quote(value) +
+                                  "; valid: doy, iso, dom");
             }
             args.overrides.output_time_format = rendering;
         } else if (reader.take_value("--year", value)) {
@@ -615,8 +684,8 @@ DecodeArgs parse_decode(ArgReader& reader) {
         } else if (reader.take_value("--utc-offset", value)) {
             int minutes = 0;
             if (!parse_utc_offset(value, minutes)) {
-                throw usage_error("invalid --utc-offset: \"" + value +
-                                  "\"; valid: Z, or +HH:MM / -HH:MM with HH in [0, 23] and "
+                throw usage_error("invalid --utc-offset: " + text::quote(value) +
+                                  "; valid: Z, or +HH:MM / -HH:MM with HH in [0, 23] and "
                                   "MM in [0, 59]");
             }
             args.overrides.utc_offset_minutes = minutes;
@@ -634,7 +703,7 @@ DecodeArgs parse_decode(ArgReader& reader) {
             // (exit 1) and contradicted the requirement. The config-file
             // spelling stays a load-time error (exit 5, L2-CFG-010).
             if (value != "csv") {
-                throw usage_error("--format must be csv, got \"" + value + "\"");
+                throw usage_error("invalid --format: " + text::quote(value) + "; valid: csv");
             }
             args.overrides.output_format = value;
         } else if (reader.take_value("--detect-records", value)) {
@@ -654,7 +723,7 @@ DecodeArgs parse_decode(ArgReader& reader) {
                              MAX_COLLAPSE_SURVIVORS_MAX);
         } else if (reader.take_value("--mux-delimiter", value)) {
             if (value.empty()) {
-                throw usage_error("--mux-delimiter must not be empty");
+                throw usage_error("invalid --mux-delimiter: must be a non-empty string");
             }
             args.overrides.mux_delimiter = value;
         } else if (reader.take_value("--mux-field", value)) {
@@ -708,7 +777,7 @@ DecodeArgs parse_decode(ArgReader& reader) {
                     parse_small(items[i], "--include-subaddresses"));
             }
         } else if (!token.empty() && token[0] == '-' && token != "-") {
-            throw usage_error("unknown option " + token);
+            throw usage_error(unknown_option("decode", token));
         } else {
             args.inputs.push_back(token);
             reader.advance();
@@ -727,13 +796,13 @@ DecodeArgs parse_decode(ArgReader& reader) {
     if (args.glob.has_value()) {
         methods += 1;
     }
+    if (methods == 0) {
+        throw usage_error("decode requires an input file (positional, --manifest, or --glob)");
+    }
     if (methods > 1) {
         throw usage_error(
-            "positional inputs, --manifest and --glob are mutually exclusive; "
-            "use exactly one to name the input set");
-    }
-    if (methods == 0) {
-        throw usage_error("decode requires an input file");
+            "decode accepts only one input method: positional paths, --manifest, or --glob -- "
+            "not a combination");
     }
     return args;
 }
@@ -783,7 +852,7 @@ DumpArgs parse_dump(ArgReader& reader) {
         } else if (reader.take_value("--records", value)) {
             args.records = parse_non_negative(value, "--records");
         } else if (!token.empty() && token[0] == '-' && token != "-") {
-            throw usage_error("unknown dump option: " + token);
+            throw usage_error(unknown_option("dump", token));
         } else if (input_seen) {
             // dump reads ONE file. It is a diagnostic view of a specific byte
             // range, and there is no sensible way to show two at once -- so a
@@ -803,7 +872,7 @@ DumpArgs parse_dump(ArgReader& reader) {
 }
 
 std::string parse_count(ArgReader& reader) {
-    std::vector<std::string> inputs;
+    Optional<std::string> input;
     bool end_of_options = false;
     while (!reader.at_end()) {
         const std::string token = reader.peek();
@@ -818,19 +887,22 @@ std::string parse_count(ArgReader& reader) {
                 throw HelpRequested();
             }
             if (!token.empty() && token[0] == '-' && token != "-") {
-                throw usage_error("unknown option " + token);
+                throw usage_error(unknown_option("count", token));
             }
         }
-        inputs.push_back(token);
+        // A second path is reported where it stands, as in Rust and as `dump`
+        // does: collecting every path first and complaining afterwards let a
+        // later unknown option be reported instead (L2-CLI-022).
+        if (input.has_value()) {
+            throw usage_error("unexpected positional argument: " + token);
+        }
+        input = token;
         reader.advance();
     }
-    if (inputs.empty()) {
+    if (!input.has_value()) {
         throw usage_error("count requires an input file");
     }
-    if (inputs.size() > 1) {
-        throw usage_error("count takes exactly one input file");
-    }
-    return inputs[0];
+    return input.value();
 }
 
 // ---------------------------------------------------------------------------
@@ -840,8 +912,8 @@ std::string parse_count(ArgReader& reader) {
 void apply_log_level(const char* source, const std::string& value) {
     log::Level level = log::LEVEL_WARN;
     if (!log::level_from_name(value, level)) {
-        throw usage_error(std::string("invalid ") + source + " \"" + value +
-                          "\": valid levels are " + log::LEVEL_NAMES);
+        throw usage_error(std::string("invalid ") + source + ": " + text::quote(value) +
+                          "; valid: " + log::LEVEL_NAMES);
     }
     log::set_level(level);
 }
@@ -1436,7 +1508,26 @@ int run(const std::vector<std::string>& args, const Streams& streams) {
         const std::string command = reader.peek();
         reader.advance();
 
-        // The level is applied early so the version banner and every later
+        // The whole command line is parsed BEFORE the level is applied, as in
+        // Rust: so `--log-level NOPE count x --bogus` reports the unknown
+        // option in both, and a parse error is logged at the default level
+        // whatever `--log-level` asked for. C++ applied the level first, and
+        // the two disagreed on both (L2-CLI-022).
+        DecodeArgs decode_args;
+        std::string count_input;
+        DumpArgs dump_args;
+        if (command == "decode") {
+            decode_args = parse_decode(reader);
+        } else if (command == "count") {
+            count_input = parse_count(reader);
+        } else if (command == "dump") {
+            dump_args = parse_dump(reader);
+        } else {
+            throw usage_error("unknown command " + text::quote(command) +
+                              "; expected decode, count or dump");
+        }
+
+        // Applied before anything runs, so the version banner and every later
         // diagnostic respect it. An invalid value fails here rather than being
         // silently ignored.
         if (globals.log_level.has_value()) {
@@ -1447,16 +1538,12 @@ int run(const std::vector<std::string>& args, const Streams& streams) {
         MIE_LOG_INFO(version_line());
 
         if (command == "decode") {
-            DecodeArgs decode_args = parse_decode(reader);
             return run_decode(streams, globals, decode_args);
         }
         if (command == "count") {
-            return run_count(streams, globals, parse_count(reader));
+            return run_count(streams, globals, count_input);
         }
-        if (command == "dump") {
-            return run_dump(streams, globals, parse_dump(reader));
-        }
-        throw usage_error("unknown command \"" + command + "\"; expected decode, count or dump");
+        return run_dump(streams, globals, dump_args);
     } catch (const HelpRequested&) {
         return write_out(streams.out, kHelp) ? EXIT_OK : EXIT_RUNTIME;
     } catch (const CliError& error) {
@@ -1471,7 +1558,8 @@ int run(const std::vector<std::string>& args, const Streams& streams) {
         MIE_LOG_ERROR(error.message);
         (void)write_out(streams.err, "Error: " + error.message + "\n");
         if (error.code == EXIT_USAGE) {
-            (void)write_out(streams.err, std::string("\n") + kHelp);
+            // One line, not the help: see kUsageHint.
+            (void)write_out(streams.err, std::string(kUsageHint) + "\n");
         }
         return error.code;
     } catch (const MieError& error) {

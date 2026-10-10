@@ -263,18 +263,21 @@ bool list_directory(const std::string& utf8_dir, std::vector<std::string>& names
 // 4. Byte-exact output
 // ---------------------------------------------------------------------------
 
-/// Prepare stdout for the decoder's output. Call once, early, from main().
+/// Prepare stdout and stderr for the decoder's output. Call once, early, from
+/// main().
 ///
-/// On Windows this puts stdout into binary mode: the CRT otherwise rewrites
-/// every newline into CRLF, which silently breaks every stdout conformance
-/// oracle on that platform alone.
+/// On Windows this puts both streams into binary mode: the CRT otherwise
+/// rewrites every newline into CRLF, which silently breaks every stdout
+/// conformance oracle on that platform alone, and gave every diagnostic line a
+/// different ending from the one Rust and Python write (L2-CLI-022). It was
+/// `prepare_stdout` and left stderr in text mode until then.
 ///
 /// On POSIX it ignores SIGPIPE. The default disposition kills the process the
 /// moment a downstream reader closes the pipe (`aero1553 decode x.mie | head`),
 /// so it exits 141 and the EPIPE that L2-WRT-018 turns into exit 0 is never
 /// seen. Rust's runtime and CPython both ignore SIGPIPE before main; C++ is the
 /// only implementation where it has to be asked for.
-void prepare_stdout();
+void prepare_output_streams();
 
 // ---------------------------------------------------------------------------
 // 5. Path identity, metadata, and encoding

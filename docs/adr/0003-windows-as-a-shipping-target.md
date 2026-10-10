@@ -51,7 +51,10 @@ Concretely, that commits to five things, all of which live behind
    existing CSV.
 3. **Binary stdout.** `_setmode(_fileno(stdout), _O_BINARY)` is called before
    anything writes a byte. Without it the CRT rewrites every newline to CRLF and
-   every stdout oracle fails on Windows alone (L2-WRT-012).
+   every stdout oracle fails on Windows alone (L2-WRT-012). *Amended:* stderr
+   is switched too (`platform::prepare_output_streams`), once its diagnostics
+   became part of what every implementation must print alike (L2-CLI-022) and a
+   Windows C++ run was found ending each of them CRLF.
 4. **Shared read on the in-progress temp file.** `CreateFileW` with
    `FILE_SHARE_READ | FILE_SHARE_DELETE` rather than exclusive access, so an
    antivirus or backup agent touching the file mid-write does not become a

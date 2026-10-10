@@ -234,11 +234,15 @@ class TestExitCodes:
         assert run_cli(["decode", str(path), "-o", str(out)]).rc == EXIT_SYNC_LOSS
         assert not out.exists()
 
-    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
+    @pytest.mark.requirement("L2-CLI-011", "L3-PY-006", "L2-CLI-022")
     def test_usage(self, run_cli: RunCli) -> None:
         result = run_cli(["no-such-command"])
         assert result.rc == EXIT_USAGE
-        assert "Unknown command" in result.err
+        # The error and a pointer to --help, not the help itself (L2-CLI-022).
+        assert result.err.splitlines()[-2:] == [
+            'Error: unknown command "no-such-command"; expected decode, count or dump',
+            "Run 'aero1553 --help' for usage.",
+        ]
 
     @pytest.mark.requirement("L2-CLI-011", "L3-PY-006")
     def test_config(self, run_cli: RunCli, rec: Path, tmp_path: Path) -> None:
