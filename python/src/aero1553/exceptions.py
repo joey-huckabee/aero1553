@@ -32,6 +32,12 @@ Exception hierarchy::
 
 from __future__ import annotations
 
+from functools import partial
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from typing_extensions import Self
+
 
 class Aero1553Error(Exception):
     """Base exception for every error the decoder *converts*.
@@ -55,7 +61,28 @@ class Aero1553Error(Exception):
     library raises them outside a converted path, so a caller writing to an
     arbitrary sink may still want ``(Aero1553Error, OSError)`` — which is
     what the CLI uses, chiefly so a broken pipe on stdout stays a clean exit.
+
+    Every class here pickles, so it survives the trip back from a
+    ``multiprocessing`` or ``concurrent.futures`` worker (L3-PY-025).
     """
+
+    # Python rebuilds an unpickled exception as ``cls(*self.args)``, but each
+    # subclass replaces ``args`` with its finished message. So the arguments the
+    # class was called with are kept here, and the copy is built from those.
+    _init_args: tuple[Any, ...]
+    _init_kwargs: dict[str, Any]
+
+    def __new__(cls, *args: Any, **kwargs: Any) -> Self:
+        self = super().__new__(cls, *args, **kwargs)
+        self._init_args = args
+        self._init_kwargs = kwargs
+        return self
+
+    def __reduce__(self) -> tuple[Any, ...]:
+        state = {k: v for k, v in vars(self).items() if k not in ("_init_args", "_init_kwargs")}
+        if self._init_kwargs:
+            return (partial(type(self), *self._init_args, **self._init_kwargs), (), state)
+        return (type(self), self._init_args, state)
 
 
 class MieFileError(Aero1553Error):

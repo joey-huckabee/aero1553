@@ -141,6 +141,17 @@ shared behavior) holds at any compatible version pair. See
   `NOTSET`**, and `CRITICAL` sets the same silent threshold as `OFF`; and
   the list of valid names that the CLI and config errors quote is one
   constant in Rust and one in C++, with the messages unchanged.
+- **Every Python exception survives a process boundary** (L3-PY-025).
+  Python rebuilds an unpickled exception from its `args`, and each class
+  replaced those with its finished message, so 21 of the 24 classes could
+  not be unpickled or deep-copied at all, and the rest came back with the
+  message doubled and `path` holding the message. A decode in a
+  `concurrent.futures.ProcessPoolExecutor` worker that raised one -- a
+  non-MIE file's `MieNoValidRecordsError`, say -- surfaced as
+  `BrokenProcessPool` with the error lost, and in a `multiprocessing.Pool`
+  the result never arrived. The base class now keeps the arguments each
+  exception was made with and is rebuilt from them, so the copy has the same
+  class, message and attributes; classes added later inherit it.
 
 ### Maintenance
 

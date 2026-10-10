@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import copy
 import logging
+import pickle
 from pathlib import Path
 
 import pytest
@@ -13,6 +15,7 @@ from aero1553.exceptions import (
     MieFileError,
     MieFileNotFoundError,
     MieInvalidTypeWordError,
+    MieNoValidRecordsError,
     MiePayloadError,
     MieRecordError,
     MieRecordTruncatedError,
@@ -254,6 +257,114 @@ class TestExceptionAttributes:
         assert exc.destination == "/output/decoded.csv"
         assert exc.cause is cause
         assert "permission denied" in str(exc)
+
+
+def _sample_exceptions() -> dict[str, Aero1553Error]:
+    """One instance of every class in `aero1553.exceptions`, each with
+    distinct field values, so a copy that swaps or drops one shows up."""
+    from aero1553 import exceptions as e
+
+    return {
+        "Aero1553Error": e.Aero1553Error("boom"),
+        "MieFileError": e.MieFileError("boom"),
+        "MieFileNotFoundError": e.MieFileNotFoundError("a.mie"),
+        "MieNoValidRecordsError": e.MieNoValidRecordsError("a.mie", 65536),
+        "MieFileEmptyError": e.MieFileEmptyError("a.mie"),
+        "MieFileIoError": e.MieFileIoError("a.mie", PermissionError(13, "denied")),
+        "MieInputOutputCollisionError": e.MieInputOutputCollisionError("a.mie"),
+        "MieClobberRefusedError": e.MieClobberRefusedError("o.csv"),
+        "MieIncompatibleMergeInputsError": e.MieIncompatibleMergeInputsError(
+            1, "b.mie", "Standard-format input"
+        ),
+        "MieNonMonotonicInputError": e.MieNonMonotonicInputError(1, "b.mie", 10, 5),
+        "MieRecordError": e.MieRecordError(16, "bad"),
+        "MieInvalidTypeWordError": e.MieInvalidTypeWordError(16, 0x1234, 2),
+        "MieUnknownTypeWordError": e.MieUnknownTypeWordError(16, 0x1234, 0x34),
+        "MieRecordTruncatedError": e.MieRecordTruncatedError(16, 40, 10),
+        "MieHomogeneousPayloadError": e.MieHomogeneousPayloadError("a.mie", 8, 4),
+        "MieTimestampFormatMismatchError": e.MieTimestampFormatMismatchError(8, 3, 2, 7),
+        "MieCalendarUnavailableError": e.MieCalendarUnavailableError("day 366"),
+        "MieFirstRecordTruncatedError": e.MieFirstRecordTruncatedError(8, 40, 10),
+        "MiePayloadError": e.MiePayloadError(16, "bad payload"),
+        "MieWriterError": e.MieWriterError("o.csv", OSError(28, "No space")),
+        "MieUnrecoverableSyncLossError": e.MieUnrecoverableSyncLossError(16, 3),
+        "MieMergeInputsDroppedError": e.MieMergeInputsDroppedError(1, 2, 5),
+        "MieUnknownErrorCodeError": e.MieUnknownErrorCodeError(16, 0x0199),
+    }
+
+
+def _observable(exc: BaseException) -> tuple[object, ...]:
+    """What a caller can see: class, message, args and public attributes.
+    Exceptions compare by identity, so a wrapped one is compared by repr."""
+    public = {k: repr(v) for k, v in vars(exc).items() if not k.startswith("_")}
+    return type(exc), str(exc), exc.args, public
+
+
+def _decode_in_worker(path: str) -> int:
+    """Module-level so a process pool can import it in the worker."""
+    from aero1553 import MieFileReader
+
+    return sum(1 for _ in MieFileReader(path))
+
+
+class TestPickling:
+    """L3-PY-025: every exception survives a process boundary."""
+
+    @pytest.mark.requirement("L3-PY-025")
+    def test_every_class_has_a_sample(self) -> None:
+        """A new class must be added to the samples, and so to the tests below."""
+        import inspect
+
+        from aero1553 import exceptions as exc_mod
+
+        classes = {
+            name
+            for name, obj in inspect.getmembers(exc_mod, inspect.isclass)
+            if issubclass(obj, Aero1553Error)
+        }
+        samples = _sample_exceptions()
+        assert set(samples) == classes
+        for name, exc in samples.items():
+            assert type(exc).__name__ == name
+
+    @pytest.mark.requirement("L3-PY-025")
+    @pytest.mark.parametrize("name", sorted(_sample_exceptions()))
+    @pytest.mark.parametrize("protocol", range(pickle.HIGHEST_PROTOCOL + 1))
+    def test_pickle_round_trip_is_exact(self, name: str, protocol: int) -> None:
+        exc = _sample_exceptions()[name]
+        assert _observable(pickle.loads(pickle.dumps(exc, protocol))) == _observable(exc)
+
+    @pytest.mark.requirement("L3-PY-025")
+    @pytest.mark.parametrize("name", sorted(_sample_exceptions()))
+    def test_copy_and_deepcopy_are_exact(self, name: str) -> None:
+        exc = _sample_exceptions()[name]
+        assert _observable(copy.copy(exc)) == _observable(exc)
+        assert _observable(copy.deepcopy(exc)) == _observable(exc)
+
+    @pytest.mark.requirement("L3-PY-025")
+    def test_keyword_construction_and_added_attributes_round_trip(self) -> None:
+        exc = MieRecordTruncatedError(offset=16, record_bytes=40, available_bytes=10)
+        exc.context = "caller-added"  # type: ignore[attr-defined]
+        back = pickle.loads(pickle.dumps(exc))
+        assert _observable(back) == _observable(exc)
+        assert back.context == "caller-added"  # type: ignore[attr-defined]
+        assert (back.offset, back.record_bytes, back.available_bytes) == (16, 40, 10)
+
+    @pytest.mark.requirement("L3-PY-025")
+    def test_an_error_raised_in_a_worker_process_reaches_the_caller(self, tmp_path: Path) -> None:
+        """The decoder raises this one from the compiled extension. Before the
+        fix the worker's result could not be unpickled: `ProcessPoolExecutor`
+        reported `BrokenProcessPool` and `multiprocessing.Pool` never returned."""
+        import concurrent.futures
+
+        not_mie = tmp_path / "not-a-recording.mie"
+        not_mie.write_bytes(b"\xff" * 200)
+        with concurrent.futures.ProcessPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(_decode_in_worker, str(not_mie))
+            with pytest.raises(MieNoValidRecordsError) as caught:
+                future.result(timeout=120)
+        assert caught.value.path == str(not_mie)
+        assert caught.value.scan_bytes > 0
 
 
 class TestConfigureLogging:
