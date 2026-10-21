@@ -1,13 +1,13 @@
 name: Cross-implementation differential
 
-# THE ONLY JOB THAT RUNS ALL THREE IMPLEMENTATIONS TOGETHER.
+# THE JOB THAT RUNS EVERY IMPLEMENTATION TOGETHER AND COMPARES THEM.
 #
 # It lives in its own workflow, with NO path filter, and that is the entire
-# point of the file. It used to sit in cpp-ci.yml, which is filtered to
-# `cpp/**` -- so the one check capable of catching a divergence BETWEEN
-# implementations only ran when the C++ tree changed. A Rust or Python change
-# that introduced a config-parser divergence would not have been caught by the
-# check written to find exactly that.
+# point of the file. It used to sit in the (since removed) C++ workflow, which
+# was filtered to `cpp/**` -- so the one check capable of catching a divergence
+# BETWEEN implementations only ran when the C++ tree changed. A Rust or Python
+# change that introduced a config-parser divergence would not have been caught
+# by the check written to find exactly that.
 #
 # What only this job can do:
 #
@@ -17,9 +17,8 @@ name: Cross-implementation differential
 #   * Run the differential config-parser checks (config_parity, config_fuzz,
 #     config_path_parity). Each takes an implementation-to-CLI mapping and
 #     compares ALL PAIRS; with fewer than two implementations selected they
-#     skip themselves. ci.yml passes `--skip cpp` and cpp-ci.yml passes
-#     `--only cpp`, so in both of those the checks skip.
-#   * Run the CLI surface-parity gate across all three.
+#     skip themselves.
+#   * Run the CLI surface-parity gate across both CLIs.
 #
 # Its first run, when it was introduced, found two real divergences. That is
 # the reason it exists and the reason it must not be gated behind one
@@ -38,7 +37,7 @@ concurrency:
 
 jobs:
   cross-impl-differential:
-    name: Differential checks (all three implementations)
+    name: Differential checks (all implementations)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
@@ -61,14 +60,6 @@ jobs:
       - name: Install the Python package
         run: python -m pip install -e ./python pytest
 
-      - name: Install the C++ toolchain
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends g++-14 make
-
-      - name: Build the C++ decoder
-        run: make -C cpp -j"$(nproc)" all
-
       # No --only / --skip: the runner defaults to every registered
       # implementation and fails if one is missing, which is exactly what this
       # job wants to assert. The Rust binary is built by the runner itself if
@@ -77,14 +68,14 @@ jobs:
       # This also runs `record_fuzz.py`, the differential RECORD-STREAM fuzzer:
       # it generates recordings from the committed fixtures, damages them, and
       # compares the CSV bytes all-pairs. That is the only check anywhere that
-      # compares what the three DECODERS produce on inputs nobody wrote.
+      # compares what the DECODERS produce on inputs nobody wrote.
       - name: Conformance, surface parity, and the differential fuzzers
         run: python tests/conformance/run.py
 
       # The per-implementation L1-ROB-001 harnesses each prove their own process
       # did not crash. Their FUZZ-SUMMARY counters are defined to mean the same
-      # thing in all three, and comparing them is what turns "three
-      # implementations each survived" into "three implementations agreed".
+      # thing in both, and comparing them is what turns "each implementation
+      # survived" into "the implementations agreed".
       #
       # It runs HERE, on every push, and not only in the nightly burn-in: a PR
       # that introduced a divergence would otherwise stay green until the next
@@ -104,7 +95,6 @@ jobs:
           (cd python && python -m pytest tests/test_e2e.py::TestFuzzHarness \
               tests/test_merge.py::test_merge_input_resolution_tolerates_arbitrary_bytes \
               -q)
-          make -C cpp check-fuzz
 
       - name: Compare the summaries across implementations
         run: python scripts/compare-fuzz-summaries.py fuzz-summaries

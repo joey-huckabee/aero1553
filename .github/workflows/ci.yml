@@ -583,13 +583,10 @@ jobs:
         # locating rust/target/debug/aero1553, so the same invocation
         # works on both runners.
         #
-        # `--skip cpp` is explicit rather than implied: the runner defaults to
-        # every registered implementation and fails if one is missing, so a job
-        # that opts out has to say so. The alternative -- silently running
-        # whichever binaries happen to exist -- would let this job report a full
-        # pass after a build step had quietly failed. The C++ side is gated by
-        # the conformance jobs in cpp-ci.yml, which build it first.
-        run: python tests/conformance/run.py --skip cpp
+        # No --only / --skip: the runner defaults to every registered
+        # implementation and fails if one is missing, so a build step that
+        # quietly failed cannot turn into a smaller "full" pass.
+        run: python tests/conformance/run.py
 
   repo-hygiene:
     name: Repo hygiene (pre-commit backstop)

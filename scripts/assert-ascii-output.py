@@ -22,21 +22,18 @@ exactly like memory corruption to anyone who has not counted the bytes. Prose is
 therefore subject to the same rule as payload, and L2-CLI-014 now says so.
 
 The fix is ASCII at the source rather than a console call. ``SetConsoleOutputCP``
-would mean new OS surface in a platform layer deliberately confined to five
-concerns (``scripts/assert-platform-confined.sh``), a process-global state
-change, and no help at all when stderr is redirected to a file that some later
-tool reads at the code page. Rust and Python would each need their own
-equivalent. ASCII needs none of that and cannot regress per-platform.
+would mean new per-platform OS surface, a process-global state change, and no
+help at all when stderr is redirected to a file that some later tool reads at
+the code page. Rust and Python would each need their own equivalent. ASCII needs none of that and cannot regress per-platform.
 
 WHAT IS SCANNED
 ---------------
 
-Shipped sources only -- ``cpp/src``, ``cpp/include``, ``rust/src``,
-``python/src`` -- and within them only **string literals**. Comments and doc
+Shipped sources only -- ``rust/src`` and ``python/src`` -- and within them only **string literals**. Comments and doc
 comments are free to use whatever punctuation reads best; they are never
 written to a stream.
 
-The separate test trees (``cpp/tests``, ``rust/tests``, ``python/tests``) are
+The separate test trees (``rust/tests``, ``python/tests``) are
 NOT scanned. Those suites legitimately construct non-ASCII strings in order to
 prove the decoder handles them -- most visibly the UTF-8 filename cases behind
 the ``?`` glob rule, where a two-byte and a four-byte character are the point of
@@ -57,8 +54,8 @@ capable of reaching a console and only one of them is greppable:
 * an escape that denotes one -- ``\\xE2``, ``\\u2014``, ``\\u{2014}``,
   ``\\N{EM DASH}``, or an octal ``\\342``.
 
-C++ is the reason the escape half exists. ``cpp/src/cli.cpp`` spelled its help
-banner ``"mie-decoder \\xE2\\x80\\x94 DDC ..."``, which is pure ASCII on disk and
+The former C++ implementation (removed in 5.0.0) is the reason the escape half
+exists: its ``cli.cpp`` spelled its help banner ``"mie-decoder \\xE2\\x80\\x94 DDC ..."``, which is pure ASCII on disk and
 an em dash on the wire, so a byte-level scan of the tree reported it clean while
 the console showed mojibake.
 
@@ -76,7 +73,6 @@ from pathlib import Path
 # Shipped source roots, by language. Tests are deliberately absent -- see the
 # module docstring.
 TARGETS = (
-    ("cpp", ("cpp/src", "cpp/include"), (".cpp", ".hpp")),
     ("rust", ("rust/src",), (".rs",)),
     ("python", ("python/src",), (".py",)),
 )
@@ -103,7 +99,7 @@ class Literal:
 
 
 def _scan_c_like(src: str, rust: bool) -> list[Literal]:
-    """Extract string literals from C++ or Rust source.
+    """Extract string literals from Rust source.
 
     A hand-rolled scanner rather than a regex: a regex cannot tell a quote
     inside a ``//`` comment from one that opens a literal, and this file's whole
@@ -321,7 +317,7 @@ def _is_docstring(toks: list, idx: int) -> bool:
     return nxt is not None and nxt.type == tk.NEWLINE
 
 
-# Escapes that denote a codepoint. Octal is included because C++ accepts it and
+# Escapes that denote a codepoint. Octal is included because Python accepts it and
 # \342\200\224 is the same em dash by another spelling.
 #
 # Each must start at a backslash that is not itself escaped: an even run of

@@ -1,46 +1,32 @@
 name: Fuzz burn-in
 
 # Deeper run of the L1-ROB-001 no-panic harnesses than the ordinary suites do.
-# The normal `ci.yml` / `cpp-ci.yml` runs take the fixed 256-iteration default;
-# this workflow overrides MIE_FUZZ_ITERATIONS for a much larger sweep. The
-# generator is deterministic, so a burn-in is a strict superset of the default
-# run (same first 256 inputs) and a failure reproduces from the printed seed
-# against any implementation.
+# The normal `ci.yml` runs take the fixed 256-iteration default; this workflow
+# overrides MIE_FUZZ_ITERATIONS for a much larger sweep. The generator is
+# deterministic, so a burn-in is a strict superset of the default run (same
+# first 256 inputs) and a failure reproduces from the printed seed against
+# either implementation.
 #
-# THE THREE JOBS ARE SCOPED TO BE COMPARABLE. That is the point of the file and
-# it was not true before. Each implementation's harness used to run under its
-# own framework, at its own scope, reporting its own shape of result -- Rust
-# printed "1 passed", Python "2 passed", and C++ "484 test cases" because it ran
-# the WHOLE suite from a cold build, so its wall time was mostly not fuzzing and
-# Catch2 reports no per-case duration to recover it from. Three jobs proving
-# "did not crash" three different ways cannot be diffed against each other, and
-# a deterministic shared generator is wasted if nothing compares the results.
+# THE JOBS ARE SCOPED TO BE COMPARABLE. That is the point of the file and it
+# was not always true. Each implementation's harness used to run under its own
+# framework, at its own scope, reporting its own shape of result -- Rust
+# printed "1 passed", Python "2 passed", and the former C++ tree "484 test
+# cases". Jobs proving "did not crash" different ways cannot be diffed against
+# each other, and a deterministic shared generator is wasted if nothing
+# compares the results.
 #
 # So, in order:
 #
-#   * every job runs ONLY its fuzz harnesses (C++ via the `check-fuzz` target),
+#   * every job runs ONLY its fuzz harnesses,
 #   * every harness reads the SAME three environment variables,
 #   * every harness ends by writing one FUZZ-SUMMARY line of counters that are
-#     defined to mean the same thing in all three, and
+#     defined to mean the same thing in both implementations, and
 #   * `fuzz-compare` downloads all of them and fails if any two disagree.
 #
-# WHY WINDOWS IS IN THE MATRIX. The C++ platform layer is entirely different
-# code on Windows -- file mapping, path identity, binary stdout (ADR-0003) --
-# and mapping a file is the first thing every one of these harnesses does with
-# its garbage input. Rust's and Python's memory-mapping paths differ by platform
-# too. `ci.yml` and `cpp-ci.yml` already build and test all three on Windows,
-# but only ever at the 256-iteration default; the deep sweep ran on Linux alone.
-#
-# AND ONE JOB RUNS INSTRUMENTED. Until v2.16.0 the burn-in raised the iteration
-# count only on the uninstrumented -O2 C++ build -- the ASan/UBSan and Valgrind
-# tiers live in cpp-ci.yml and see the 256-iteration default -- so the deep
-# sweep ran precisely where a non-faulting out-of-bounds read goes unnoticed.
-# `fuzz-cpp-asan` closes that: same inputs, same count, ASan/UBSan/LSan on.
-#
-# Valgrind is deliberately NOT given a deep run. It is one to two orders of
-# magnitude slower than ASan and finds the same class of fault on this code, so
-# a 25 000-input memcheck would cost hours to duplicate what the ASan job
-# already covers. It stays at the default count in cpp-ci.yml.
+# WHY WINDOWS IS IN THE MATRIX. Mapping a file is the first thing every one of
+# these harnesses does with its garbage input, and Rust's and Python's
+# memory-mapping paths differ by platform. `ci.yml` already builds and tests
+# both on Windows, but only ever at the 256-iteration default.
 
 on:
   schedule:
@@ -67,10 +53,10 @@ env:
   MIE_FUZZ_ITERATIONS: ${{ github.event.inputs.iterations || '25000' }}
   # Replaces the former `--nocapture` / `-s` knobs, which did not work. Rust's
   # logger writes through `std::io::stderr()` and libtest's capture only
-  # intercepts the `print!` / `eprint!` macros; C++ writes to the stderr fd,
-  # which Catch2 does not redirect. So two of the three jobs streamed their
-  # diagnostics unconditionally -- tens of megabytes into every scheduled run --
-  # while pytest captured Python's and showed nothing at all. Neither job was
+  # intercepts the `print!` / `eprint!` macros. So the Rust job (and the former
+  # C++ one) streamed its diagnostics unconditionally -- tens of megabytes into
+  # every scheduled run -- while pytest captured Python's and showed nothing at
+  # all. Neither job was
   # answering the question the input claimed to ask. Silencing is now the
   # harness's job, and this variable is what asks it not to.
   MIE_FUZZ_STREAM_LOGS: ${{ github.event.inputs.stream_logs == 'true' && '1' || '0' }}
@@ -122,111 +108,6 @@ jobs:
           path: fuzz-summary.txt
           if-no-files-found: error
 
-  fuzz-cpp:
-    name: C++ fuzz burn-in (linux)
-    runs-on: ubuntu-24.04
-    env:
-      MIE_FUZZ_SUMMARY: ${{ github.workspace }}/fuzz-summary.txt
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install a compiler
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends g++ make
-
-      # `check-fuzz`, not `check`. The harness is an ordinary Catch2 case, so it
-      # already rides along on every tier in cpp-ci.yml -- modern g++, the GCC
-      # 4.8.5 fidelity tier, MSVC, ASan/UBSan and Valgrind. This job exists only
-      # to turn the iteration count up, and running the other ~480 cases at that
-      # point buries the measurement it is here to take. `make check` stays the
-      # single unparameterised command a developer runs.
-      - name: Run the L1-ROB-001 fuzz harness (burn-in)
-        run: make -C cpp -j"$(nproc)" check-fuzz
-
-      - name: Show summary
-        run: cat "$MIE_FUZZ_SUMMARY"
-
-      - name: Upload summary
-        uses: actions/upload-artifact@v6
-        with:
-          name: fuzz-summary-cpp-ubuntu-24.04
-          path: fuzz-summary.txt
-          if-no-files-found: error
-
-  fuzz-cpp-asan:
-    name: C++ fuzz burn-in (ASan/UBSan/LSan)
-    runs-on: ubuntu-24.04
-    env:
-      MIE_FUZZ_SUMMARY: ${{ github.workspace }}/fuzz-summary.txt
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Install a compiler
-        run: |
-          sudo apt-get update -qq
-          sudo apt-get install -y -qq --no-install-recommends g++ make
-
-      # THE POINT OF THIS JOB. Until v2.16.0 the burn-in raised the iteration
-      # count only on the uninstrumented -O2 build: the ASan/UBSan/Valgrind
-      # tiers live in cpp-ci.yml and see the 256-iteration default, so the deep
-      # sweep ran precisely where a non-faulting out-of-bounds read goes
-      # unnoticed. Twenty-five thousand random inputs against an instrumented
-      # binary is worth more than the same count against a bare one.
-      #
-      # Same iteration count as every other job, so its summary is comparable
-      # and `fuzz-compare` gets a seventh configuration to agree with. ASan
-      # slows the run but not enough to matter at these sizes.
-      - name: Run the L1-ROB-001 fuzz harnesses under sanitizers (burn-in)
-        run: make -C cpp -j"$(nproc)" check-fuzz SANITIZE=1
-
-      - name: Show summary
-        run: cat "$MIE_FUZZ_SUMMARY"
-
-      - name: Upload summary
-        uses: actions/upload-artifact@v6
-        with:
-          name: fuzz-summary-cpp-asan
-          path: fuzz-summary.txt
-          if-no-files-found: error
-
-  fuzz-cpp-msvc:
-    name: C++ fuzz burn-in (MSVC)
-    runs-on: windows-2022
-    env:
-      MIE_FUZZ_SUMMARY: ${{ github.workspace }}\fuzz-summary.txt
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-
-      - name: Configure
-        run: cmake -B cpp/build-msvc -S cpp -G "Visual Studio 17 2022" -A x64
-
-      - name: Build
-        run: cmake --build cpp/build-msvc --config Release
-
-      # The test binary directly rather than ctest: ctest registers the whole
-      # suite as one test and gives no way to pass Catch2 a tag filter, which is
-      # the whole point of this step. Same filter the `check-fuzz` target uses.
-      - name: Run the L1-ROB-001 fuzz harness (burn-in)
-        run: cpp\build-msvc\Release\aero1553_tests.exe --use-colour no "[fuzz]"
-
-      - name: Show summary
-        shell: bash
-        run: cat "$MIE_FUZZ_SUMMARY"
-
-      - name: Upload summary
-        uses: actions/upload-artifact@v6
-        with:
-          name: fuzz-summary-cpp-msvc
-          path: fuzz-summary.txt
-          if-no-files-found: error
-
   fuzz-python:
     name: Python fuzz burn-in (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
@@ -260,8 +141,8 @@ jobs:
 
       # TestFuzzHarness holds both the reader and dump harnesses. `-s` so the
       # harnesses' own stderr (the summary line, and the decoder diagnostics
-      # when MIE_FUZZ_STREAM_LOGS is set) reaches the job log the way Rust's and
-      # C++'s already do -- pytest is the only one of the three whose capture
+      # when MIE_FUZZ_STREAM_LOGS is set) reaches the job log the way Rust's
+      # already does -- pytest is the only harness runner whose capture
       # actually intercepts them.
       - name: Run the L1-ROB-001 fuzz harnesses (burn-in)
         run: >
@@ -284,7 +165,7 @@ jobs:
   fuzz-compare:
     name: Cross-implementation summary comparison
     runs-on: ubuntu-latest
-    needs: [fuzz-rust, fuzz-cpp, fuzz-cpp-asan, fuzz-cpp-msvc, fuzz-python]
+    needs: [fuzz-rust, fuzz-python]
 
     steps:
       - name: Check out repository
