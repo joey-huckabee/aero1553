@@ -2,7 +2,8 @@
 
 L2-MRG-001 says every implementation "SHALL expand it identically", and until
 v2.17.0 the only thing any test compared was the **wildcard matcher**. Each
-implementation had its own unit tests for ``*`` and ``?``, all three agreed, and
+of the three implementations of the time (Rust, Python and the C++ tree removed
+in 5.0.0) had its own unit tests for ``*`` and ``?``, all three agreed, and
 all three resolved different input sets anyway — because the disagreements were
 never about wildcards:
 
@@ -26,10 +27,10 @@ differ. So this compares the **resolved set**, across every implementation under
 test, on a directory built to contain exactly the entries they disagreed about.
 
 The set is read back through the CLI rather than through a library call, because
-the CLI is the only surface all three share. ``decode --glob`` over a multi-file
+the CLI is the only surface every implementation shares. ``decode --glob`` over a multi-file
 merge writes one CSV whose row count is a function of how many inputs were
 resolved, so a recording of a known record count per matched file turns "which
-files matched" into an integer the three must agree on. (``count`` would be the
+files matched" into an integer they must agree on. (``count`` would be the
 more direct spelling, but it takes a single input by design -- ``--glob`` is a
 ``decode`` flag.)
 

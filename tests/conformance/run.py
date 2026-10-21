@@ -64,9 +64,9 @@ FIELD_TYPES: dict[str, type | tuple[type, ...]] = {
     # `cli_message_parity` already pins; it stands in for "expected", which
     # such a case has no use for. It replaced a substring check
     # ("stdout contains 'decode'") written while the help texts differed --
-    # Python's per subcommand, Rust's one screen, C++'s its own -- and so could
-    # not be compared. Since v4.0.0 Python runs Rust's CLI, and since L7 C++
-    # prints Rust's help, so the whole text can be.
+    # Python's per subcommand, Rust's one screen, the former C++ tree's its own
+    # -- and so could not be compared. Since v4.0.0 Python runs Rust's CLI, so
+    # the whole text can be.
     "compare_stdout": bool,
     "expected_exit": int,
     # Content written to the destination BEFORE the run, so the overwrite
@@ -186,13 +186,6 @@ def parse_args() -> argparse.Namespace:
         "not itself launched from an interpreter that has aero1553.",
     )
     parser.add_argument(
-        "--cpp-bin",
-        type=Path,
-        help="Use this C++ binary instead of asking cpp/Makefile where it put "
-        "one (`make -s print-decoder-bin`). The build directory name encodes "
-        "the toolchain, so the Makefile is asked rather than re-derived here.",
-    )
-    parser.add_argument(
         "--update-expected",
         action="store_true",
         help="Update CSV oracles, but only when every implementation agrees.",
@@ -202,19 +195,16 @@ def parse_args() -> argparse.Namespace:
         "--only",
         metavar="IMPLS",
         help=(
-            "Comma-separated implementations to run, e.g. `--only cpp` or "
-            "`--only rust,python`. Validates just those against the committed "
-            "expected/ oracles, so a host missing a toolchain can still check "
-            "its own side."
+            "Comma-separated implementations to run, e.g. `--only rust`. "
+            "Validates just those against the committed expected/ oracles, so "
+            "a host missing a toolchain can still check its own side."
         ),
     )
     impl_group.add_argument(
         "--skip",
         metavar="IMPLS",
         help=(
-            "Comma-separated implementations to leave out; the rest run. "
-            "`--skip cpp` is the Rust/Python pairing this suite ran before the "
-            "C++ implementation existed."
+            "Comma-separated implementations to leave out; the rest run."
         ),
     )
     impl_group.add_argument(
@@ -606,69 +596,15 @@ def prepare_python_bin(args: argparse.Namespace) -> None:
         )
 
 
-def prepare_cpp_bin(args: argparse.Namespace) -> None:
-    """Resolve the C++ decoder binary.
-
-    The Makefile is ASKED where the binary is rather than the path being
-    re-derived here, because the build directory name encodes the target
-    triple, the compiler version and the sanitizer tier -- a runner that
-    guessed it would silently test yesterday's binary whenever any of those
-    changed. On Windows, where the build is CMake/MSVC and there may be no
-    make, the usual layouts are searched instead.
-
-    The binary is never built here. Unlike `cargo build`, a C++ build needs a
-    toolchain choice (make vs MSVC, which sanitizer tier), and guessing wrong
-    would produce a confusing failure inside a build the caller did not ask
-    for.
-
-    Raises:
-        RuntimeError: if ``--cpp-bin`` names a missing file, or no binary is
-            found by asking the Makefile or searching the build layouts.
-    """
-    if args.cpp_bin:
-        args.cpp_bin = args.cpp_bin.resolve()
-        if not args.cpp_bin.exists():
-            raise RuntimeError(f"--cpp-bin does not exist: {args.cpp_bin}")
-        return
-
-    cpp_dir = ROOT / "cpp"
-    candidate: Path | None = None
-    if shutil.which("make"):
-        probe = subprocess.run(
-            ["make", "-s", "print-decoder-bin"],
-            cwd=cpp_dir,
-            capture_output=True,
-            text=True,
-            check=False,
-            timeout=60,
-        )
-        reported = probe.stdout.strip()
-        if probe.returncode == 0 and reported:
-            candidate = (cpp_dir / reported).resolve()
-
-    if candidate is None or not candidate.exists():
-        suffix = ".exe" if sys.platform == "win32" else ""
-        found = sorted(cpp_dir.glob(f"build*/**/aero1553{suffix}"))
-        candidate = found[-1].resolve() if found else candidate
-
-    if candidate is None or not candidate.exists():
-        raise RuntimeError(
-            "the C++ decoder binary was not found. Build it first "
-            "(`cd cpp && make all`, or the CMake/MSVC build on Windows) or "
-            "pass --cpp-bin. To run this suite without the C++ "
-            "implementation, pass `--skip cpp`."
-        )
-    args.cpp_bin = candidate
-
-
 class ImplSpec:
     """One implementation, and everything the runner needs to drive it.
 
     A registry entry rather than a hard-wired pair of code paths: the suite ran
     against exactly two implementations for its whole life, and every
     comparison, skip and oracle check was written as `rust`/`python` variables
-    side by side. Adding a third that way would have meant tripling roughly two
-    hundred lines and getting each one right; adding it here means one entry.
+    side by side. Adding a third that way (the C++ implementation, since
+    removed) would have meant tripling roughly two hundred lines and getting
+    each one right; adding it here meant one entry.
     """
 
     def __init__(
@@ -703,8 +639,9 @@ class ImplSpec:
         """Why this implementation cannot run `case`, or None if it can.
 
         The phase limitation belongs to the IMPLEMENTATION, not to the case: a
-        merge case is a perfectly good case, it is the C++ build that has no
-        merge yet. Marking it on the case would mean editing the manifest twice
+        merge case is a perfectly good case, it was the (since removed) C++
+        build, delivered in phases, that had no merge yet. Marking it on the
+        case would mean editing the manifest twice
         -- once to exclude, once to put back -- and in between, the manifest
         would misdescribe the contract.
         """
@@ -727,12 +664,6 @@ IMPLS: dict[str, ImplSpec] = {
         # decode flag set -- so this differs only in the entrypoint prefix. The
         # per-case `args` are passed verbatim to every implementation.
         prefix=lambda args: [str(args.python_bin), "-m", "aero1553"],
-    ),
-    "cpp": ImplSpec(
-        name="cpp",
-        label="C++",
-        prepare=prepare_cpp_bin,
-        prefix=lambda args: [str(args.cpp_bin)],
     ),
 }
 
@@ -870,8 +801,8 @@ def main() -> int:
         )
 
     # Only prepare the toolchains we will actually run -- this is what lets a
-    # single-implementation host (no cargo, no installed aero1553, no C++
-    # build) still validate its side against the committed oracles.
+    # single-implementation host (no cargo, or no installed aero1553) still
+    # validate its side against the committed oracles.
     for impl in impls:
         impl.prepare(args)
     print(f"IMPLS {', '.join(impl.label for impl in impls)}")
@@ -920,7 +851,7 @@ def main() -> int:
             # The record-stream twin of the config fuzzer: the only check that
             # compares what the DECODERS produce on inputs nobody wrote. The
             # per-implementation fuzz harnesses each prove their own process did
-            # not crash; this proves the three agree.
+            # not crash; this proves they agree.
             check_record_stream_fuzz(invocations, ROOT, SUITE, temp)
             # Same idea one level up: the config *path*, not its contents.
             check_config_path_parity(invocations, ROOT, parity_input, temp)

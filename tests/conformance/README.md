@@ -1,8 +1,8 @@
 # Cross-Implementation Conformance
 
-This suite verifies behavior shared by the Rust, Python and C++
-implementations. The runner defaults to **every** registered implementation and
-fails if one is missing, so a case cannot quietly test fewer than all three.
+This suite verifies behavior shared by the Rust and Python implementations.
+The runner defaults to **every** registered implementation and fails if one is
+missing, so a case cannot quietly test fewer than both.
 Each case provides:
 
 - a text-based hexadecimal MIE input under `inputs/`;
@@ -10,7 +10,7 @@ Each case provides:
 - expected vendor-compatible CSV output under `expected/`;
 - the expected stderr under `expected/<case>.stderr`, where the case writes any
   (see [Stderr oracles](#stderr-oracles)); and
-- optional extra CLI arguments in `manifest.json` (the `args` field), passed verbatim to all three CLIs — they share one identical argument surface, which the `cli-surface-parity` gate compares across every implementation.
+- optional extra CLI arguments in `manifest.json` (the `args` field), passed verbatim to both CLIs — they share one identical argument surface, which the `cli-surface-parity` gate compares across every implementation.
 
 The runner materializes temporary `.mie` files, invokes every CLI, and requires
 each one's output to match the checked-in CSV oracle byte-for-byte, and its
@@ -88,7 +88,7 @@ minimal Rust parser), so `run.py` cross-checks them when both are present:
   pinned in `config_parity.py`. Set `MIE_CONFIG_FUZZ_SEED` / `MIE_CONFIG_FUZZ_ITERS` to explore
   further locally.
 - **`record_fuzz.py`** — the record-stream twin of `config_fuzz.py`, and the only
-  check anywhere that compares what the three **decoders produce** on input
+  check anywhere that compares what the **decoders produce** on input
   nobody wrote. It builds a recording by concatenating one to three of the
   committed hex fixtures, then *damages* it (bit flips, truncation, spliced
   noise, zeroed words, duplicated slices), runs `decode` through every
@@ -136,8 +136,8 @@ at any implementation count, `--only` included:
   as a long run of `./` segments. Every result must match the same
   implementation's run at a short path byte for byte. It runs on every
   platform; only Windows needed work to pass it, since Win32 refuses such paths
-  without the `\\?\` prefix that Rust's standard library adds and the C++ build
-  had not.
+  without the `\\?\` prefix that Rust's standard library adds and the former
+  C++ build (removed in 5.0.0) had not.
 
 ## Manifest schema
 
@@ -158,7 +158,7 @@ array of case objects. Each case object accepts the following fields:
 | `expected_exit` | integer | no | Expected exit code for both implementations. Defaults to `0`. Negative cases (exit `1`/`2`/`3` per `L1-EXIT-002`..`L1-EXIT-004`) may omit `expected`; the exit code and the stderr oracle are the assertion. |
 | `global_args` | array of string | no | Arguments placed **before** the subcommand, where the global flags (`--log-level`, `--config`) are parsed. `args` goes *after* the subcommand, so it cannot reach them — and Rust parses globals in a separate loop from subcommand flags, so both paths need covering independently. |
 | `subcommand_args` | array of string | no | Arguments placed immediately **after** the subcommand and **before** the input paths. `args` goes after the paths and after `-o`, which is too late to exercise anything positional — `--` in particular, whose whole job is to change how the paths that follow it are read. |
-| `compare_stdout` | boolean | no | The payload is stdout rather than the CSV: it must be non-empty and byte-identical across every implementation, with no oracle file. For a case that ends in help, whose text `cli_message_parity.py` already pins. It replaced `expected_stdout_contains`, a substring check written while the help texts differed between implementations; since v4.0.0 Python runs Rust's CLI and C++ prints Rust's help, so the whole text is compared. |
+| `compare_stdout` | boolean | no | The payload is stdout rather than the CSV: it must be non-empty and byte-identical across every implementation, with no oracle file. For a case that ends in help, whose text `cli_message_parity.py` already pins. It replaced `expected_stdout_contains`, a substring check written while the help texts differed between implementations; since v4.0.0 Python runs Rust's CLI, so the whole text is compared. |
 | `pre_existing_output` | string | no | Content written to the destination **before** the run. Pins the overwrite contract (`L2-WRT-017`): with `no_clobber` off — the default — a decode must replace an unrelated existing file, and with it on must refuse. The sentinel is deliberately not valid CSV, so any of it surviving into the comparison means the destination was appended to rather than replaced. |
 
 Unknown fields SHALL be rejected by the runner with a clear error so typos do
@@ -192,5 +192,5 @@ longer in the manifest fails the run.
 This replaced substring assertions. A substring cannot fail on what it does
 not mention: three cases in four had no stderr assertion at all, so a new
 stray WARN in any of them passed, and one case's substring stopped a word short
-of a real divergence -- C++ named the message format `format 1` where Rust and
-Python said `Receive`.
+of a real divergence -- the former C++ implementation named the message format
+`format 1` where Rust and Python said `Receive`.

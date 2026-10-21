@@ -70,9 +70,7 @@ def test_conformance_runner_registers_both_clis() -> None:
     for name in ("rust", "python"):
         assert name in runner.IMPLS, f"conformance runner does not register {name!r}"
 
-    args = argparse.Namespace(
-        rust_bin=Path("rust-cli"), python_bin=Path("py"), cpp_bin=Path("cpp-cli")
-    )
+    args = argparse.Namespace(rust_bin=Path("rust-cli"), python_bin=Path("py"))
     case = {"name": "meta", "input": "inputs/meta.hex", "expected": "expected/meta.csv"}
     sources = [Path("meta.mie")]
 

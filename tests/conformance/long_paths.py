@@ -3,10 +3,10 @@
 Win32's classic file APIs refuse a full path longer than ``MAX_PATH`` (260)
 unless it carries the ``\\\\?\\`` extended-length prefix -- or the executable's
 manifest opts in to long paths AND the machine enables ``LongPathsEnabled``.
-Rust's standard library adds the prefix itself. The C++ build did not, so a
-recording in a deep directory failed there as "MIE file not found" while Rust
-decoded it, and enabling the registry switch did not help: the C++ executable
-does not opt in.
+Rust's standard library adds the prefix itself. The former C++ build (removed
+in 5.0.0) did not, so a recording in a deep directory failed there as "MIE file
+not found" while Rust decoded it, and enabling the registry switch did not
+help: the C++ executable did not opt in.
 
 The manifest cannot express this. A case's paths are chosen by the runner, in
 a temp directory that is nowhere near the limit, and a hex fixture cannot make

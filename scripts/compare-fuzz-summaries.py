@@ -2,18 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 """Compare the FUZZ-SUMMARY lines emitted by every fuzz burn-in job.
 
-WHY THIS EXISTS. The three L1-ROB-001 byte harnesses share a generator -- same
+WHY THIS EXISTS. The L1-ROB-001 byte harnesses share a generator -- same
 xorshift64, same seed, same size bands, same draw order -- so iteration N is the
-same bytes in Rust, Python and C++. What they did NOT share was an assertion:
-each one proved, in its own process and its own test framework, that it did not
-crash. Three implementations can each survive the same input while decoding it
-differently, and nothing noticed.
+same bytes in Rust and Python (and was in the C++ implementation removed in
+5.0.0). What they did NOT share was an assertion: each one proved, in its own
+process and its own test framework, that it did not crash. Two implementations
+can each survive the same input while decoding it differently, and nothing
+noticed.
 
 Each harness now ends by writing one line of counters that are defined to mean
 the same thing everywhere. This script is the part that actually compares them.
 It is not a replacement for a real differential driver over the decoded CSV
-(docs/FUZZING.md 6.1); it is the cheap precursor, and it is what turns "three
-implementations each survived" into "three implementations agreed".
+(docs/FUZZING.md 6.1); it is the cheap precursor, and it is what turns "each
+implementation survived" into "the implementations agreed".
 
 ALL-PAIRS, NOT MAJORITY -- the same rule, and the same reasoning, as
 tests/conformance/differential.py: two implementations sharing a bug would
@@ -21,14 +22,14 @@ outvote the correct one, and nominating a reference would make its quirks
 normative. The report names the split without naming a winner.
 
 WHAT IS COMPARED. Every field of the line except `impl`. That means the counters
-have to be path-independent by construction: the three harnesses name their temp
+have to be path-independent by construction: the harnesses name their temp
 files differently, so anything derived from a path measures the harness rather
 than the decoder. (The dump harness counts output LINES for exactly this reason
 -- it counted bytes first, and the two implementations disagreed by a constant
 offset that turned out to be the length of the file path in the dump header.)
 
 A HARNESS PRESENT IN SOME IMPLEMENTATIONS AND NOT OTHERS IS REPORTED, NOT
-FAILED. C++ has no `dump` harness yet; that is a known parity gap, tracked in
+FAILED. A harness one implementation lacks is a parity gap, tracked in
 docs/FUZZING.md section 5, and failing the nightly on it would just make the job
 permanently red and therefore ignored. A DIVERGENCE fails; a GAP is announced.
 
@@ -134,7 +135,7 @@ def main() -> int:
                 print(f"        {', '.join(sorted(who))}")
                 print(f"          {value}")
 
-        missing = sorted({"rust", "python", "cpp"} - set(impls))
+        missing = sorted({"rust", "python"} - set(impls))
         if missing:
             # Announced, never failed -- see the module docstring.
             print(

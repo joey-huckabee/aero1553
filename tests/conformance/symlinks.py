@@ -3,9 +3,10 @@
 L2-RDR-005 and L2-RDR-006 require an input to be judged by the file a symlink
 resolves to: a link to a recording decodes as that recording, and a link whose
 target is gone is a missing file. L2-MRG-001 clause 4 says the same of
-``--glob``. Rust's ``std::fs`` follows symlinks on every platform, the Python
-package reads through the Rust extension, and the C++ POSIX backend uses
-``stat()``. The C++ Windows backend used ``GetFileAttributesExW``, which
+``--glob``. Rust's ``std::fs`` follows symlinks on every platform and the
+Python package reads through the Rust extension. The former C++ implementation
+(removed in 5.0.0) used ``stat()`` on POSIX, but its Windows backend used
+``GetFileAttributesExW``, which
 describes the link itself -- zero bytes, and present even when dangling -- so
 there a symlinked recording was refused as empty, a dangling one reported an
 I/O failure instead of "not found", and ``--glob`` matched a dangling link the

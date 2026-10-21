@@ -1,8 +1,7 @@
 """Differential *fuzzer* for the record-stream decoders.
 
-WHAT THIS IS FOR. The three in-process L1-ROB-001 harnesses
-(`rust/tests/integration.rs`, `python/tests/test_e2e.py`,
-`cpp/tests/test_fuzz.cpp`) share a generator, so iteration N is the same bytes
+WHAT THIS IS FOR. The in-process L1-ROB-001 harnesses
+(`rust/tests/integration.rs`, `python/tests/test_e2e.py`) share a generator, so iteration N is the same bytes
 everywhere -- but each one only ever proves a negative about its own process:
 *it did not crash*. Their ``FUZZ-SUMMARY`` lines compare run totals, which
 catches a disagreement about how many records a file yields but not two
@@ -20,7 +19,7 @@ STRUCTURE-AWARE, NOT UNIFORM NOISE. The in-process harnesses feed uniform random
 bytes, which reach the *recovery* paths densely and the *valid record* paths
 almost never -- across a 25 000-iteration burn-in they never once produced
 enough consecutive equal-timestamp records to reach the canonical-order stage's
-cap branch, which all three harnesses' comments claimed they reached "often".
+cap branch, which every harness's comments claimed it reached "often".
 This generator instead starts from the committed conformance fixtures -- every
 valid record shape the project knows about -- concatenates a few, and then
 *damages* them. That reaches decode, ordering, DELTA and error-classification
