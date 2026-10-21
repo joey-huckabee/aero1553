@@ -31,7 +31,7 @@ shared behavior) holds at any compatible version pair. See
   output buffer grows from 8 KiB to 256 KiB, which removes about 97% of
   the `write` system calls.
 
-## [5.0.0] — 2026-10-22
+## [5.0.0] — 2026-10-21
 
 ### Removed — BREAKING
 
