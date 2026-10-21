@@ -35,11 +35,146 @@ use crate::sync::{
 };
 use crate::{log_debug, log_error, log_info, log_warn};
 
+// ── I/O backends (EXPERIMENT, branch perf/io-backends) ──────────────────────
+//
+// Three ways for the reader to get at the file's bytes, chosen at run time by
+// `AERO1553_IO` so one binary times all three (a separate build per backend
+// would also measure code layout, which already moved the merge by ~12%):
+//
+//   mmap            today's memory map (the default)
+//   readall         the whole file read into one heap buffer
+//   stream[:BYTES]  a sliding window refilled by positional reads; BYTES is
+//                   the read size (default 256 KiB)
+//
+// Every sync/decode helper takes `&[u8]` plus offsets into it. The whole-file
+// backends hand over the file with base 0, exactly as before. The stream hands
+// over its window and the window's base, and guarantees before each use that
+// the window reaches as far as the helper can look -- or to EOF -- so a helper
+// cannot tell a window from the file.
+
+/// How far past an offset a sync helper can read: `recover_sync` /
+/// `find_first_record` scan `MAX_SCAN_BYTES` of candidates, each validated
+/// with up to 32 look-ahead records (plus the follower's Type Word); the
+/// format probe walks at most 32 records and the homogeneity check 4.
+const STREAM_REACH: usize = MAX_SCAN_BYTES + 34 * crate::sync::MAX_RECORD_BYTES;
+
+/// What decoding one record in an already-locked chain can read: the record
+/// itself (depth-1 validation) and nothing after it.
+const STREAM_RECORD_NEED: usize = crate::sync::MAX_RECORD_BYTES + 2;
+
+const DEFAULT_STREAM_CHUNK: usize = 256 * 1024;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum IoMode {
+    Mmap,
+    ReadAll,
+    Stream { chunk: usize },
+}
+
+impl IoMode {
+    fn from_env() -> Self {
+        let Ok(v) = std::env::var("AERO1553_IO") else {
+            return Self::Mmap;
+        };
+        match v.split_once(':') {
+            _ if v == "readall" => Self::ReadAll,
+            _ if v == "stream" => Self::Stream {
+                chunk: DEFAULT_STREAM_CHUNK,
+            },
+            Some(("stream", n)) => Self::Stream {
+                chunk: n.parse().unwrap_or(DEFAULT_STREAM_CHUNK).max(4096),
+            },
+            _ => Self::Mmap,
+        }
+    }
+}
+
+/// The whole file in memory, shared by every iterator of one reader.
+enum Whole {
+    Mapped(Mmap),
+    Owned(Vec<u8>),
+}
+
+impl std::ops::Deref for Whole {
+    type Target = [u8];
+    fn deref(&self) -> &[u8] {
+        match self {
+            Self::Mapped(m) => m,
+            Self::Owned(v) => v,
+        }
+    }
+}
+
+/// One iterator's view of the bytes: the whole file (base 0), or a window.
+struct Window {
+    whole: Option<Arc<Whole>>,
+    file: Arc<File>,
+    /// Stream only: `buf[..end]` holds the file's bytes from `base`.
+    buf: Vec<u8>,
+    end: usize,
+    base: usize,
+    chunk: usize,
+}
+
+impl Window {
+    fn bytes(&self) -> &[u8] {
+        match &self.whole {
+            Some(w) => w,
+            None => &self.buf[..self.end],
+        }
+    }
+
+    /// Make the window cover `[offset, offset + need)`, or `[offset, EOF)`.
+    /// A file that turns out shorter than its size at open (truncated while
+    /// being read) ends where the reads end: `file_len` is lowered to match.
+    fn ensure(&mut self, offset: usize, need: usize, file_len: &mut usize) -> std::io::Result<()> {
+        if self.whole.is_some() {
+            return Ok(());
+        }
+        let win_end = self.base + self.end;
+        if win_end >= *file_len || (offset <= win_end && win_end - offset >= need) {
+            return Ok(());
+        }
+        let keep_from = offset.saturating_sub(self.base).min(self.end);
+        self.buf.copy_within(keep_from..self.end, 0);
+        self.end -= keep_from;
+        self.base += keep_from;
+        let target = self.chunk.max(need);
+        if self.buf.len() < target {
+            self.buf.resize(target, 0);
+        }
+        let want_end = target.min(*file_len - self.base);
+        while self.end < want_end {
+            let pos = (self.base + self.end) as u64;
+            let n = read_at(&self.file, &mut self.buf[self.end..want_end], pos)?;
+            if n == 0 {
+                *file_len = self.base + self.end;
+                break;
+            }
+            self.end += n;
+        }
+        Ok(())
+    }
+}
+
+#[cfg(unix)]
+fn read_at(file: &File, buf: &mut [u8], pos: u64) -> std::io::Result<usize> {
+    std::os::unix::fs::FileExt::read_at(file, buf, pos)
+}
+
+#[cfg(windows)]
+fn read_at(file: &File, buf: &mut [u8], pos: u64) -> std::io::Result<usize> {
+    std::os::windows::fs::FileExt::seek_read(file, buf, pos)
+}
+
 /// Reader handle. Construct with [`Self::new`]; iterate by calling `.iter()`
 /// or using `IntoIterator`.
 pub struct MieFileReader {
     path: Arc<Path>,
-    mmap: Arc<Mmap>,
+    /// The whole file, for the `mmap` and `readall` backends; `None` streams.
+    whole: Option<Arc<Whole>>,
+    file: Arc<File>,
+    io: IoMode,
     file_size: u64,
     strict: bool,
     input_time_format: TimestampFormat,
@@ -174,18 +309,34 @@ impl MieFileReader {
             return Err(MieError::FileEmpty { path });
         }
 
-        // SAFETY: `Mmap::map` creates a read-only memory map of the
-        // already-opened file. memmap2's contract requires the underlying
-        // file not be mutated or truncated while mapped; we document that as
-        // a precondition (L1-EXIT-006 — modifying the input during decode is
-        // undefined). The returned `Mmap` owns the OS mapping and keeps it
-        // valid independently of `file`, which is dropped at the end of this
-        // function (closing the fd does not invalidate the mapping). The raw
-        // bytes are never exposed outside the reader.
-        let mmap = unsafe { Mmap::map(&file) }.map_err(|source| MieError::FileIo {
-            path: path.clone(),
-            source,
-        })?;
+        let io = IoMode::from_env();
+        let whole = match io {
+            IoMode::Mmap => {
+                // SAFETY: `Mmap::map` creates a read-only memory map of the
+                // already-opened file. memmap2's contract requires the
+                // underlying file not be mutated or truncated while mapped; we
+                // document that as a precondition (L1-EXIT-006 — modifying the
+                // input during decode is undefined). The returned `Mmap` owns
+                // the OS mapping and keeps it valid independently of `file`.
+                // The raw bytes are never exposed outside the reader.
+                let map = unsafe { Mmap::map(&file) }.map_err(|source| MieError::FileIo {
+                    path: path.clone(),
+                    source,
+                })?;
+                Some(Whole::Mapped(map))
+            }
+            IoMode::ReadAll => {
+                let mut buf = Vec::with_capacity(usize::try_from(file_size).unwrap_or(0));
+                std::io::Read::read_to_end(&mut &file, &mut buf).map_err(|source| {
+                    MieError::FileIo {
+                        path: path.clone(),
+                        source,
+                    }
+                })?;
+                Some(Whole::Owned(buf))
+            }
+            IoMode::Stream { .. } => None,
+        };
 
         log_debug!(
             "reader opened {} ({} bytes, strict={}, input_time_format={:?}, detect_records={})",
@@ -208,7 +359,9 @@ impl MieFileReader {
 
         Ok(Self {
             path: Arc::from(path),
-            mmap: Arc::new(mmap),
+            whole: whole.map(Arc::new),
+            file: Arc::new(file),
+            io,
             file_size,
             strict: opts.strict,
             input_time_format: opts.input_time_format,
@@ -537,12 +690,36 @@ impl MieFileReader {
             Some(self.input_time_format)
         };
 
-        let data: &[u8] = &self.mmap;
-        let file_len = data.len();
+        let mut file_len = usize::try_from(self.file_size).unwrap_or(usize::MAX);
+        let mut window = Window {
+            whole: self.whole.clone(),
+            file: Arc::clone(&self.file),
+            buf: Vec::new(),
+            end: 0,
+            base: 0,
+            chunk: match self.io {
+                IoMode::Stream { chunk } => chunk,
+                _ => 0,
+            },
+        };
+        let open_error = window
+            .ensure(0, STREAM_REACH, &mut file_len)
+            .err()
+            .map(|source| MieError::FileIo {
+                path: self.path.to_path_buf(),
+                source,
+            });
+        if let Some(w) = &self.whole {
+            file_len = w.len();
+        }
+        // The window starts at 0 and reaches STREAM_REACH or EOF, so the
+        // start-up helpers see what they would see in the whole file.
+        let data: &[u8] = window.bytes();
+        let win_len = data.len();
 
         let start_offset = find_first_record(
             data,
-            file_len,
+            win_len,
             format_hint,
             MAX_SCAN_BYTES,
             self.lookahead_records,
@@ -572,16 +749,18 @@ impl MieFileReader {
                 err
             }
             None => {
-                let (early, err) = self.diagnose_no_records(data, file_len, format_hint);
+                let (early, err) = self.diagnose_no_records(data, win_len, format_hint);
                 early_done = early;
                 err
             }
         };
 
+        let pending_error = open_error.or(pending_error);
+
         log_info!("beginning decode of {}", self.path.display());
 
         RecordIter {
-            data: Arc::clone(&self.mmap),
+            src: window,
             _reader: PhantomData,
             file_len,
             offset: start_offset.map_or(file_len, |h| h.offset),
@@ -615,7 +794,10 @@ impl<'a> IntoIterator for &'a MieFileReader {
 }
 
 pub struct RecordIter<'a> {
-    data: Arc<Mmap>,
+    /// The bytes: the whole file, or the stream backend's window. Offsets in
+    /// this struct (`offset`, `file_len`) are file-absolute; reads go through
+    /// [`Self::win`] at [`Self::rel`].
+    src: Window,
     /// Keeps `RecordIter<'a>`'s lifetime parameter, which is public API. The
     /// iterator no longer borrows its reader -- it shares the mapping, the
     /// sync-loss counter and the path through `Arc`s -- so `'a` constrains
@@ -686,11 +868,12 @@ pub struct RecordIter<'a> {
     warned_day_rollover: bool,
 }
 
-fn log_validation_context(data: &[u8], offset: usize) {
+fn log_validation_context(data: &[u8], rel: usize, base: usize) {
     if !crate::log::enabled(crate::log::Level::Debug) {
         return;
     }
-    let start = offset.saturating_sub(16);
+    let offset = base + rel;
+    let start = rel.saturating_sub(16);
     let end = data.len().min(start.saturating_add(32));
     let hex = data[start..end]
         .iter()
@@ -766,6 +949,16 @@ impl RecordIter<'_> {
     /// proceed. All the original loop-body paths are preserved exactly; only the
     /// control flow is expressed via [`Step`] so the work can live in helpers.
     fn decode_one(&mut self) -> Step {
+        if let Err(source) = self
+            .src
+            .ensure(self.offset, STREAM_RECORD_NEED, &mut self.file_len)
+        {
+            self.done = true;
+            return Step::Yield(Err(MieError::FileIo {
+                path: self.path_for_log.to_path_buf(),
+                source,
+            }));
+        }
         // Need at least a Type Word + minimum-format payload. A tail of 2-7
         // bytes still holds a readable Type Word, and unless it is the null
         // terminator it is a record cut short. Strict mode falls through so the
@@ -776,7 +969,7 @@ impl RecordIter<'_> {
         let remaining = self.file_len.saturating_sub(self.offset);
         if remaining < MIN_RECORD_BYTES_STANDARD {
             let tail = if remaining >= 2 {
-                read_u16(&self.data, self.offset).filter(|&raw| !is_terminator_type_word(raw))
+                read_u16(self.win(), self.rel()).filter(|&raw| !is_terminator_type_word(raw))
             } else {
                 None
             };
@@ -789,7 +982,7 @@ impl RecordIter<'_> {
                 return Step::Stop;
             }
         }
-        let Some(type_raw) = read_u16(&self.data, self.offset) else {
+        let Some(type_raw) = read_u16(self.win(), self.rel()) else {
             self.done = true;
             return Step::Stop;
         };
@@ -826,7 +1019,7 @@ impl RecordIter<'_> {
         // whether the *next* boundary is corrupt is the next iteration's
         // problem, and sync recovery already handles it (L2-SYN-005).
         if let Err(failure) =
-            validate_record_detailed(&self.data, self.offset, self.file_len, Some(resolved), 1)
+            validate_record_detailed(self.win(), self.rel(), self.win().len(), Some(resolved), 1)
         {
             return self.handle_sync_loss(failure, type_raw, tw, record_bytes);
         }
@@ -836,7 +1029,8 @@ impl RecordIter<'_> {
         let Some(timestamp) = self.decode_timestamp_at(resolved) else {
             return Step::Stop;
         };
-        let cmd_byte_offset = self.offset + 2 + usize::from(ts_words) * 2;
+        // Window-relative, like every byte position below: used only to read.
+        let cmd_byte_offset = self.rel() + 2 + usize::from(ts_words) * 2;
 
         // SPURIOUS_DATA: no Command Word.
         if tw.message_type == MessageType::SpuriousData as u8 {
@@ -844,7 +1038,7 @@ impl RecordIter<'_> {
             return Step::Yield(Ok(msg));
         }
 
-        let Some(cmd_raw) = read_u16(&self.data, cmd_byte_offset) else {
+        let Some(cmd_raw) = read_u16(self.win(), cmd_byte_offset) else {
             self.done = true;
             return Step::Stop;
         };
@@ -913,7 +1107,7 @@ impl RecordIter<'_> {
         tw: TypeWord,
         record_bytes: usize,
     ) -> Step {
-        log_validation_context(&self.data, self.offset);
+        log_validation_context(self.win(), self.rel(), self.src.base);
         if self.strict {
             self.count_sync_loss();
             let err = match failure {
@@ -947,14 +1141,29 @@ impl RecordIter<'_> {
         // tell which. Narrating before the scan called every truncated tail a
         // sync loss -- "sync lost", "1 sync recoveries", partial-recovered --
         // for a file in which nothing was lost or recovered.
+        if let Err(source) = self
+            .src
+            .ensure(self.offset, STREAM_REACH, &mut self.file_len)
+        {
+            self.done = true;
+            return Step::Yield(Err(MieError::FileIo {
+                path: self.path_for_log.to_path_buf(),
+                source,
+            }));
+        }
+        let base = self.src.base;
         let scan = recover_sync(
-            &self.data,
-            self.offset,
-            self.file_len,
+            self.win(),
+            self.rel(),
+            self.win().len(),
             Some(self.resolved_format),
             MAX_SCAN_BYTES,
             self.lookahead_records,
-        );
+        )
+        .map(|hit| ScanHit {
+            offset: hit.offset + base,
+            skipped: hit.skipped,
+        });
         if scan.is_none() && matches!(failure, ValidationFailure::RecordTruncated) {
             // Nothing decodable follows and the record runs past EOF: the file
             // ends inside it. A truncated final record (L2-RDR-002), reported
@@ -1027,8 +1236,8 @@ impl RecordIter<'_> {
     fn decode_timestamp_at(&mut self, resolved: TimestampFormat) -> Option<Timestamp> {
         match resolved {
             TimestampFormat::Standard => {
-                let upper = read_u16(&self.data, self.offset + 2)?;
-                let lower = read_u16(&self.data, self.offset + 4)?;
+                let upper = read_u16(self.win(), self.rel() + 2)?;
+                let lower = read_u16(self.win(), self.rel() + 4)?;
                 Some(Timestamp::Standard(decode_standard_timestamp(upper, lower)))
             }
             // Irig — and Auto, which is resolved to a concrete format eagerly in
@@ -1038,9 +1247,9 @@ impl RecordIter<'_> {
             // (L1-ROB-001) — the earlier `unreachable!()` nicked the no-panic
             // invariant even though it was provably unreachable.
             TimestampFormat::Irig | TimestampFormat::Auto => {
-                let upper = read_u16(&self.data, self.offset + 2)?;
-                let middle = read_u16(&self.data, self.offset + 4)?;
-                let lower = read_u16(&self.data, self.offset + 6)?;
+                let upper = read_u16(self.win(), self.rel() + 2)?;
+                let middle = read_u16(self.win(), self.rel() + 4)?;
+                let lower = read_u16(self.win(), self.rel() + 6)?;
                 let irig = decode_irig_timestamp(upper, middle, lower);
                 // L2-WRT-026 clause 4: under a calendar rendering, a backward
                 // day step means the recording crosses New Year while the whole
@@ -1135,8 +1344,8 @@ impl RecordIter<'_> {
             let mut buf = [0u16; crate::models::MAX_DATA_WORDS];
             let n_capped = n.min(crate::models::MAX_DATA_WORDS);
             // Bound the read to the current record (defense-in-depth).
-            let record_end = self.offset + record_bytes;
-            let record_data = &self.data[..record_end];
+            let record_end = self.rel() + record_bytes;
+            let record_data = &self.win()[..record_end];
             if read_u16_array(record_data, cmd_byte_offset, n_capped, &mut buf) {
                 data_words = DataWords::from_slice(&buf[..n_capped]);
             }
@@ -1239,8 +1448,8 @@ impl RecordIter<'_> {
 
         // Bound payload reads to this record's byte range so an over-claiming
         // Command Word cannot read into the next record.
-        let record_end = self.offset + record_bytes;
-        let record_data = &self.data[..record_end];
+        let record_end = self.rel() + record_bytes;
+        let record_data = &self.win()[..record_end];
         let payload_offset = cmd_byte_offset + 2;
         let (cmd2, status, status2, data_words) =
             extract_payload(record_data, payload_offset, msg_fmt, cmd);
@@ -1302,6 +1511,16 @@ impl RecordIter<'_> {
         Step::Yield(Ok(msg))
     }
 
+    /// The bytes reads go through: the whole file, or the stream's window.
+    fn win(&self) -> &[u8] {
+        self.src.bytes()
+    }
+
+    /// The current offset, as a position in [`Self::win`].
+    fn rel(&self) -> usize {
+        self.offset - self.src.base
+    }
+
     /// Record one sync loss, in this reader's count and the shared counter.
     fn count_sync_loss(&mut self) {
         self.sync_losses += 1;
@@ -1346,8 +1565,8 @@ impl RecordIter<'_> {
         ts_words: u16,
         delta: Option<f64>,
     ) -> MieResult<MieMessage> {
-        let error_word_offset = self.offset + (usize::from(tw.word_count) - 1) * 2;
-        let Some(error_code) = read_u16(&self.data, error_word_offset) else {
+        let error_word_offset = self.rel() + (usize::from(tw.word_count) - 1) * 2;
+        let Some(error_code) = read_u16(self.win(), error_word_offset) else {
             return Err(MieError::PayloadError {
                 offset: self.offset as u64,
                 detail: "error word out of bounds".into(),
@@ -1380,8 +1599,8 @@ impl RecordIter<'_> {
             // Bound to the current record's bytes. payload_words is
             // already derived from tw.word_count, so this is structurally
             // safe; bounding makes it explicit.
-            let record_end = self.offset + usize::from(tw.word_count) * 2;
-            let record_data = &self.data[..record_end];
+            let record_end = self.rel() + usize::from(tw.word_count) * 2;
+            let record_data = &self.win()[..record_end];
             if read_u16_array(record_data, cmd_byte_offset + 2, n_capped, &mut buf) {
                 data_words = DataWords::from_slice(&buf[..n_capped]);
             }
