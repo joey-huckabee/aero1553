@@ -33,7 +33,7 @@ use crate::models::{CommandWord, DeltaScope, MieMessage, Timestamp, TypeWord};
 use crate::reader::{MieFileReader, RecordIter};
 
 /// Maximum number of input files a single merge invocation may process.
-/// Bounds open mappings / file descriptors so resource use is predictable;
+/// Bounds open file handles and read windows so resource use is predictable;
 /// exceeding it is a usage error (the CLI maps it to exit 4). Shared in value
 /// with the Python implementation (L3-RS-014 / L3-PY-014).
 pub const MAX_MERGE_FILES: usize = 256;

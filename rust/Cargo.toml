@@ -34,8 +34,10 @@ path = "src/lib.rs"
 name = "aero1553"
 path = "src/bin/aero1553.rs"
 
+# No [dependencies]: argument parsing, CSV, TOML, logging, errors and file
+# input are hand-rolled on std (L3-RS-002). The reader streamed through
+# memmap2 until 5.0.0; positional reads measured within noise of the map.
 [dependencies]
-memmap2 = "0.9"
 
 # Lint policy lives here so plain `cargo build` / `cargo clippy` enforce it, not
 # just the CI flags. All three pass clean today; they formalize practices the
@@ -145,7 +147,7 @@ codegen-units = 1
 strip = "symbols"
 
 # The Rust half of the performance suite (perf/README.md). Hand-rolled:
-# no benchmark framework, so memmap2 stays the only dependency.
+# no benchmark framework, so the crate keeps no dependencies.
 [[bench]]
 name = "perf"
 harness = false

@@ -38,7 +38,7 @@ is now served by the Rust binary built against glibc 2.22 with `cargo zigbuild`.
 Comments and requirement rationales that mention C++ record history; ADR-0001
 to ADR-0003 in `docs/adr/` are superseded.
 
-Edition 2024, MSRV 1.88 — the floor is set by the crate's own use of **let-chains** (stabilized 1.88), not by its dependency: edition 2024 floors at 1.85 and `memmap2` declares 1.65. (`is_multiple_of` independently needs 1.87.) The crate has exactly one external dependency: `memmap2`. Argument parsing, CSV writing, TOML config, logging, and error types are all hand-rolled — preserve this property when adding features.
+Edition 2024, MSRV 1.88 — the floor is set by the crate's own use of **let-chains** (stabilized 1.88): edition 2024 alone floors at 1.85. (`is_multiple_of` independently needs 1.87.) The crate has **no external dependencies** (since 5.0.0, when `memmap2` was dropped). Argument parsing, CSV writing, TOML config, logging, error types and file input are all hand-rolled on `std` — preserve this property when adding features.
 
 ## Common Commands
 
@@ -112,7 +112,7 @@ python scripts/compare-fuzz-summaries.py <dir-of-summary-files>
 
 The decoder is a unidirectional pipeline. The big picture is best understood by tracing one record from disk to CSV:
 
-1. **`reader.rs` — `MieFileReader`**: Top-level mmap-backed iterator. Calls `find_first_record()` for header skip, then loops: `validate_record()` → decode → yield `Result<MieMessage>`. On validation failure it calls `recover_sync()` to walk forward in 2-byte steps. Owns the `prev_was_error` flag used to classify SPURIOUS_DATA continuations.
+1. **`reader.rs` — `MieFileReader`**: Top-level streaming iterator. Reads the input through `source.rs`'s `Window` — a fixed 256 KiB buffer refilled by positional reads (`pread` / `seek_read`), one per iterator, the file handle shared via `Arc` — and makes the window reach as far as a sync helper can look (`STREAM_REACH`) before start-up and every resync, one record before each locked record, so the helpers see what they would see in the whole file. Calls `find_first_record()` for header skip, then loops: `validate_record()` → decode → yield `Result<MieMessage>`. On validation failure it calls `recover_sync()` to walk forward in 2-byte steps. Owns the `prev_was_error` flag used to classify SPURIOUS_DATA continuations.
 2. **`sync.rs`**: Pure validation helpers (`find_first_record`, `validate_record`, `recover_sync`). Validation uses a **configurable N-record look-ahead** (default 2, per L2-SYN-026) — a candidate is only confirmed valid if the next `N-1` records' Type Words also look valid. This is critical: a single Type Word match alone produces too many false positives. No logging in this module — the reader emits any messages.
 3. **`decode.rs`**: Pure binary → struct conversion. Type Word bit layout, IRIG vs Standard timestamp formats (auto-detected by probing the Command Word at both candidate offsets and scoring), Command Word, message format classification.
 4. **`models.rs`**: Plain structs (`MieMessage`, `TypeWord`, `CommandWord`, `IrigTimestamp`, `StandardTimestamp`), `IntEnum`-style enums with explicit `#[repr(u8)]` discriminants, DDC error code constants (0x01xx) and decoder-assigned spurious codes (0x20xx). `DataWords` is the fixed-capacity inline buffer that replaces `Vec<u16>` for the per-record payload.
@@ -175,7 +175,8 @@ All fallible APIs return `Result<T, MieError>`. `MieError` is a single enum (not
 
 ## Conventions worth preserving
 
-- **Single external dependency.** Only `memmap2`. Adding crates requires justification — argument parsing, CSV, TOML, logging, error types are all hand-rolled by design and the user values keeping it that way.
+- **No external dependencies.** The crate has none (`memmap2` was dropped in 5.0.0). Adding a crate requires justification — argument parsing, CSV, TOML, logging, error types and file input are all hand-rolled by design and the user values keeping it that way.
+- **The input is streamed, never mapped or read whole.** `source.rs`'s `Window` bounds memory per open input to the window, independent of file size; `dump` reads through the same module. Before calling a sync helper, make the window reach as far as that helper can look — the helpers take `&[u8]` and cannot tell a window from the whole file, so a short window would silently change a decode result.
 - **Streaming CSV.** Rows must flow through a `Write` impl as they are produced. Do not introduce `Vec<MieMessage>` or `Vec<Row>` buffering in the writer — constant memory is the design point.
 - **N-record look-ahead in `sync.rs`** (default 2, configurable per L2-SYN-026). Don't remove it. Removing the look-ahead reintroduces false-positive resyncs.
 - **`DataWords` is fixed-capacity by design.** MIL-STD-1553B caps a single transaction at 32 data words. Don't switch to `Vec<u16>` "for flexibility."

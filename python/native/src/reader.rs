@@ -98,7 +98,7 @@ impl PyReader {
 
     /// A fresh pass over the recording, from its first record.
     ///
-    /// The iterator shares the file mapping with this reader rather than
+    /// The iterator shares the open file with this reader rather than
     /// borrowing it, so it stays valid however long Python keeps it.
     fn records(&self, py: Python<'_>) -> PyResult<PyRecordIterator> {
         logbridge::sync_level(py)?;

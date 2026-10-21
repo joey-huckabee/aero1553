@@ -717,7 +717,7 @@ pub struct PartialCommit {
 /// whether the derived errors destination gets its own no-clobber check.
 ///
 /// The collision test covers **every** commit target and **is** the guarantee:
-/// L2-WRT-014 is a pre-open rule, and once the mapping is live there is nothing
+/// L2-WRT-014 is a pre-open rule, and once the output is open there is nothing
 /// left to refuse.
 ///
 /// The no-clobber test here is **not** the guarantee — that lives in the commit

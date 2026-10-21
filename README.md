@@ -185,7 +185,7 @@ All 10 MIL-STD-1553 message formats plus SPURIOUS_DATA:
 ## Project Structure
 
 ```
-rust/                Rust crate (single dependency: memmap2) — see rust/README.md
+rust/                Rust crate (no dependencies) — see rust/README.md
 
 config/
 └── default.toml     Fully commented reference configuration

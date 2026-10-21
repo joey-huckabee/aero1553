@@ -455,8 +455,8 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-RDR-020
 
 **Parent**: L1-EXIT-006
-**Statement**: Both implementations SHALL open the input file with read-only access semantics. Writable, copy-on-write, or shared-write memory-mapping modes SHALL NOT be used. The specific access mode and API is pinned by L3-PY-009 (Python) and L3-RS-003 (Rust).
-**Rationale**: L1-EXIT-006 is the operational contract that the decoder never modifies the input file. Read-only mmap is the implementation-level enforcement of that contract — any other mode would create a code path through which the input could be mutated, undermining the contract regardless of operator intent.
+**Statement**: Both implementations SHALL open the input file with read-only access semantics, and SHALL NOT open it in any mode — writable handle, writable or copy-on-write mapping — through which it could be mutated. The specific access mode and API is pinned by L3-PY-009 (Python) and L3-RS-003 (Rust).
+**Rationale**: L1-EXIT-006 is the operational contract that the decoder never modifies the input file. A read-only handle is the implementation-level enforcement of that contract — any other mode would create a code path through which the input could be mutated, undermining the contract regardless of operator intent.
 **Verification Method**: Inspection (I)
 
 #### L2-RDR-021
@@ -646,9 +646,9 @@ Every target SHALL be tested against every resolved input — the whole set on t
 
 The enumeration SHALL be the same code the writer commits through, not a second spelling of the same rule.
 
-**Rationale**: Decoding a file onto itself would truncate the input mid-decode and produce undefined behavior under mmap. Catching this before the output is opened is the only safe guard.
+**Rationale**: Decoding a file onto itself would truncate the input mid-decode and destroy it: the reader would see the file end early (or, under the memory map used until 5.0.0, crash), and the input's bytes would be gone either way. Catching this before the output is opened is the only safe guard.
 
-Through v2.16.0 this requirement said "the output path ... the input file", singular on both sides, and all three implementations implemented exactly that — each carrying a comment reasoning that the derived errors path needed no check because it "is derived from output, which was already checked". That does not follow. A derived path is an ordinary path that can name an ordinary file, and being derived from a *safe* path says nothing about whether it collides with a *different* input: `-o capture.mie --separate-errors` derives `capture_errors.mie`, a perfectly plausible name for one of the recordings being decoded. Both derived families were destructive in practice — the errors file and the `.partial` file each committed straight over an input, and **the run exited 0** while doing it. On POSIX the damage is silent: the reader's mapping survives on the old inode, so the decode completes normally against bytes no longer on disk.
+Through v2.16.0 this requirement said "the output path ... the input file", singular on both sides, and all three implementations implemented exactly that — each carrying a comment reasoning that the derived errors path needed no check because it "is derived from output, which was already checked". That does not follow. A derived path is an ordinary path that can name an ordinary file, and being derived from a *safe* path says nothing about whether it collides with a *different* input: `-o capture.mie --separate-errors` derives `capture_errors.mie`, a perfectly plausible name for one of the recordings being decoded. Both derived families were destructive in practice — the errors file and the `.partial` file each committed straight over an input, and **the run exited 0** while doing it. On POSIX the damage is silent: the reader's open handle survives on the old inode, so the decode completes normally against bytes no longer on disk.
 
 `.partial` targets are checked up front, rather than at the moment a sync loss makes one real, because "before opening the output" is the only point at which refusing is still safe — and by then nobody knows whether the decode will lose sync. Refusing a run that *might* have destroyed an input is the conservative direction, and the cost is a rejected invocation the operator can fix by renaming.
 

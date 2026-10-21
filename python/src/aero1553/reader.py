@@ -15,7 +15,7 @@ instances in file order. It handles:
 - **Error record handling**: Truncated payloads with Error Words.
 - **SPURIOUS_DATA continuation detection**.
 - **Per-RT/MSG DELTA** calculation.
-- **Memory-efficient mmap I/O**.
+- **Constant-memory streaming I/O**: a bounded read window per open input.
 
 The decoding is the ``aero1553`` Rust crate's, running in-process through the
 package's compiled extension; this class is its Python face. Its log lines
@@ -59,12 +59,12 @@ if TYPE_CHECKING:
 
 
 class MieFileReader:
-    """Memory-mapped sequential reader for MIE binary files.
+    """Streaming sequential reader for MIE binary files.
 
     Reads a DDC MIE binary recording file and yields decoded
-    :class:`~aero1553.models.MieMessage` instances. Uses a read-only
-    memory map for efficient access to large files without loading
-    the entire file into memory.
+    :class:`~aero1553.models.MieMessage` instances. Reads the file
+    through a bounded window of positional reads, so memory stays
+    constant however large the file is.
 
     The reader automatically handles:
 
@@ -114,7 +114,7 @@ class MieFileReader:
     Raises:
         MieFileNotFoundError: If the file does not exist.
         MieFileEmptyError: If the file is zero bytes.
-        MieFileIoError: If the file exists but cannot be opened or mapped.
+        MieFileIoError: If the file exists but cannot be opened or read.
     """
 
     def __init__(
@@ -188,6 +188,6 @@ class MieFileReader:
             An iterator of decoded MieMessage instances, one per binary record.
 
         Raises:
-            MieFileIoError: if the file cannot be memory-mapped or read.
+            MieFileIoError: if the file cannot be opened or read.
         """
         return self._native.records()

@@ -223,8 +223,8 @@ allowed-confusables = ["–", "—", "×", "µ"]
 
 [tool.ruff.lint.per-file-ignores]
 
-# SIM115: these files outlive the opening scope BY DESIGN -- the reader owns a
-# mapping and the writer owns a temp file until `commit()` renames it. A `with`
+# SIM115: these files outlive the opening scope BY DESIGN -- the reader owns an
+# open input and the writer owns a temp file until `commit()` renames it. A `with`
 # block would close them at exactly the wrong moment; the lifetime is the
 # object's, and each has an explicit close on every path.
 "src/aero1553/reader.py" = ["SIM115"]

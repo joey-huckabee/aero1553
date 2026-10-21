@@ -44,6 +44,30 @@ shared behavior) holds at any compatible version pair. See
   C++ binary with the Rust one; command lines, config files and downstream
   CSV consumers need no change.
 
+### Changed
+
+- **The Rust crate has no dependencies: `memmap2` is gone, and the reader
+  streams its input** (L3-RS-002, L3-RS-003). The input is read through a
+  256 KiB window refilled with positional reads (`pread` / `ReadFile` at an
+  offset), not memory-mapped, so the crate's only `unsafe` block goes with
+  the dependency. Output is unchanged: the window is made to reach as far as
+  the sync helpers can look before each call, so they see exactly what they
+  saw in the mapped file. Measured on one binary holding the map, a
+  whole-file read and the stream at three window sizes, with CSV and stderr
+  compared byte for byte: streaming is within noise of the map on Linux and
+  Windows, warm and cold cache, from 21 MB to 4 GiB and on a 16-file merge,
+  and holds 0.4 MB resident where the map held the whole file. A recording
+  truncated while it is being decoded now ends at the short read rather than
+  risking a crash on a page that no longer exists.
+- **`dump` reads only what it shows.** It read the whole file into memory
+  before writing a byte, so `dump --records 10` on a multi-gigabyte
+  recording cost the recording. It now reads through the reader's window,
+  and both share one open path (missing, empty and directory inputs are
+  classified the same way).
+- The input/output collision error no longer gives a memory-mapped reader as
+  its reason: it now reads `decoding in place would overwrite the recording
+  while it is read.` (L2-WRT-014). Exit code and class are unchanged.
+
 ### Added
 
 - **CI builds the Linux binary for SLES 12 SP5** (L3-RS-018). A new job

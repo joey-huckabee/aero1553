@@ -130,7 +130,7 @@ jobs:
 
       - name: Build docs with warnings denied
         # Catches broken intra-doc links and other rustdoc lints in the
-        # doc-heavy crate. --no-deps documents only this crate (not memmap2).
+        # doc-heavy crate. --no-deps documents only this crate.
         working-directory: rust
         env:
           RUSTDOCFLAGS: "-D warnings"

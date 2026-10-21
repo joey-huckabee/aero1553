@@ -748,7 +748,7 @@ fn header_skip_via_proprietary_prefix() {
 // ── L1-ROB-001 fuzz harness ──────────────────────────────────────────────
 //
 // Deterministic xorshift64 PRNG keeps the tests fully reproducible and avoids
-// pulling in `rand` (the crate stays at a single external dep, per L3-RS-002).
+// pulling in `rand` (the crate stays free of external deps, per L3-RS-002).
 // Every iteration generates a random byte sequence, writes it to a temp file,
 // drives it through the decoder, and asserts that ANY outcome other than a
 // panic is acceptable — `Err(MieError::*)` items are the *expected* response to
@@ -1041,9 +1041,9 @@ fn dump_arbitrary_bytes_never_panics() {
             // path, not a panic. We sink output into a Vec and discard it,
             // clearing between the two so each dump's output size is its own.
             // clippy::naive_bytecount suggests the `bytecount` crate. This crate
-            // has exactly one external dependency by policy (L3-RS-002), and a
-            // line count in a test harness is nowhere near a reason to add a
-            // second — the fuzzed dumps here are at most a few hundred bytes.
+            // has no external dependencies by policy (L3-RS-002), and a
+            // line count in a test harness is nowhere near a reason to add
+            // one — the fuzzed dumps here are at most a few hundred bytes.
             #[allow(clippy::naive_bytecount)]
             let count_lines = |sink: &[u8]| {
                 u64::try_from(sink.iter().filter(|&&b| b == b'\n').count()).unwrap_or(0)
@@ -1173,7 +1173,7 @@ fn merge_orders_records_across_files_by_absolute_time() {
 }
 
 /// `new_detached` merges exactly what `new` merges, and its iterator outlives
-/// the readers: it shares each file's mapping instead of borrowing the reader,
+/// the readers: it shares each open file instead of borrowing the reader,
 /// which is what the Python binding needs to keep a merge inside an object.
 /// Requirements: L2-MRG-002
 #[test]
@@ -1480,7 +1480,7 @@ fn merge_input_resolution_tolerates_arbitrary_bytes() {
 
     let mut state = FUZZ_SEED;
     // 512 by default rather than the reader harness's 256: each iteration is
-    // cheap (no decode, no mmap) and the glob matcher has more branches than
+    // cheap (no decode, no file read) and the glob matcher has more branches than
     // this many inputs comfortably cover. The shared knob still overrides.
     let iterations = fuzz_iterations_or(512);
 

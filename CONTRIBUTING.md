@@ -12,7 +12,7 @@ workflow, and commit conventions.
 
 - Rust toolchain ≥ 1.88 (`rustup toolchain install stable`). The crate
   uses edition 2024, which floors at 1.85; the 1.88 requirement comes from
-  the crate's own use of let-chains (see `L3-RS-001`), not from `memmap2`.
+  the crate's own use of let-chains (see `L3-RS-001`).
 - Python 3.10 or newer and [uv](https://docs.astral.sh/uv/) for work under
   `python/` (the package compiles a PyO3 extension, so this needs the Rust
   toolchain above as well). Commands in
@@ -218,8 +218,8 @@ committed `*.mie` recording with nothing downstream to catch it.
   before publishing a release.
 - `cargo build --release` is **not** in the hook because debug builds
   exercise the same code path. Release builds are a release-time concern.
-- `cargo audit` (CVE check) is **not** wired up because we have a
-  single dependency. Revisit if the dep tree grows.
+- `cargo audit` (CVE check) is **not** wired up because the crate has
+  no dependencies. Revisit if that changes.
 
 ## Daily commands
 
@@ -592,9 +592,9 @@ Body conventions:
 
 These are codified in `CLAUDE.md`; the highlights:
 
-- **Single external dependency.** Only `memmap2`. Adding crates
+- **No external dependencies.** The crate has none. Adding a crate
   requires justification — argument parsing, CSV, TOML, logging,
-  error types are all hand-rolled by design.
+  error types and file input are all hand-rolled by design.
 - **Streaming CSV.** Don't introduce `Vec<MieMessage>` or row-level
   buffering in `writer.rs` — constant memory is the design point.
 - **`DataWords` is fixed-capacity.** MIL-STD-1553B caps a transaction

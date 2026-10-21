@@ -4,13 +4,12 @@ The Rust implementation of Aero1553: a streaming, constant-memory decoder for
 DDC MIL-STD-1553 MIE binary recording files, with a hand-rolled CLI and a single
 native release binary.
 
-Edition 2024, MSRV 1.88. The floor comes from this crate's own source, not from
-its dependency: edition 2024 requires only 1.85, and `memmap2` declares
-`rust-version = "1.65"`. What needs 1.88 is **let-chains** (`if let` / `while
+Edition 2024, MSRV 1.88. The floor comes from this crate's own source: edition
+2024 requires only 1.85. What needs 1.88 is **let-chains** (`if let` / `while
 let` joined by `&&`), which the decoder uses at seven sites; `is_multiple_of`
-independently needs 1.87. The crate has exactly one external dependency
-(`memmap2`); argument parsing, CSV writing, TOML config, logging, and error
-types are all hand-rolled.
+independently needs 1.87. The crate has no external dependencies; argument
+parsing, CSV writing, TOML config, logging, error types and file input are all
+hand-rolled on `std`.
 
 Shared documentation — the project overview, CLI reference, configuration
 schema, supported message formats, error catalog, and vendor-CSV alignment —
@@ -87,7 +86,7 @@ rust/
 │   ├── filter.rs        FilterConfig + Iterator adapter
 │   ├── log.rs           Tiny stderr logger
 │   ├── models.rs        Data structures, enums, error codes
-│   ├── reader.rs        mmap-backed iterator with sync recovery
+│   ├── reader.rs        streaming iterator with sync recovery
 │   ├── sync.rs          Pure validation + recovery helpers
 │   └── writer.rs        Streaming CSV writer
 └── tests/

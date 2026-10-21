@@ -144,9 +144,9 @@ would be worse than the leak, and no other test in that binary asserts on
 logging.
 
 The burn-in covers **four** runner configurations: Rust and Python, each on
-Linux and on Windows. Windows matters because Rust's and Python's
-memory-mapping paths differ by platform, and mapping a file is the first thing
-every harness does with its garbage input. (Until 5.0.0 the burn-in also ran
+Linux and on Windows. Windows matters because the reader's positional read
+differs by platform (`pread` / `seek_read`), and reading the file is the first
+thing every harness does with its garbage input. (Until 5.0.0 the burn-in also ran
 the C++ harness on Linux, under MSVC on Windows, and under ASan/UBSan/LSan.)
 
 ---

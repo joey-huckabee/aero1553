@@ -175,10 +175,10 @@
     <text class="label" x="706" y="832">--no-clobber, --allow-partial</text>
   </g>
 
-  <!-- reader -> MIE file (dashed: mmap read-only). Crosses the cli bus. -->
+  <!-- reader -> MIE file (dashed: positional reads, read-only). Crosses the cli bus. -->
   <g id="edge-reader-mie">
     <path class="edge io" d="M940,300 V225 H1370 V192" marker-end="url(#arrow-open)"/>
-    <text class="label" x="1150" y="221" text-anchor="middle">mmap, read-only</text>
+    <text class="label" x="1150" y="221" text-anchor="middle">pread, read-only</text>
   </g>
 
   <!-- ===================================================================
@@ -220,7 +220,7 @@
   <g id="reader">
     <rect class="box" x="360" y="300" width="620" height="80" rx="4"/>
     <text class="name" x="670" y="324" text-anchor="middle">reader</text>
-    <text x="670" y="344" text-anchor="middle">MieFileReader: mmap-backed record iterator</text>
+    <text x="670" y="344" text-anchor="middle">MieFileReader: streaming record iterator</text>
     <text x="670" y="362" text-anchor="middle">classifies SPURIOUS_DATA continuations via prev_was_error</text>
   </g>
 

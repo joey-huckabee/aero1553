@@ -21,7 +21,7 @@ Aero1553 ships as a Rust crate (`rust/src/`) and a Python package (`python/src/a
 | TOML configuration loader | `rust/src/config.rs` | `python/src/aero1553/config.py` |
 | Message filtering | `rust/src/filter.rs` | `python/src/aero1553/filters.py` |
 | Canonical row order (equal-timestamp ties) | `rust/src/order.rs` | `python/src/aero1553/order.py` |
-| Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` |
+| Reader pipeline (positional reads → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` |
 | Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/aero1553/merge.py` |
 | Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/aero1553/delta.py` |
 | Pure decode (bit-level field extraction) | `rust/src/decode.rs` | -- (the Rust module, via the extension) |
@@ -34,7 +34,7 @@ Aero1553 ships as a Rust crate (`rust/src/`) and a Python package (`python/src/a
 
 The sync helpers (`sync.rs`; the Python package runs the Rust one) are **pure** — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
 
-Per L1-CONF-001 both implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*`; the `L3-CPP-*` set is withdrawn) cover the technology-specific obligations (the compiled Rust extension for Python; memmap2 / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
+Per L1-CONF-001 both implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*`; the `L3-CPP-*` set is withdrawn) cover the technology-specific obligations (the compiled Rust extension for Python; the streaming input window / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
 
 The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its name when the reader is constructed (config → `ReaderOptions` / reader kwargs), and attached to every `MieMessage` the reader yields — Rust as a shared `Arc<str>` (a refcount-bump clone per record), Python as a shared `str` reference. The value therefore rides along through the filter and merge iterators unchanged (so a merged stream keeps each record's source-file MUX), and the writer emits it without any extra per-record allocation — preserving the O(1)-in-record-count streaming guarantee.
 
@@ -106,7 +106,7 @@ The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its
   └───────────────────────────────┘    └───────────┘
 ```
 
-The only external Rust runtime dependency is `memmap2` (per `L3-RS-002`). Argument parsing, CSV emission, TOML parsing, logging, and error types are all hand-rolled. The Python package's CSV writer and config loader are the Rust ones, run through its compiled extension (`L3-PY-004`, `L3-PY-005`), so the package declares no runtime dependency.
+The Rust crate has no external dependencies (per `L3-RS-002`; `memmap2` was dropped in 5.0.0). Argument parsing, CSV emission, TOML parsing, logging, error types and file input are all hand-rolled. The Python package's CSV writer and config loader are the Rust ones, run through its compiled extension (`L3-PY-004`, `L3-PY-005`), so the package declares no runtime dependency.
 
 ---
 
@@ -361,7 +361,7 @@ MieError {
 Aero1553Error                            (base, catches everything)
 ├── MieFileError
 │   ├── MieFileNotFoundError
-│   ├── MieFileIoError                   (open/mmap failure; wraps OSError)
+│   ├── MieFileIoError                   (open/read failure; wraps OSError)
 │   ├── MieFileEmptyError
 │   ├── MieNoValidRecordsError
 │   ├── MieHomogeneousPayloadError
@@ -595,8 +595,9 @@ set — we *merge* k already-sorted streams. A binary min-heap holds exactly
 one record per open file (each file's current front record), keyed by
 timestamp:
 
-1. Open all k files as lazy `MieFileReader` iterators (with `mmap`, opening
-   is cheap — pages fault in on demand, nothing is bulk-read).
+1. Open all k files as lazy `MieFileReader` iterators (opening is cheap —
+   each holds one 256 KiB read window, refilled on demand; nothing is
+   bulk-read).
 2. Prime the heap with the first record from each file (k entries).
 3. Pop the minimum-timestamp record, write it to the CSV.
 4. Pull the *next* record from the file that record came from, push it.
@@ -709,7 +710,7 @@ This avoids one heap allocation per decoded record. For files with millions of r
 
 ### Concurrent modification of the input (L1-EXIT-006)
 
-The input file is opened with a read-only mmap (L2-RDR-020). POSIX `ftruncate` on a mapped file can produce SIGBUS on subsequent access; Windows generally locks the file against truncate while mapped but mmap does not grow if the file is extended. The operator is responsible for exclusive access for the duration of the decode (L1-EXIT-006 is an operational contract, not a behavior the program can enforce).
+The input file is opened read-only and read through positional reads into a bounded window (L2-RDR-020, `rust/src/source.rs`). Its length is taken when it is opened: bytes appended afterwards are not read, and a file truncated while being read ends the decode at the short read, as though the file had been that long (until 5.0.0 the input was memory-mapped, and a truncation could kill the process with SIGBUS). Neither is a supported way to run. The operator is responsible for exclusive access for the duration of the decode (L1-EXIT-006 is an operational contract, not a behavior the program can enforce).
 
 ### Sync-recovery scan bounds (L1-SYN-002)
 

@@ -578,7 +578,7 @@ configuration-file key**:
 
 Per L2-CFG-010, all schema validation (type checks, range checks, enum membership, unknown-key detection) happens at **configuration load time**, not at use time. By the time a `DecoderConfig` / `MieConfig` is constructed, the values have been validated.
 
-This means a config file is either fully accepted (with optional WARN lines for unknown keys) or fully rejected at the very start of CLI invocation, before any file mmap or output write occurs. There is no class of "config error surfacing mid-decode."
+This means a config file is either fully accepted (with optional WARN lines for unknown keys) or fully rejected at the very start of CLI invocation, before any input is opened or output written. There is no class of "config error surfacing mid-decode."
 
 When a load-time validation fails, the CLI exits `5` (the configuration-error class, L1-EXIT-008 / L2-CLI-011) with a stderr message naming the offending key and the rule it broke, and creates no output file. The message begins with the config file's path, and it reads the same from every implementation (L2-CLI-022):
 
@@ -606,7 +606,7 @@ The Python package's `aero1553.config.load_config` is the Rust loader described 
 
 ### Rust hand-rolled TOML parser (accepted subset)
 
-To preserve the crate's single-dependency design (only `memmap2`), Rust parses TOML with a hand-rolled reader that accepts a deliberately small subset — everything the decoder's schema needs, and nothing more:
+To preserve the crate's zero-dependency design, Rust parses TOML with a hand-rolled reader that accepts a deliberately small subset — everything the decoder's schema needs, and nothing more:
 
 - `[section]` headers (a simple identifier — letters, digits, underscore) and `key = value` pairs, one per line, where the key is a simple identifier;
 - values:

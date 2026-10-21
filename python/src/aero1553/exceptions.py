@@ -51,7 +51,7 @@ class Aero1553Error(Exception):
             logger.error("Decoder failure: %s", exc)
 
     Input-side failures are all converted, including the ones raised by the
-    open/mmap itself — permission denied, a path that is not a regular file, a
+    open or read itself — permission denied, a path that is not a regular file, a
     device I/O error — which become :class:`MieFileIoError` (v2.12.0; they
     previously escaped as a bare ``OSError`` and slipped past the handler
     above). Every variant of Rust's ``MieError`` now has a class here, and the
@@ -151,7 +151,7 @@ class MieFileEmptyError(MieFileError):
 
 
 class MieFileIoError(MieFileError):
-    """Raised when opening, stat-ing, reading or memory-mapping the input fails.
+    """Raised when opening, stat-ing or reading the input fails.
 
     Covers the failures that are neither "missing" nor "empty": permission
     denied, a path that is not a regular file, a device-level read error. The
@@ -177,9 +177,9 @@ class MieFileIoError(MieFileError):
 class MieInputOutputCollisionError(MieFileError):
     """Raised when the output path resolves to the same file as the input.
 
-    Per L2-WRT-014, decoding in-place is unsafe with a memory-mapped
-    reader. The implementation rejects this configuration before any
-    output file is opened.
+    Per L2-WRT-014, decoding in-place is unsafe: the output would truncate
+    the input while it is being read. The implementation rejects this
+    configuration before any output file is opened.
 
     Attributes:
         path: The colliding path (both input and output resolve here).
@@ -189,7 +189,7 @@ class MieInputOutputCollisionError(MieFileError):
         self.path = path
         super().__init__(
             f"Output path resolves to the same file as the input ({path}); "
-            f"decoding in-place is unsafe with a memory-mapped reader. "
+            f"decoding in place would overwrite the recording while it is read. "
             f"Choose a different output path."
         )
 

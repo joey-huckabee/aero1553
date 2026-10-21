@@ -33,7 +33,7 @@ if TYPE_CHECKING:
     from aero1553.reader import MieFileReader
 
 #: Maximum number of input files a single merge invocation may process. Bounds
-#: open mappings / file descriptors; exceeding it is a usage error (the CLI
+#: open file handles and read windows; exceeding it is a usage error (the CLI
 #: maps it to exit 4). Shared in value with the Rust constant (L3-PY-014).
 MAX_MERGE_FILES = 256
 

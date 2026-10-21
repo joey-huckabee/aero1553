@@ -701,7 +701,7 @@ def test_merge_input_resolution_tolerates_arbitrary_bytes(tmp_path: Path) -> Non
     """
     state = FUZZ_SEED
     # 512 by default rather than the reader harness's 256: each iteration is
-    # cheap (no decode, no mmap) and the matcher has more branches than 256
+    # cheap (no decode, no file read) and the matcher has more branches than 256
     # inputs comfortably cover. The shared knob still overrides.
     count = fuzz_iterations(512)
 

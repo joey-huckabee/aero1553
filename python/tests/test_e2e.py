@@ -226,7 +226,7 @@ class TestMieFileReader:
         extraction takes its data-word count from Cmd2 (the transmit command).
         Fuzzed bytes can keep Cmd1's count small (so the capacity check passes
         and the record fits the file) while Cmd2 claims 30 words — which, on
-        the full mmap, would overrun into the next record / past EOF and raise
+        the whole file, would overrun into the next record / past EOF and raise
         ``struct.error``. The reader bounds payload reads to the record extent
         (L2-DEC-009), so extraction completes safely with no raw exception;
         the over-claim is then a Cmd1/Cmd2 ``data_word_count`` disagreement, so
