@@ -63,6 +63,14 @@ shared behavior) holds at any compatible version pair. See
   visible changes: Win32 strips the trailing dot, giving `o` and `o_errors`
   as before. **Behaviour change** on POSIX for such names: the errors file
   is `o_errors.`, where Rust wrote `o_errors`.
+- **A destination name that is not Unicode keeps its bytes in the `_errors`
+  file name** (Rust, and so the Python package; L2-ERR-008). Rust split the
+  name after a lossy conversion to a string, so `-o out<FF>.csv
+  --separate-errors` wrote its errored rows to `out<U+FFFD>_errors.csv` --
+  a file the operator did not name -- where C++ wrote `out<FF>_errors.csv`.
+  Reachable since non-UTF-8 arguments were accepted (#153). The split now
+  works on the OS name itself: bytes on POSIX, UTF-16 units on Windows (so
+  an unpaired surrogate survives too).
 - **C++ `dump` names a file with a backslash in it correctly on Linux.**
   The report's `File:` line split the path on `/` and `\` on every
   platform, so a recording named `odd\name.mie` was reported as

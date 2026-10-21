@@ -380,7 +380,7 @@ direction below, since several of the fixes are C++ work.
 | A | File names in diagnostics and log lines ("MIE file not found: ...", "opened ...", writer and merge messages) | about 47 `path.display()` sites: UTF-8 as-is, invalid bytes as U+FFFD | about 25 sites: raw bytes | non-ASCII on stderr; `café.mie` reads as `cafÃ©.mie` on a code-page-437 Windows console |
 | B | `dump`'s `File:` line (stdout payload) | `to_string_lossy` (U+FFFD) | raw bytes | not ASCII, and not byte-identical across implementations as `L2-CLI-014` requires |
 | C | Operating-system error text inside messages | localized by Windows | localized | non-ASCII on any non-English Windows |
-| D | The `_errors` file name under `--separate-errors` | built from a lossy stem: `out<FF>.csv` yields `out<U+FFFD>_errors.csv` | byte-exact | **a wrong file name** (a correctness bug, reachable since #153) |
+| D | The `_errors` file name under `--separate-errors` | **fixed**: built from the OS name, byte-exact (was a lossy stem: `out<FF>.csv` yielded `out<U+FFFD>_errors.csv`) | byte-exact | none now (was a wrong file name, reachable since #153) |
 | E | The `MUX` column, derived from the input file name | lossy | raw bytes | CSV differs between implementations for a name that is not UTF-8 |
 
 **Proposed fix (not started)**
@@ -392,8 +392,8 @@ direction below, since several of the fixes are C++ work.
    escaped, so a file name holding a newline cannot forge log lines. The #153
    argument stand-ins move to it (they use Rust's `Debug` form today, which
    doubles every backslash in a Windows path).
-2. Apply it at every site in A and B; build the `_errors` name from the raw OS
-   name (D).
+2. Apply it at every site in A and B. (D, building the `_errors` name from the
+   raw OS name, is done.)
 3. Tests: one table of names and expected renderings run against both
    renderers; conformance cases for `dump` and a "not found" message on a
    non-ASCII name (the runner needs a field to name a case's input file).
