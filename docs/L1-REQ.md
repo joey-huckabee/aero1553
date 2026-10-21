@@ -311,9 +311,9 @@ Operators who need tighter screening can raise `decode.lookahead_records` / `--l
 
 ### L1-EXIT-006
 
-**Statement**: The input file SHALL NOT be modified, truncated, or extended during decoding. Behavior under concurrent external modification of the input is implementation-defined and MAY cause process termination (POSIX mmap plus `ftruncate` on the underlying file can produce SIGBUS; Windows file locking generally prevents concurrent writers but mmap does not grow with extensions). This is an operational contract: implementations open the file read-only and rely on the operator for exclusive access while a decode is in progress.
+**Statement**: The input file SHALL NOT be modified, truncated, or extended during decoding. Concurrent external modification of the input is not supported and its effect on the output is unspecified, except that a truncation ends the decode at the short read rather than terminating the process. This is an operational contract: implementations open the file read-only and rely on the operator for exclusive access while a decode is in progress.
 
-**Rationale**: The decoder uses memory-mapped I/O for performance and constant-memory behavior. Mmap makes the input filesystem state load-bearing during the entire decode; concurrent modification is undefined per the underlying OS, and we surface that contract here rather than pretend we can defend against every concurrent-write scenario.
+**Rationale**: The decoder streams the input through positional reads for constant-memory behavior, so the input's filesystem state is load-bearing during the entire decode; a record rewritten mid-decode may be read before or after the change. We surface that contract here rather than pretend we can defend against every concurrent-write scenario. Until 5.0.0 the input was memory-mapped, and a POSIX `ftruncate` of a mapped file could kill the process with SIGBUS; streaming removed that failure mode, not the contract.
 
 **Verification Method**: Inspection (I), Analysis (A)
 

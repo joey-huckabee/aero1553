@@ -17,7 +17,7 @@ pub enum MieError {
     /// Specified MIE binary file exists but is zero bytes.
     FileEmpty { path: PathBuf },
 
-    /// File-level I/O failure (mmap, open, read).
+    /// File-level I/O failure (open, stat, read).
     FileIo { path: PathBuf, source: io::Error },
 
     /// Type Word produced an invalid or zero word count.
@@ -91,8 +91,9 @@ pub enum MieError {
     },
 
     /// Output path resolves to the same file as the input. Per L2-WRT-014,
-    /// decoding in-place is unsafe (the input is mmap-backed) and is
-    /// rejected before any output file is opened.
+    /// decoding in-place is unsafe (the output would truncate the input
+    /// while it is being read) and is rejected before any output file is
+    /// opened.
     InputOutputCollision { path: PathBuf },
 
     /// `--no-clobber` was set (or `output.no_clobber = true` in config)
@@ -367,7 +368,7 @@ impl fmt::Display for MieError {
             Self::InputOutputCollision { path } => write!(
                 f,
                 "Output path resolves to the same file as the input ({}); \
-                 decoding in-place is unsafe with a memory-mapped reader. \
+                 decoding in place would overwrite the recording while it is read. \
                  Choose a different output path.",
                 path.display()
             ),

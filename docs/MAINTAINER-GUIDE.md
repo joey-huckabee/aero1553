@@ -14,7 +14,7 @@ aero1553/
 │   ├── Cargo.toml / Cargo.lock
 │   ├── .cargo/config.toml  cargo-llvm-cov coverage aliases (cov / cov-lcov / cov-ci)
 │   ├── src/
-│   │   ├── reader.rs        mmap-backed sequential reader; the central pipeline
+│   │   ├── reader.rs        streaming sequential reader; the central pipeline
 │   │   ├── sync.rs          validate_record, find_first_record, recover_sync
 │   │   ├── decode.rs        Type Word, IRIG/Standard timestamps, Cmd Word, classification
 │   │   ├── models.rs        plain structs + enums + DDC/decoder error code constants
@@ -686,11 +686,11 @@ These are the operating rules that keep the two crates from drifting:
 
 1. **Spec first.** New behavior lands as an L2 / L3 requirement before code. Both implementations then satisfy it.
 2. **Conformance fixtures for cross-impl behavior.** Anything that affects CSV output or exit codes belongs in `tests/conformance/`.
-3. **Per-impl detail goes in L3.** Python-specific constraints (the compiled extension, uv + maturin) live as `L3-PY-*`. Rust-specific constraints (memmap2, BufWriter) live as `L3-RS-*`. The shared L2 stays implementation-agnostic.
+3. **Per-impl detail goes in L3.** Python-specific constraints (the compiled extension, uv + maturin) live as `L3-PY-*`. Rust-specific constraints (zero dependencies, the streaming input window, BufWriter) live as `L3-RS-*`. The shared L2 stays implementation-agnostic.
 4. **Error variants ship together.** When you add a new variant in one language, add it in the other in the same PR.
 5. **What an operator reads to fix their command is a contract; the decoder's narration is not.** Configuration errors, the unknown-key WARN, usage errors, and the help and version text read the same from every implementation, byte for byte and line ending included (L2-CLI-022). The config differential checks and `tests/conformance/cli_message_parity.py` compare them, paths aside. The help text is Rust's `HELP`, which the Python CLI runs. Quote a value the operator wrote with `text::quote` -- never `{:?}` or a hand-built `"\"" + s + "\""` -- so a non-ASCII byte or an embedded quote is shown the same way everywhere. The decoder's own INFO and DEBUG lines (record traces, progress, detection scores) may still be worded per implementation. This rule replaced "log wording can drift", under which the two CLIs' config errors had come to differ for 60 of 79 corpus snippets and one printed a rejected value as an empty string.
 6. **CLI capability parity is the contract** (per L1-CLI-001) — capability parity matters, exact spelling doesn't. Today the two CLIs share one identical argument surface: the same subcommands (`decode` / `count` / `dump`), the same `--separate-errors` flag, the same global `--config`, and the same comma-separated filter syntax. They are free to diverge in spelling so long as capability parity holds.
-7. **`memmap2` is the only Rust runtime dep.** Argument parsing, CSV writing, TOML loading, logging, and error types are all hand-rolled. Adding a crate requires explicit justification — see `docs/ROADMAP.md` and `CLAUDE.md` "Conventions worth preserving".
+7. **The Rust crate has no runtime dependencies.** Argument parsing, CSV writing, TOML loading, logging, error types and file input are all hand-rolled (`memmap2`, the last dependency, was dropped in 5.0.0). Adding a crate requires explicit justification — see `docs/ROADMAP.md` and `CLAUDE.md` "Conventions worth preserving".
 
 ---
 

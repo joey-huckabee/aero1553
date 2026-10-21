@@ -156,7 +156,7 @@
   <!-- open every input -->
   <g id="open">
     <rect class="act" x="260" y="418" width="440" height="54" rx="8"/>
-    <text class="t" x="480" y="441" text-anchor="middle"><tspan x="480" dy="0">MieFileReader::new for each input:</tspan><tspan x="480" dy="16">the file is mapped read-only (mmap)</tspan></text>
+    <text class="t" x="480" y="441" text-anchor="middle"><tspan x="480" dy="0">MieFileReader::new for each input:</tspan><tspan x="480" dy="16">opened read-only, read through a window</tspan></text>
   </g>
     <path class="edge" d="M480,472 L480,506"/>
   <!-- decision: merge? -->

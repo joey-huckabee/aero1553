@@ -1610,7 +1610,7 @@ mod tests {
     }
 
     // The Python `tests/conftest.py` RECORD_RT15_SA11_RCV fixture, as a
-    // ground-truth byte sequence we can mmap and decode end-to-end.
+    // ground-truth byte sequence we can write out and decode end-to-end.
     fn rt15_sa11_rcv() -> Vec<u8> {
         // 1 type + 3 ts + 1 cmd + 30 data + 1 status = 36 words = 72 bytes
         let mut hex = String::new();

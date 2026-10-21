@@ -32,8 +32,8 @@ checklist in `docs/MAINTAINER-GUIDE.md` section 11.
 3.0 was taken by the timestamp-rendering split (`--input-time-format` /
 `--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), 4.0 by the rename to
 Aero1553 and the Python package becoming a binding over the Rust crate, and 5.0
-by removing the C++ implementation (and, pending a benchmark, replacing the
-`memmap2` reader -- see `CHANGELOG.md`); each renumbered the two rows above. One breaking topic per major: the migration note for a flag rename
+by removing the C++ implementation and replacing the `memmap2` reader with
+streamed positional reads (see `CHANGELOG.md`); each renumbered the two rows above. One breaking topic per major: the migration note for a flag rename
 and the one for a new output format have nothing to say to each other, and
 bundling them would have made both harder to read.
 

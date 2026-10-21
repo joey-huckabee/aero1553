@@ -745,7 +745,7 @@ mod tests {
     ///
     /// `hex_dump_records` cannot reach it: its loop guard requires
     /// `offset + MIN_RECORD_BYTES <= file_len`, and `file_len` is a real
-    /// mapped length, so `offset` is bounded well below `usize::MAX` while
+    /// file length, so `offset` is bounded well below `usize::MAX` while
     /// `record_bytes` maxes out at 126 (`word_count` is a 6-bit Type Word
     /// field, so at most 63 words). The two tests above pin that guard by
     /// showing the loop declines to enter.

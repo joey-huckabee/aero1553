@@ -23,9 +23,9 @@ name: Fuzz burn-in
 #     defined to mean the same thing in both implementations, and
 #   * `fuzz-compare` downloads all of them and fails if any two disagree.
 #
-# WHY WINDOWS IS IN THE MATRIX. Mapping a file is the first thing every one of
-# these harnesses does with its garbage input, and Rust's and Python's
-# memory-mapping paths differ by platform. `ci.yml` already builds and tests
+# WHY WINDOWS IS IN THE MATRIX. Opening and reading a file is the first thing
+# every one of these harnesses does with its garbage input, and the positional
+# read the reader uses differs by platform (pread / seek_read). `ci.yml` already builds and tests
 # both on Windows, but only ever at the 256-iteration default.
 
 on:

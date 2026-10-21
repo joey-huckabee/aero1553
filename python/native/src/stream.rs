@@ -144,7 +144,7 @@ impl PyRecordIterator {
     ///
     /// Anything buffered (an ordering stage's pending run) is discarded, not
     /// flushed: a consumer that closed wants no further records. Releasing the
-    /// source also releases the file mapping it holds. Closing twice is fine.
+    /// source also releases the open file it holds. Closing twice is fine.
     fn close(&mut self) {
         self.stream = None;
     }

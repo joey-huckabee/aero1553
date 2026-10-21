@@ -120,7 +120,7 @@ Public Python APIs SHALL carry type annotations and SHALL be documented in modul
 The Python CI workflow SHALL run pytest under Python 3.10, 3.11, 3.12, 3.13, and 3.14 as a matrix. A failure in any matrix cell SHALL fail the workflow.
 
 **L3-PY-009** · Parent: L2-RDR-020 · Verification: I
-The Python reader SHALL be the Rust reader (`rust/src/reader.rs`), run through the package's compiled extension, so the input is mapped read-only exactly as `L3-RS-003` requires; the package SHALL NOT open or map an input file itself. Before v4.0.0 this requirement mandated `mmap.mmap(fileno, 0, access=mmap.ACCESS_READ)` in a pure-Python reader.
+The Python reader SHALL be the Rust reader (`rust/src/reader.rs`), run through the package's compiled extension, so the input is read exactly as `L3-RS-003` requires; the package SHALL NOT open, read or map an input file itself. Before v4.0.0 this requirement mandated `mmap.mmap(fileno, 0, access=mmap.ACCESS_READ)` in a pure-Python reader.
 
 **L3-PY-010** · Parent: L2-CLI-008 · Verification: T
 Python message counting SHALL be available through the `count` subcommand (matching the Rust CLI, `L3-RS-008`), counting valid records after the config file's `[filter]` section is applied. Stdout SHALL contain only the integer record count followed by a single newline — no prose, no path, no leading or trailing whitespace beyond that newline — so the output is directly consumable in shell pipelines (`n=$(aero1553 count rec.mie)`). A human-readable status line including the input path name SHALL be written to stderr so an interactive operator still sees context; this stderr line is not gated by `--log-level` and is always emitted on a successful count.
@@ -171,13 +171,13 @@ Every class in `aero1553.exceptions`, whether raised by the Python package or by
 ## L3-RS: Rust implementation technology
 
 **L3-RS-001** · Parent: L2-CONF-005 · Verification: I
-The Rust crate SHALL declare `edition = "2024"` in `rust/Cargo.toml` and SHALL declare a Minimum Supported Rust Version (MSRV) via `rust-version`. The floor is **1.88**, and it comes from the crate's own source, not from its dependency: edition 2024 requires only 1.85, and `memmap2` 0.9 declares `rust-version = "1.65"`. The binding feature is **let-chains** (`if let` / `while let` joined by `&&`), stabilized in 1.88 and used at seven sites (`cli.rs`, `dump.rs`, `filter.rs` ×2, `merge.rs` ×2, `writer.rs`); `u64::is_multiple_of` in `reader.rs` independently requires 1.87. CI gates the declared floor with `cargo +1.88 check --all-targets`.
+The Rust crate SHALL declare `edition = "2024"` in `rust/Cargo.toml` and SHALL declare a Minimum Supported Rust Version (MSRV) via `rust-version`. The floor is **1.88**, and it comes from the crate's own source: edition 2024 requires only 1.85. The binding feature is **let-chains** (`if let` / `while let` joined by `&&`), stabilized in 1.88 and used at seven sites (`cli.rs`, `dump.rs`, `filter.rs` ×2, `merge.rs` ×2, `writer.rs`); `u64::is_multiple_of` in `reader.rs` independently requires 1.87. CI gates the declared floor with `cargo +1.88 check --all-targets`.
 
 **L3-RS-002** · Parent: L2-CONF-005 · Verification: I
-The Rust crate SHALL declare `memmap2` as its only external runtime dependency. Additional dependencies SHALL require explicit justification; argument parsing, CSV writing, TOML parsing, logging, and error types are hand-rolled by design.
+The Rust crate SHALL declare no external runtime dependencies. Adding one SHALL require explicit justification; argument parsing, CSV writing, TOML parsing, logging, error types and file input are hand-rolled on `std` by design. Until 5.0.0 the crate declared `memmap2` as its only dependency.
 
-**L3-RS-003** · Parent: L2-RDR-020 · Verification: I
-The Rust reader SHALL open the input file via `memmap2::Mmap` (read-only). `MmapMut` and `MmapOptions::map_copy()` SHALL NOT be used.
+**L3-RS-003** · Parent: L2-RDR-020 · Verification: T, I
+The Rust reader SHALL open the input file read-only and SHALL read it through positional reads (`pread` on POSIX, `seek_read` on Windows) into a bounded window (`rust/src/source.rs`), never mapping it. Before calling a sync helper it SHALL make the window reach as far as that helper can look — or to end of file — so streaming changes no decode result. `dump` SHALL read the input through the same module and only as far as it shows. Memory per open input SHALL be bounded by the window, independent of file size. Until 5.0.0 this requirement mandated a read-only `memmap2::Mmap`; the streamed backend measured within noise of the map on Linux and Windows, warm and cold page cache.
 
 **L3-RS-004** · Parent: L2-WRT-001 · Verification: I
 Rust CSV writing SHALL stream records directly through a `Write` implementation (typically `BufWriter<File>`) without collecting all messages or rows. `Vec<MieMessage>` or `Vec<Row>` buffering in the writer is forbidden — constant memory is the design point.
