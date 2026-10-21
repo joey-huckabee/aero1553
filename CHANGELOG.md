@@ -7,17 +7,42 @@ were current when they shipped.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-Versioning model: **a release is a joint cut** — the Rust crate, the
-Python package and the C++ implementation all ship from a single
-repository tag at one version number, and a CI gate fails the build if
-they disagree. (C++ joined the joint cut at v2.13.0; releases before
-that were Rust + Python.) Subsequent releases may diverge in version via
-impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`, `cpp-vX.Y.Z`); the
+Versioning model: **a release is a joint cut** — the Rust crate and the
+Python package ship from a single repository tag at one version number,
+and a CI gate fails the build if they disagree. (A C++ implementation
+joined the joint cut at v2.13.0 and was removed in 5.0.0; releases before
+v2.13.0 were Rust + Python.) Subsequent releases may diverge in version via
+impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`); the
 cross-implementation conformance contract (byte-exact CSV equivalence on
 shared behavior) holds at any compatible version pair. See
 `docs/MAINTAINER-GUIDE.md` §11 for the full release workflow.
 
 ## [Unreleased]
+
+### Removed — BREAKING
+
+- **The C++ implementation is removed.** `cpp/` is gone, and with it every
+  CI tier that existed for it: the GCC 4.8.5 fidelity tier, the MSVC build,
+  the ASan / UBSan / LSan and Valgrind tiers, clang-tidy, clang-format and
+  cppcheck, the C++ coverage gate, the C++ fuzz burn-in jobs, the `c-cpp`
+  CodeQL language and the C++ SonarCloud analysis. The three C++ invariant
+  gates go too: `scripts/assert-platform-confined.sh`,
+  `scripts/assert-locale-free.sh` and `scripts/assert-sources-agree.sh`.
+  The conformance runner registers Rust and Python only (`--cpp-bin` is
+  gone, and `--only cpp` / `--skip cpp` name an implementation that does not
+  exist). `L3-CPP-001` to `L3-CPP-033` are withdrawn with their IDs
+  reserved, and ADR-0001 to ADR-0003 are superseded.
+
+  **Migration for SLES 12 SP5.** The C++ build existed so SLES 12 SP5 could
+  run the decoder without a Python ≥3.10 or a Rust toolchain on the host.
+  The Rust `aero1553` binary built against glibc 2.22 (`cargo zigbuild
+  --release --target x86_64-unknown-linux-gnu.2.22`) replaces it: a single
+  binary with no runtime dependency beyond the system glibc, the
+  **identical CLI flag surface**, and **byte-identical CSV** -- the
+  conformance suite pinned all three implementations to the same oracles,
+  stderr included, so nothing a C++ invocation produced changes. Replace the
+  C++ binary with the Rust one; command lines, config files and downstream
+  CSV consumers need no change.
 
 ### Fixed
 
