@@ -1,10 +1,19 @@
 ---
-status: accepted
+status: superseded
 date: 2026-08-18
+superseded: 5.0.0
 decision-makers: Joey
 ---
 
 # Windows is a shipping target for the C++ implementation, not a build convenience
+
+> **Superseded in 5.0.0.** The C++ implementation was removed in 5.0.0, so this
+> decision no longer governs anything in the repository. SLES 12 SP5 remains a
+> deployment target; it is now served by the Rust `aero1553` binary built
+> against glibc 2.22 (the SLES 12 SP5 system glibc) with `cargo-zigbuild`. The
+> record below is kept unchanged as the history of why the C++ tree existed and
+> how it was built. Windows also remains a shipping target, through the Rust
+> binary (MSVC x64).
 
 ## Context and Problem Statement
 
