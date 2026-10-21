@@ -483,6 +483,7 @@ shows up as a gap rather than silently drifting:
 |-----|---------------|-----------|--------------|
 | `rust` | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --all-targets` (unit + `rust/tests/integration.rs` + `rust/tests/cli.rs` CLI acceptance suite — see section 5 for the test pyramid); `cargo cov-ci` (90% line / 89% region coverage floors) Linux-only | `ubuntu-latest`, `windows-latest` | Block merge |
 | `rust-doc` | `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` — fails on broken intra-doc links and other rustdoc lints in the doc-heavy crate | `ubuntu-latest` | Block merge |
+| `rust-glibc-2-22` | `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22` -- the SLES 12 SP5 binary (L3-RS-018); fails on any symbol newer than `GLIBC_2.22`, runs the conformance suite against that binary, uploads it as the `aero1553-x86_64-linux-glibc2.22` artifact | `ubuntu-latest` | Block merge |
 | `rust-msrv` | `cargo check --all-targets` on the pinned **1.88** toolchain — enforces the declared `rust-version` (the main `rust` job builds on stable) | `ubuntu-latest` | Block merge |
 | `cargo-deny` | `cargo deny check` — RustSec advisories, license allow-list, bans (duplicates/wildcards), and crates.io-only sources (config in `rust/deny.toml`) | `ubuntu-latest` | Block merge |
 | `cargo-semver-checks` | `cargo semver-checks check-release` vs the latest release tag (`baseline-rev`, `release-type: minor`) — fails a PR that makes a **breaking** public-API change without a major bump; additive changes pass | `ubuntu-latest` | Block merge |
