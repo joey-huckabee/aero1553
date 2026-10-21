@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Regenerate docs/TRACE-MATRIX.md from requirement sources and test markers.
 
-This tool walks the requirement documents and all three implementations' test
+This tool walks the requirement documents and both implementations' test
 markers, and emits a single trace matrix document:
 
 1. ``docs/L1-REQ.md`` — for L1 ids and their declared verification methods
@@ -11,19 +11,18 @@ markers, and emits a single trace matrix document:
 4. ``src/**/*.rs`` and ``tests/*.rs`` — for every ``/// Requirements: ...``
    doc-comment line immediately preceding a ``#[test]`` item, collected via a
    stateful line scan
-5. ``cpp/tests/*.cpp`` — for every requirement id appearing inside a Catch2
-   ``TEST_CASE`` tag string, e.g. ``TEST_CASE("...", "[atomic][L3-WRT-001]")``
 
 Each implementation uses whatever marker its test framework can already select
-on, rather than a common comment convention: pytest selects on markers, Catch2
-selects on tags, and Rust has neither, so it uses a doc comment. That keeps
-every emitted artifact string directly runnable.
+on, rather than a common comment convention: pytest selects on markers, and Rust
+has nothing equivalent, so it uses a doc comment. That keeps every emitted
+artifact string directly runnable. (The C++ implementation, removed in 5.0.0,
+used Catch2 tags; its ``L3-CPP-*`` requirements are withdrawn.)
 
 The output per requirement row includes:
 
 * L2/L3 children (from parent fields)
 * Test artifacts (from markers) in pytest discovery format for Python tests
-  and ``path::name`` for Rust and C++ tests. Direct markers on an L1
+  and ``path::name`` for Rust tests. Direct markers on an L1
   requirement are rendered too — most L1s decompose into L2/L3 and carry
   none, but Test-verified L1 *leaves* (no L2 decomposition, e.g.
   ``L1-ROB-001`` for the fuzz harness) attach their tests at L1.
@@ -56,18 +55,8 @@ L3_DOC = ROOT / "docs" / "L3-REQ.md"
 TRACE_DOC = ROOT / "docs" / "TRACE-MATRIX.md"
 PY_TESTS_DIR = ROOT / "python" / "tests"
 RUST_SOURCE_ROOTS = [ROOT / "rust" / "src", ROOT / "rust" / "tests"]
-CPP_TESTS_DIR = ROOT / "cpp" / "tests"
 
 REQ_ID_PATTERN = re.compile(r"L(?P<level>[123])-(?P<cat>[A-Z]+)-(?P<num>\d+)")
-# Catch2 test declaration: TEST_CASE("name", "[tag][tag]"). clang-format wraps
-# long declarations across lines, so the whitespace between the tokens has to be
-# permissive -- a stricter pattern silently stops matching the moment the
-# formatter decides a line is too long, and the requirement quietly reads as
-# untested rather than as a parsing failure.
-CPP_TEST_CASE = re.compile(
-    r'TEST_CASE\s*\(\s*"(?P<name>(?:[^"\\]|\\.)*)"\s*,\s*"(?P<tags>[^"]*)"',
-    re.MULTILINE,
-)
 L1_HEADER = re.compile(r"^###\s+(L1-[A-Z]+-\d+)\s*$", re.MULTILINE)
 L2_HEADER = re.compile(r"^####\s+(L2-[A-Z]+-\d+)\s*$", re.MULTILINE)
 L2_PARENT_LINE = re.compile(r"^\*\*Parent\*\*:\s+(L1-[A-Z]+-\d+)\s*$", re.MULTILINE)
@@ -123,7 +112,6 @@ CATEGORIES: list[tuple[str, str]] = [
     # L3-only per-implementation technology categories
     ("PY", "Python implementation details (L3)"),
     ("RS", "Rust implementation details (L3)"),
-    ("CPP", "C++ implementation details (L3)"),
 ]
 
 
@@ -369,44 +357,12 @@ def collect_rust_markers(source_roots: list[Path]) -> dict[str, list[str]]:
     return marker_map
 
 
-def collect_cpp_markers(tests_dir: Path) -> dict[str, list[str]]:
-    """Walk every ``.cpp`` file under tests_dir and collect Catch2 tag markers.
-
-    A requirement id written as a Catch2 tag -- ``"[atomic][L3-WRT-001]"`` --
-    is the marker, rather than a comment convention as in Rust. That is
-    deliberate: Catch2 can *select* on tags, so the artifact string this emits
-    is directly runnable against the built binary::
-
-        ./aero1553_tests "[L3-WRT-001]"
-
-    A single ``TEST_CASE`` may name several requirements, and the same
-    requirement may be named by several test cases; both are normal.
-    """
-    marker_map: dict[str, list[str]] = defaultdict(list)
-    if not tests_dir.is_dir():
-        return marker_map
-    for cpp_file in sorted(tests_dir.rglob("*.cpp")):
-        try:
-            source = cpp_file.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        rel = cpp_file.relative_to(ROOT).as_posix()
-        for match in CPP_TEST_CASE.finditer(source):
-            for req_match in REQ_ID_PATTERN.finditer(match.group("tags")):
-                req_id = (
-                    f"L{req_match.group('level')}-{req_match.group('cat')}-{req_match.group('num')}"
-                )
-                marker_map[req_id].append(f"{rel}::{match.group('name')}")
-    return marker_map
-
-
 def collect_all_markers() -> dict[str, list[str]]:
-    """Merge the Python, Rust and C++ marker collections."""
+    """Merge the Python and Rust marker collections."""
     merged: dict[str, list[str]] = defaultdict(list)
     for source in (
         collect_python_markers(PY_TESTS_DIR),
         collect_rust_markers(RUST_SOURCE_ROOTS),
-        collect_cpp_markers(CPP_TESTS_DIR),
     ):
         for req_id, artifacts in source.items():
             merged[req_id].extend(artifacts)
@@ -456,7 +412,7 @@ def build_matrix() -> str:
         "This file is regenerated from `L1-REQ.md`, `L2-REQ.md`, `L3-REQ.md`, "
         "the `@pytest.mark.requirement` markers in `python/tests/`, the "
         "`/// Requirements:` doc-comment tags above `#[test]` items in Rust "
-        "source, and the Catch2 tag markers in `cpp/tests/`, each time "
+        "source, each time "
         "`scripts/build-trace-matrix.py` is run."
     )
     lines.append("")
@@ -578,7 +534,7 @@ def build_matrix() -> str:
     lines.append("")
     lines.append(
         "* **Tested** — at least one test marker (`@pytest.mark.requirement`,"
-        " `/// Requirements:`, or a Catch2 tag) names this requirement."
+        " or `/// Requirements:`) names this requirement."
     )
     lines.append(
         "* **Verified** — Tested, OR the spec declares verification by"
