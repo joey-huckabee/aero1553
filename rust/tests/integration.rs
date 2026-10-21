@@ -1329,9 +1329,9 @@ fn read_manifest_skips_blanks_and_comments() {
 ///   * At most ONE trailing `\r` is stripped, so CRLF works and a filename
 ///     containing a bare CR survives. C++ dropped every `\r` in the line.
 ///   * Trimming is ASCII space and tab ONLY. `str::trim` also removes U+00A0,
-///     U+3000 and the rest; the C++ implementation is locale-free by rule and
-///     cannot, so two implementations silently edited a filename the third
-///     passed through.
+///     U+3000 and the rest; the C++ implementation (removed in 5.0.0) was
+///     locale-free by rule and could not, so two implementations silently
+///     edited a filename the third passed through.
 ///
 /// Requirements: L2-MRG-001
 #[test]

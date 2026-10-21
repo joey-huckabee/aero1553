@@ -1007,7 +1007,7 @@ fn not_an_integer(name: &str, value: &str) -> String {
 ///
 /// One routine for every bounded integer flag, so the "not a number" and "out
 /// of range" messages read the same for each. Parsed as `i64`, so `-1` reports
-/// the range rather than failing to parse, as it does in C++.
+/// the range rather than failing to parse, as it did in the former C++ CLI.
 fn parse_ranged(s: &str, name: &str, lo: i64, hi: i64) -> Result<i64, String> {
     let n: i64 = s
         .trim_ascii()

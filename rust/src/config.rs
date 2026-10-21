@@ -845,7 +845,7 @@ pub fn parse_type_value(v: &TomlValue) -> Result<u8, ConfigError> {
 pub fn parse_type_name(s: &str) -> Result<u8, ConfigError> {
     // ASCII case and ASCII blanks only: Unicode upper-casing maps a dotless i
     // to `I` and a long s to `S`, and `str::trim` removes a no-break space --
-    // each made a name valid here that C++ refuses.
+    // each made a name valid here that the former C++ loader refused.
     let upper = trim_ascii_blank(s).to_ascii_uppercase();
     let by_name: &[(&str, u8)] = &[
         ("MODE_COMMAND", MessageType::ModeCommand as u8),
@@ -862,7 +862,7 @@ pub fn parse_type_name(s: &str) -> Result<u8, ConfigError> {
         }
     }
     // `0x` and one or more hex digits, nothing else. `from_str_radix` alone
-    // would also take a sign (`0x+1`), which C++ refuses.
+    // would also take a sign (`0x+1`), which the former C++ loader refused.
     if let Some(rest) = upper.strip_prefix("0X")
         && !rest.is_empty()
         && rest.bytes().all(|b| b.is_ascii_hexdigit())
@@ -1158,8 +1158,8 @@ pub fn parse_toml(text: &str) -> Result<TomlDoc, String> {
 
     // Lines end at `\n`, and one `\r` before it -- or at the end of the file --
     // belongs to the line ending. `str::lines` keeps a final lone `\r`, and
-    // `str::trim` then removed any Unicode space as well; C++ removes exactly
-    // the `\r`, then spaces and tabs (L2-CFG-010).
+    // `str::trim` then removed any Unicode space as well; the rule (once the
+    // C++ loader's) removes exactly the `\r`, then spaces and tabs (L2-CFG-010).
     for (index, raw) in text.split('\n').enumerate() {
         let raw = raw.strip_suffix('\r').unwrap_or(raw);
         let line = trim_ascii_blank(strip_comment(raw));
@@ -1230,7 +1230,7 @@ fn parse_scalar(s: &str, lineno: usize) -> Result<TomlValue, String> {
         return Err(format!("line {lineno}: empty value"));
     }
     // A boolean is exactly `true` or `false`. Anything else that merely starts
-    // like one (`tru`, `falsey`) is just an unparseable value, as in C++.
+    // like one (`tru`, `falsey`) is just an unparseable value.
     match s {
         "true" => return Ok(TomlValue::Bool(true)),
         "false" => return Ok(TomlValue::Bool(false)),
@@ -1275,8 +1275,8 @@ fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
                 Some('\\') => out.push('\\'),
                 Some('n') => out.push('\n'),
                 Some('t') => out.push('\t'),
-                // The byte after the backslash, as C++ reports it: one
-                // byte, so a non-ASCII character shows as its lead byte.
+                // The byte after the backslash, as the former C++ loader
+                // reported it: one byte, so a non-ASCII character shows as its lead byte.
                 Some(o) => {
                     let mut lead = [0u8; 4];
                     let lead = o.encode_utf8(&mut lead).as_bytes()[0];
