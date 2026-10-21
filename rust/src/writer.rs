@@ -18,7 +18,10 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{MieError, MieResult};
-use crate::models::{CalendarError, MAX_DATA_WORDS, MieMessage, TimeRender};
+use crate::models::{
+    CalendarError, IrigTimestamp, MAX_DATA_WORDS, MieMessage, OutputTimeFormat, TimeRender,
+    Timestamp,
+};
 use crate::{log_info, log_warn};
 
 // ── Path identity (L2-WRT-014) ────────────────────────────────────────
@@ -197,7 +200,7 @@ impl AtomicCsvFile {
         Ok(Self {
             final_path,
             temp_path,
-            writer: Some(BufWriter::new(file)),
+            writer: Some(BufWriter::with_capacity(OUTPUT_BUFFER, file)),
             committed: false,
             mode: CommitMode::Replace,
         })
@@ -455,6 +458,8 @@ pub struct CsvWriter<W: Write> {
     /// L2-WRT-025: how the `TIME_STAMP` column is rendered. Defaults to
     /// day-of-year; set with [`CsvWriter::with_time_render`].
     time_render: TimeRender,
+    /// One row, rendered before any of it is written; reused across rows.
+    row: Vec<u8>,
 }
 
 impl<W: Write> CsvWriter<W> {
@@ -469,6 +474,7 @@ impl<W: Write> CsvWriter<W> {
             rows_written: 0,
             destination: destination.into(),
             time_render: TimeRender::doy(),
+            row: Vec::with_capacity(512),
         };
         w.write_str(CSV_HEADER)?;
         Ok(w)
@@ -496,15 +502,28 @@ impl<W: Write> CsvWriter<W> {
         // a day-of-year the configured year does not have (L2-WRT-026 clause
         // 3). Resolving it first keeps that refusal from leaving a half-written
         // line in the output.
-        let timestamp = msg.timestamp.format_with(self.time_render).map_err(|e| {
-            MieError::CalendarUnavailable {
-                detail: describe_calendar_error(e, msg.file_offset),
+        self.row.clear();
+        match msg.timestamp {
+            // The default rendering, written without an intermediate String.
+            Timestamp::Irig(t) if self.time_render.format == OutputTimeFormat::Doy => {
+                push_irig_doy(&mut self.row, &t);
             }
-        })?;
-        write_row(&mut self.out, msg, &timestamp).map_err(|source| MieError::WriterError {
-            destination: self.destination.clone(),
-            source,
-        })?;
+            _ => {
+                let timestamp = msg.timestamp.format_with(self.time_render).map_err(|e| {
+                    MieError::CalendarUnavailable {
+                        detail: describe_calendar_error(e, msg.file_offset),
+                    }
+                })?;
+                self.row.extend_from_slice(timestamp.as_bytes());
+            }
+        }
+        render_fields(&mut self.row, msg);
+        self.out
+            .write_all(&self.row)
+            .map_err(|source| MieError::WriterError {
+                destination: self.destination.clone(),
+                source,
+            })?;
         self.rows_written += 1;
         Ok(())
     }
@@ -583,78 +602,176 @@ fn describe_calendar_error(err: CalendarError, file_offset: u64) -> String {
     }
 }
 
-/// Write one CSV row. `timestamp` is rendered by the caller (see
-/// [`CsvWriter::write_message`]) so that a failed calendar resolution cannot
-/// leave a partly-written row behind.
-fn write_row<W: Write>(out: &mut W, msg: &MieMessage, timestamp: &str) -> std::io::Result<()> {
-    // TIME_STAMP
-    out.write_all(timestamp.as_bytes())?;
-    out.write_all(b",")?;
+/// Output buffer size. The default 8 KiB made one `write` system call per
+/// ~30 rows: 422,088 of them for a 16-file merge, most of its kernel time.
+const OUTPUT_BUFFER: usize = 256 * 1024;
 
-    // RT
-    if let Some(rt) = msg.rt() {
-        write!(out, "{rt}")?;
+const HEX: &[u8; 16] = b"0123456789ABCDEF";
+
+/// Append `w` as four uppercase hex digits, as `{w:04X}` would.
+fn push_hex4(row: &mut Vec<u8>, w: u16) {
+    row.extend_from_slice(&[
+        HEX[usize::from(w >> 12)],
+        HEX[usize::from((w >> 8) & 0xF)],
+        HEX[usize::from((w >> 4) & 0xF)],
+        HEX[usize::from(w & 0xF)],
+    ]);
+}
+
+/// Append `n` in decimal, as `{n}` would.
+fn push_u8(row: &mut Vec<u8>, n: u8) {
+    if n >= 100 {
+        row.push(b'0' + n / 100);
     }
-    out.write_all(b",")?;
+    if n >= 10 {
+        row.push(b'0' + n / 10 % 10);
+    }
+    row.push(b'0' + n % 10);
+}
 
-    // MSG
-    out.write_all(msg.msg_label().as_bytes())?;
-    out.write_all(b",")?;
+/// Render one CSV row into `row` (appended; the caller clears it).
+/// `timestamp` is rendered by the caller (see [`CsvWriter::write_message`]) so
+/// that a failed calendar resolution cannot leave a partly-written row behind.
+/// Building the row in memory and writing it once replaces ~40 small writes
+/// through `core::fmt` per row.
+#[cfg(test)]
+fn render_row(row: &mut Vec<u8>, msg: &MieMessage, timestamp: &str) {
+    row.extend_from_slice(timestamp.as_bytes());
+    render_fields(row, msg);
+}
 
-    // WD01..WD32
-    for i in 0..MAX_DATA_WORDS {
-        if let Some(&w) = msg.data_words.as_slice().get(i) {
-            write!(out, "{w:04X}")?;
+/// Append `n` as exactly `width` decimal digits (`n` must fit).
+fn push_padded(row: &mut Vec<u8>, mut n: u32, width: usize) {
+    let start = row.len();
+    row.resize(start + width, b'0');
+    for slot in row[start..].iter_mut().rev() {
+        *slot = b'0' + (n % 10) as u8;
+        n /= 10;
+    }
+}
+
+/// `DAY:HH:MM:SS.uuuuuu`, byte-identical to [`IrigTimestamp::format`].
+fn push_irig_doy(row: &mut Vec<u8>, t: &IrigTimestamp) {
+    let day = u32::from(t.day);
+    let width = if day >= 100 {
+        3
+    } else if day >= 10 {
+        2
+    } else {
+        1
+    };
+    push_padded(row, day, width);
+    row.push(b':');
+    push_padded(row, u32::from(t.hour), 2);
+    row.push(b':');
+    push_padded(row, u32::from(t.minute), 2);
+    row.push(b':');
+    push_padded(row, u32::from(t.second), 2);
+    row.push(b'.');
+    push_padded(row, t.microsecond % 1_000_000, 6);
+}
+
+/// `DELTA` as `{d:.6}` would write it. A `DELTA` is a whole number of
+/// microseconds divided by 10^6, so when `d` round-trips through that integer
+/// the integer's digits ARE the correctly rounded six-place decimal; anything
+/// else (negative, huge, not a whole microsecond) takes `core::fmt`.
+fn push_delta(row: &mut Vec<u8>, d: f64) {
+    if d.is_sign_positive() && d < 1.0e9 {
+        #[expect(
+            clippy::cast_possible_truncation,
+            clippy::cast_sign_loss,
+            reason = "guarded: finite, non-negative, below 10^15 microseconds"
+        )]
+        let us = (d * 1_000_000.0).round() as u64;
+        #[expect(clippy::cast_precision_loss, reason = "us < 2^50, exact in f64")]
+        let back = us as f64 / 1_000_000.0;
+        if back.to_bits() == d.to_bits() {
+            let whole = us / 1_000_000;
+            // Infallible: writing to a Vec never errors.
+            let _ = write!(row, "{whole}");
+            row.push(b'.');
+            push_padded(row, (us % 1_000_000) as u32, 6);
+            return;
         }
-        out.write_all(b",")?;
+    }
+    // Infallible: writing to a Vec never errors.
+    let _ = write!(row, "{d:.6}");
+}
+
+/// Render every column after `TIME_STAMP`, from its separating comma to the
+/// newline.
+fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
+    row.push(b',');
+
+    // RT, then MSG (`<SA><T|R>`; both empty for SPURIOUS_DATA)
+    if let Some(cw) = msg.command_word {
+        push_u8(row, cw.rt);
+        row.push(b',');
+        push_u8(row, cw.subaddress);
+        row.push(match cw.direction {
+            crate::models::Direction::Transmit => b'T',
+            crate::models::Direction::Receive => b'R',
+        });
+        row.push(b',');
+    } else {
+        row.extend_from_slice(b",,");
+    }
+
+    // WD01..WD32: the words present, then an empty cell for each absent one.
+    let words = msg.data_words.as_slice();
+    for &w in words.iter().take(MAX_DATA_WORDS) {
+        push_hex4(row, w);
+        row.push(b',');
+    }
+    for _ in words.len().min(MAX_DATA_WORDS)..MAX_DATA_WORDS {
+        row.push(b',');
     }
 
     // STAT
     if let Some(s) = msg.status_word {
-        write!(out, "{s:04X}")?;
+        push_hex4(row, s);
     }
-    out.write_all(b",")?;
+    row.push(b',');
 
     // CMD
     if let Some(cw) = msg.command_word {
-        write!(out, "{:04X}", cw.raw)?;
+        push_hex4(row, cw.raw);
     }
-    out.write_all(b",")?;
+    row.push(b',');
 
     // MUX (L2-WRT-020: derived from the file name; empty when disabled or the
     // configured field is absent), then TERM_NAME (always empty).
     if let Some(mux) = &msg.mux {
-        write_csv_field(out, mux)?;
+        // Infallible: writing to a Vec never errors.
+        let _ = write_csv_field(row, mux);
     }
-    out.write_all(b",,")?;
+    row.extend_from_slice(b",,");
 
     // BUS
-    out.write_all(msg.bus().as_str().as_bytes())?;
-    out.write_all(b",")?;
+    row.extend_from_slice(msg.bus().as_str().as_bytes());
+    row.push(b',');
 
     // DELTA — empty cell when delta is None (SPURIOUS_DATA, uncalibrated
     // Standard timestamps, or non-monotonic timestamps).
     if let Some(d) = msg.delta {
-        write!(out, "{d:.6}")?;
+        push_delta(row, d);
     }
-    out.write_all(b",")?;
+    row.push(b',');
 
     // IM_GAP, RCV_GAP, XMT_GAP (always empty) — the tail of the 44-column
     // vendor block (L2-WRT-001).
-    out.write_all(b",,,")?;
+    row.extend_from_slice(b",,,");
 
     // ERROR, then ERROR_CODE — decoder-added columns with no vendor
     // counterpart, appended AFTER the vendor block so column N of a decoded
     // CSV is column N of the vendor CSV for all 44 (L1-OUT-001).
-    out.write_all(msg.error_label().as_bytes())?;
-    out.write_all(b",")?;
+    row.extend_from_slice(msg.error_label().as_bytes());
+    row.push(b',');
 
     if let Some(c) = msg.error_word {
-        write!(out, "{c:04X}")?;
+        push_hex4(row, c);
     }
-    out.write_all(b"\n")?;
-
-    Ok(())
+    row.push(b'\n');
 }
 
 // ── Top-level entry points matching the Python API ────────────────────
@@ -840,7 +957,7 @@ where
         }
         None => {
             let stdout = std::io::stdout();
-            let buf = BufWriter::new(stdout.lock());
+            let buf = BufWriter::with_capacity(OUTPUT_BUFFER, stdout.lock());
             let mut writer =
                 CsvWriter::new(buf, "stdout".to_string())?.with_time_render(opts.time_render);
             stream_into(&mut writer, messages)?;
@@ -1236,6 +1353,70 @@ mod tests {
     use crate::models::*;
 
     /// Requirements: L2-WRT-020
+    /// The hand-written renderers are byte-identical to the `core::fmt`
+    /// forms they replace, over ordinary and edge values alike.
+    /// Requirements: L2-WRT-011
+    #[test]
+    #[expect(
+        clippy::cast_possible_truncation,
+        reason = "truncation picks the test values"
+    )]
+    fn fast_renderers_match_core_fmt() {
+        let mut seed = 0x2553_u64;
+        let mut next = move || {
+            seed ^= seed << 13;
+            seed ^= seed >> 7;
+            seed ^= seed << 17;
+            seed
+        };
+        let mut row = Vec::new();
+        let mut deltas: Vec<f64> = vec![0.0, -0.0, 1e-6, 0.5e-6, 1.5e-6, 2.5e-6, 0.123_456_5];
+        deltas.extend([
+            86_399.999_999,
+            999_999_999.0,
+            1e9,
+            1e12,
+            -1e-6,
+            f64::MIN_POSITIVE,
+        ]);
+        for _ in 0..200_000 {
+            let us = next() % 400_000_000_000;
+            #[expect(clippy::cast_precision_loss, reason = "test values below 2^39")]
+            deltas.push(us as f64 / 1_000_000.0);
+            deltas.push(f64::from_bits(next() >> 2));
+        }
+        for d in deltas {
+            row.clear();
+            push_delta(&mut row, d);
+            assert_eq!(
+                String::from_utf8_lossy(&row),
+                format!("{d:.6}"),
+                "delta {d:e}"
+            );
+        }
+        for _ in 0..200_000 {
+            let v = next();
+            let t = IrigTimestamp {
+                day: (v % 512) as u16,
+                hour: ((v >> 9) % 32) as u8,
+                minute: ((v >> 14) % 64) as u8,
+                second: ((v >> 20) % 64) as u8,
+                microsecond: ((v >> 26) % 2_000_000) as u32,
+                freerun: false,
+            };
+            row.clear();
+            push_irig_doy(&mut row, &t);
+            assert_eq!(String::from_utf8_lossy(&row), t.format());
+            row.clear();
+            push_hex4(&mut row, v as u16);
+            push_u8(&mut row, v as u8);
+            assert_eq!(
+                String::from_utf8_lossy(&row),
+                format!("{:04X}{}", v as u16, v as u8)
+            );
+        }
+    }
+
     #[test]
     fn mux_value_written_with_quoting() {
         use std::sync::Arc;
@@ -1245,7 +1426,7 @@ mod tests {
                 ..sample_msg()
             };
             let mut buf = Vec::new();
-            write_row(&mut buf, &msg, &msg.timestamp.format()).unwrap();
+            render_row(&mut buf, &msg, &msg.timestamp.format());
             String::from_utf8(buf).unwrap()
         };
         // Plain value appears verbatim in the MUX cell (after CMD 797E).
