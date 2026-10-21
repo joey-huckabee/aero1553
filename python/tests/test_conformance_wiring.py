@@ -154,3 +154,16 @@ def test_conformance_job_present_in_ci() -> None:
     assert "tests/conformance/run.py" in body, (
         "CI workflow does not appear to invoke the conformance runner"
     )
+
+
+@pytest.mark.requirement("L3-RS-018")
+def test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci() -> None:
+    """CI SHALL build the Rust binary against glibc 2.22 (SLES 12 SP5),
+    reject a symbol newer than GLIBC_2.22, and run the conformance suite
+    against that binary rather than a dev build."""
+    body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "x86_64-unknown-linux-gnu.2.22" in body, "no glibc 2.22 zigbuild target in CI"
+    assert "GLIBC_2.22" in body, "CI does not check the binary's glibc symbol versions"
+    assert (
+        "--rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553" in body
+    ), "CI does not run the conformance suite against the glibc 2.22 binary"

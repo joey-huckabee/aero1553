@@ -24,7 +24,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | L1 ID | L2 Children | Test Artifacts | Status |
 |-------|-------------|----------------|--------|
 | L1-DEC-001 | L2-DEC-001, L2-DEC-008, L2-DEC-010 | _(none)_ | Implemented |
-| L1-DEC-002 | L2-DEC-002, L2-DEC-003, L2-DEC-007, L2-DEC-011, L2-DEC-012, L2-DEC-015, L2-DEC-016, L2-DEC-017 | _(none)_ | Partially Implemented |
+| L1-DEC-002 | L2-DEC-002, L2-DEC-003, L2-DEC-007, L2-DEC-011, L2-DEC-012, L2-DEC-015, L2-DEC-016, L2-DEC-017 | _(none)_ | Implemented |
 | L1-DEC-003 | L2-DEC-004, L2-DEC-009, L2-MSG-001, L2-MSG-003, L2-MSG-004, L2-RDR-007, L2-RDR-008 | _(none)_ | Implemented |
 | L1-DEC-004 | L2-MSG-002 | _(none)_ | Implemented |
 | L1-DEC-005 | L2-RDR-002 | _(none)_ | Implemented |
@@ -41,7 +41,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | L2-DEC-008 | _(none)_ | `rust/src/decode.rs::read_u16_array_into_slice`<br>`rust/src/decode.rs::read_u16_le` | Implemented |
 | L2-DEC-009 | _(none)_ | `python/tests/test_e2e.py::test_payload_extraction_does_not_overrun_into_next_record`<br>`python/tests/test_e2e.py::test_rt_to_rt_cmd2_overclaim_does_not_overrun`<br>`rust/tests/integration.rs::payload_extraction_does_not_overrun_into_next_record`<br>`rust/tests/integration.rs::rt_to_rt_cmd2_overclaim_does_not_overrun` | Implemented |
 | L2-DEC-010 | _(none)_ | `python/tests/test_e2e.py::test_file_offset_tracking`<br>`python/tests/test_models.py::test_frozen`<br>`python/tests/test_models.py::test_optional_fields_none` | Implemented |
-| L2-DEC-011 | _(none)_ | _(TBD)_ | Draft |
+| L2-DEC-011 | _(none)_ | `rust/tests/integration.rs::timestamp_format_is_resolved_once_for_the_whole_file` | Implemented |
 | L2-DEC-012 | _(none)_ | `rust/src/decode.rs::probe_zero_score_ties_to_irig` | Implemented |
 | L2-DEC-015 | _(none)_ | `python/tests/test_e2e.py::test_cli_detect_records_flag_accepts_valid_size`<br>`python/tests/test_e2e.py::test_cli_detect_records_flag_rejects_out_of_range`<br>`rust/src/decode.rs::probe_eight_irig_records_aggregates_decisively`<br>`rust/src/decode.rs::probe_max_records_one_still_works`<br>`rust/src/decode.rs::probe_single_irig_record_picks_irig`<br>`rust/src/decode.rs::probe_stops_at_eof_records_probed_reflects_truncation`<br>`rust/src/decode.rs::probe_zero_score_ties_to_irig`<br>`rust/tests/cli.rs::detect_records_flag_accepts_valid_size`<br>`rust/tests/cli.rs::detect_records_flag_rejects_out_of_range` | Implemented |
 | L2-DEC-016 | _(none)_ | `rust/src/decode.rs::probe_ambiguous_below_floor_classifies_ambiguous` | Implemented |
@@ -284,7 +284,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | L2-CONF-002 | _(none)_ | `python/tests/test_conformance_wiring.py::test_conformance_runner_comparison_rejects_a_difference`<br>`python/tests/test_conformance_wiring.py::test_conformance_runner_registers_both_clis` | Implemented |
 | L2-CONF-003 | _(none)_ | `python/tests/test_conformance_wiring.py::test_conformance_manifest_has_cases_with_oracles`<br>`python/tests/test_conformance_wiring.py::test_conformance_runner_exists` | Implemented |
 | L2-CONF-004 | _(none)_ | `--update-expected`<br>`.github/workflows/ci.yml`<br>`.github/workflows/differential.yml`<br>`conformance`<br>`cross-impl-differential`<br>`tests/conformance/run.py` | Implemented (I) |
-| L2-CONF-005 | L3-PY-001, L3-PY-002, L3-PY-003, L3-PY-008, L3-PY-017, L3-RS-001, L3-RS-002, L3-RS-011 | `python/tests/test_conformance_wiring.py::test_conformance_job_present_in_ci`<br>`python/tests/test_package_api.py::test_console_script_entry_point_registered` | Partially Implemented |
+| L2-CONF-005 | L3-PY-001, L3-PY-002, L3-PY-003, L3-PY-008, L3-PY-017, L3-RS-001, L3-RS-002, L3-RS-011, L3-RS-018 | `python/tests/test_conformance_wiring.py::test_conformance_job_present_in_ci`<br>`python/tests/test_conformance_wiring.py::test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci`<br>`python/tests/test_package_api.py::test_console_script_entry_point_registered` | Partially Implemented |
 | L2-CONF-006 | L3-PY-007, L3-PY-020, L3-RS-013 | `python/tests/test_e2e_golden.py::test_a_user_dataclass_from_to_dict`<br>`python/tests/test_e2e_golden.py::test_columns_agree_with_the_pinned_csv`<br>`python/tests/test_e2e_golden.py::test_freerun_records_are_undated_but_keep_their_clock`<br>`python/tests/test_e2e_golden.py::test_numpy_and_pandas_analysis`<br>`python/tests/test_e2e_golden.py::test_selecting_fields_returns_the_same_values`<br>`python/tests/test_e2e_golden.py::test_standard_time_needs_a_tick_rate_and_never_has_a_date`<br>`python/tests/test_e2e_golden.py::test_with_a_year_datetime_is_the_iso_instant_or_nat`<br>`python/tests/test_e2e_golden.py::test_without_a_year_there_is_no_datetime_and_no_error`<br>`python/tests/test_package_api.py::test_decoder_entry_point_importable_from_package_root`<br>`python/tests/test_package_api.py::test_decoder_entry_point_is_a_typed_callable`<br>`python/tests/test_package_api.py::test_message_type_importable_from_package_root`<br>`python/tests/test_package_api.py::test_public_surface_is_documented`<br>`python/tests/test_python_guide.py::test_guide_example`<br>`python/tests/test_python_guide.py::test_the_guide_has_examples_with_output`<br>`python/tests/test_readme_examples.py::test_python_readme_examples_execute`<br>`python/tests/test_table.py::test_a_decoder_error_mid_stream_is_raised`<br>`python/tests/test_table.py::test_a_python_iterable_and_a_filtered_stream_are_accepted`<br>`python/tests/test_table.py::test_an_empty_stream_has_empty_columns_of_the_right_shape`<br>`python/tests/test_table.py::test_datetime_is_the_instant_the_iso_rendering_names`<br>`python/tests/test_table.py::test_datetime_needs_a_year_only_when_asked_for`<br>`python/tests/test_table.py::test_every_column_equals_to_dict_record_by_record`<br>`python/tests/test_table.py::test_fields_are_the_to_dict_keys_and_the_column_keys`<br>`python/tests/test_table.py::test_fields_resolution_is_safe_across_threads`<br>`python/tests/test_table.py::test_fields_selects_in_schema_order_and_rejects_unknowns`<br>`python/tests/test_table.py::test_numpy_and_pandas_wrap_the_columns_without_copying`<br>`python/tests/test_table.py::test_records_with_no_date_are_nat_not_a_refusal`<br>`python/tests/test_table.py::test_time_us_follows_the_delta_rule`<br>`python/tests/test_table.py::test_to_dict_agrees_with_the_records_attributes`<br>`rust/tests/integration.rs::crate_root_reexports_public_decode_api` | Implemented |
 
 ### L1-EXIT: Exit-code semantics and operational contract
@@ -361,7 +361,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 
 | Category | L1 | L2 | L3 | L2 tested | L3 tested | L2 verified | L3 verified |
 |----------|----|----|-----|-----------|-----------|-------------|-------------|
-| DEC | 5 | 15 | 0 | 14 | 0 | 14 | 0 |
+| DEC | 5 | 15 | 0 | 15 | 0 | 15 | 0 |
 | OUT | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DLT | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | CLI | 2 | 20 | 0 | 20 | 0 | 20 | 0 |
@@ -379,14 +379,14 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | WRT | 0 | 21 | 5 | 21 | 5 | 21 | 5 |
 | FLT | 0 | 3 | 0 | 3 | 0 | 3 | 0 |
 | PY | 0 | 0 | 22 | 0 | 17 | 0 | 17 |
-| RS | 0 | 0 | 16 | 0 | 11 | 0 | 11 |
-| **Total** | **33** | **146** | **44** | **141** | **34** | **143** | **34** |
+| RS | 0 | 0 | 17 | 0 | 12 | 0 | 12 |
+| **Total** | **33** | **146** | **45** | **142** | **35** | **144** | **35** |
 
 The countable requirement set is every L2 and L3 requirement plus the 6 Test-verifiable L1 *leaf* requirement(s) (L1s with no L2 decomposition, e.g. `L1-ROB-001`, where the test markers attach directly). Composite L1s are verified transitively through their L2/L3 children, which are counted individually above.
 
-**Tested by at least one test marker**: 181 of 196 (92.3%).
+**Tested by at least one test marker**: 183 of 197 (92.9%).
 
-**Verified (Test or declared Inspection/Analysis/Demonstration)**: 183 of 196 (93.4%).
+**Verified (Test or declared Inspection/Analysis/Demonstration)**: 185 of 197 (93.9%).
 
 ### Orphan check
 

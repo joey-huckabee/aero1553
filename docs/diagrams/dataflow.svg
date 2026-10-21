@@ -1,15 +1,15 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Aero1553 - Data Flow (Rust, Python, C++)
+  Aero1553 - Data Flow (Rust, Python)
 
   HAND-MAINTAINED. This file is the source; there is no generator to re-run.
   Edit the element for a step directly: every step, decision, branch and note
   is a <g id="..."> preceded by a comment naming it. Lanes are the <g id="lane-NN">
   bands at the top of the drawing; resize a band when you move the steps in it.
 
-  The flow is shared by all three implementations. Function and type names are
-  Rust's where the implementations differ; docs/ARCHITECTURE.md section 1 maps
-  them to Python and C++.
+  The flow is the Rust crate's; the Python package runs the same pipeline through
+  its PyO3 extension. Function and type names are Rust's where the two spell
+  them differently; docs/ARCHITECTURE.md section 1 maps them to Python.
 
   Connectors: an accent pill "A Next", "B DELTA", "C Commit" or "D Filter"
   continues at the step tagged with the same letter.
@@ -54,8 +54,8 @@
 
   <!-- title -->
   <g id="title">
-    <text class="title" x="20" y="30">Aero1553 - Data Flow (Rust, Python, C++)</text>
-    <text class="sub" x="20" y="50">Shared by all three implementations; names are Rust's where they differ. Pills: A..D are connectors, red pills are process exits.</text>
+    <text class="title" x="20" y="30">Aero1553 - Data Flow (Rust, Python)</text>
+    <text class="sub" x="20" y="50">Shared by the Rust CLI and the Python package (which runs the Rust pipeline); names are Rust's where they differ. Pills: A..D are connectors, red pills are process exits.</text>
   </g>
 
   <!-- lane: CLI -->

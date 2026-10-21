@@ -1300,6 +1300,46 @@ fn merge_rejects_standard_format_input() {
     }
 }
 
+/// The timestamp format is resolved once per decode and applied to every
+/// record: a probe of only the first record still governs records far past
+/// it, and an explicit format reaches every record too.
+///
+/// Requirements: L2-DEC-011
+#[test]
+fn timestamp_format_is_resolved_once_for_the_whole_file() {
+    use aero1553::models::{Timestamp, TimestampFormat};
+    use aero1553::reader::ReaderOptions;
+
+    let records: Vec<Vec<u8>> = (0..12)
+        .map(|i| rt15_record_at(192, 15, 54, 50, 100 * (i + 1), false))
+        .collect();
+    let f = TempFile::new(&records.concat());
+
+    let formats = |input_time_format| -> Vec<bool> {
+        let reader = MieFileReader::with_options(
+            f.path(),
+            ReaderOptions {
+                input_time_format,
+                detect_records: 1,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        reader
+            .iter()
+            .map(|m| matches!(m.unwrap().timestamp, Timestamp::Irig(_)))
+            .collect()
+    };
+
+    let auto = formats(TimestampFormat::Auto);
+    assert_eq!(auto.len(), 12);
+    assert!(auto.iter().all(|&irig| irig), "auto must resolve IRIG for every record");
+
+    let forced = formats(TimestampFormat::Standard);
+    assert_eq!(forced.len(), 12);
+    assert!(forced.iter().all(|&irig| !irig), "a forced format must reach every record");
+}
+
 /// Requirements: L2-MRG-001
 #[test]
 fn read_manifest_skips_blanks_and_comments() {

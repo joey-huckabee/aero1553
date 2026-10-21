@@ -12,8 +12,8 @@
   y=580, errors bus at y=600) instead of one line per pair. A dot marks a
   line joining a bus; a crossing without a dot is not a connection.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1600" height="1810" viewBox="0 0 1600 1810">
-  <title>Aero1553 - Component Architecture (Rust, Python, C++)</title>
+<svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1600" height="1770" viewBox="0 0 1600 1770">
+  <title>Aero1553 - Component Architecture (Rust, Python)</title>
   <style>
     svg {
       --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --box: #f6f8fa;
@@ -58,13 +58,13 @@
     </marker>
   </defs>
 
-  <rect class="bg" x="0" y="0" width="1600" height="1810"/>
+  <rect class="bg" x="0" y="0" width="1600" height="1770"/>
 
   <!-- Title -->
   <g id="title">
-    <text class="title" x="800" y="34" text-anchor="middle">Aero1553 - Component Architecture (Rust, Python, C++)</text>
-    <text class="subtitle" x="800" y="54" text-anchor="middle">Each component is a module in every tree: rust/src/&lt;m&gt;.rs, python/src/aero1553/&lt;m&gt;.py, cpp/src/&lt;m&gt;.cpp (Python spells a few differently: filters, exceptions, logger).</text>
-    <text class="subtitle" x="800" y="70" text-anchor="middle">tests/conformance/ holds the three byte-identical on CSV output. The platform layer is C++ only. Circled numbers refer to the notes at the bottom.</text>
+    <text class="title" x="800" y="34" text-anchor="middle">Aero1553 - Component Architecture (Rust, Python)</text>
+    <text class="subtitle" x="800" y="54" text-anchor="middle">Each component is a module in rust/src/&lt;m&gt;.rs; python/src/aero1553/&lt;m&gt;.py exposes it over the PyO3 binding (Python spells a few differently: filters, exceptions, logger).</text>
+    <text class="subtitle" x="800" y="70" text-anchor="middle">tests/conformance/ holds the Rust CLI and the Python package byte-identical on CSV output. Circled numbers refer to the notes at the bottom.</text>
   </g>
 
   <!-- ===================================================================
@@ -82,7 +82,7 @@
     <rect class="box" x="40" y="110" width="200" height="80" rx="4"/>
     <text class="name" x="140" y="134" text-anchor="middle">entrypoint</text>
     <text class="mono" x="140" y="154" text-anchor="middle">rust/src/bin/aero1553.rs</text>
-    <text class="mono" x="140" y="172" text-anchor="middle">__main__.py | main.cpp</text>
+    <text class="mono" x="140" y="172" text-anchor="middle">__main__.py</text>
   </g>
 
   <!-- Component: cli (note 7: exit codes) -->
@@ -365,7 +365,7 @@
   <g id="error">
     <rect class="box" x="500" y="650" width="1020" height="95" rx="4"/>
     <text class="name" x="1010" y="670" text-anchor="middle">error</text>
-    <text x="1010" y="687" text-anchor="middle">Rust: MieError enum + kind()   |   Python: Aero1553Error class tree   |   C++: MieError</text>
+    <text x="1010" y="687" text-anchor="middle">Rust: MieError enum + kind()   |   Python: Aero1553Error class tree</text>
     <text x="1010" y="704" text-anchor="middle">sync: NoValidRecords, FirstRecordTruncated, HomogeneousPayload   |   invariants: record error (strict)</text>
     <text x="1010" y="721" text-anchor="middle">merge: IncompatibleMergeInputs (exit 6), NonMonotonicInput   |   writer: WriterError</text>
     <text x="1010" y="738" text-anchor="middle">output safety: InputOutputCollision, ClobberRefused</text>
@@ -401,7 +401,7 @@
   <g id="output-safety">
     <rect class="box" x="620" y="840" width="280" height="70" rx="4"/>
     <text class="name" x="760" y="862" text-anchor="middle">output safety</text>
-    <text x="760" y="880" text-anchor="middle">AtomicCsvFile (C++: AtomicFile)</text>
+    <text x="760" y="880" text-anchor="middle">AtomicCsvFile</text>
     <text x="760" y="897" text-anchor="middle">temp file -&gt; commit / commit_partial</text>
     <circle class="badge" cx="888" cy="852" r="9"/>
     <text class="badge-text" x="888" y="856" text-anchor="middle">3</text>
@@ -457,30 +457,18 @@
     <text class="label" x="1360" y="925">atomic commit, see note 3</text>
   </g>
 
-  <!-- Package: Platform layer (C++ only) -->
-  <g id="pkg-platform">
-    <rect class="frame" x="20" y="950" width="900" height="120" rx="6"/>
-    <text class="frame-title" x="32" y="968">Platform layer (C++ only)</text>
-  </g>
-  <g id="platform">
-    <rect class="box" x="40" y="980" width="860" height="75" rx="4"/>
-    <text class="name" x="470" y="1001" text-anchor="middle">platform -- cpp/include/mie/platform.hpp, the only C++ code that touches the OS</text>
-    <text class="mono" x="470" y="1020" text-anchor="middle">MappedFile | AtomicFile | list_directory | prepare_stdout | paths_same_file</text>
-    <text x="470" y="1039" text-anchor="middle">map the input, atomic output, directory enumeration (--glob), binary stdout, path identity</text>
-  </g>
-
   <!-- ===================================================================
        Notes
        =================================================================== -->
-  <text class="name" x="20" y="1100">Notes</text>
+  <text class="name" x="20" y="1060">Notes</text>
 
   <!-- Note 1: sync -->
   <g id="note-1">
-    <rect class="note" x="20" y="1115" width="500" height="210" rx="4"/>
-    <circle class="badge" cx="40" cy="1136" r="9"/>
-    <text class="badge-text" x="40" y="1140" text-anchor="middle">1</text>
-    <text class="name" x="56" y="1141">Four-phase sync (docs/ARCHITECTURE.md section 3)</text>
-    <text class="note-text" x="36" y="1166">
+    <rect class="note" x="20" y="1075" width="500" height="210" rx="4"/>
+    <circle class="badge" cx="40" cy="1096" r="9"/>
+    <text class="badge-text" x="40" y="1100" text-anchor="middle">1</text>
+    <text class="name" x="56" y="1101">Four-phase sync (docs/ARCHITECTURE.md section 3)</text>
+    <text class="note-text" x="36" y="1126">
       <tspan x="36" dy="0">1. find_first_record: scan for the first valid record, &lt;= 64 KB</tspan>
       <tspan x="36" dy="16">2. validate_record: shape probe of the candidate</tspan>
       <tspan x="36" dy="16">3. look-ahead: the next N-1 records must also validate</tspan>
@@ -493,11 +481,11 @@
 
   <!-- Note 2: structural invariants -->
   <g id="note-2">
-    <rect class="note" x="550" y="1115" width="500" height="210" rx="4"/>
-    <circle class="badge" cx="570" cy="1136" r="9"/>
-    <text class="badge-text" x="570" y="1140" text-anchor="middle">2</text>
-    <text class="name" x="586" y="1141">Structural invariants</text>
-    <text class="note-text" x="566" y="1166">
+    <rect class="note" x="550" y="1075" width="500" height="210" rx="4"/>
+    <circle class="badge" cx="570" cy="1096" r="9"/>
+    <text class="badge-text" x="570" y="1100" text-anchor="middle">2</text>
+    <text class="name" x="586" y="1101">Structural invariants</text>
+    <text class="note-text" x="566" y="1126">
       <tspan x="566" dy="0">L2-SYN-020..025 and L2-SYN-027 check each decoded record</tspan>
       <tspan x="566" dy="16">against the MIL-STD-1553 transaction shape.</tspan>
       <tspan x="566" dy="24">A violated rule: strict mode surfaces a record error</tspan>
@@ -510,11 +498,11 @@
 
   <!-- Note 3: output safety -->
   <g id="note-3">
-    <rect class="note" x="1080" y="1115" width="500" height="210" rx="4"/>
-    <circle class="badge" cx="1100" cy="1136" r="9"/>
-    <text class="badge-text" x="1100" y="1140" text-anchor="middle">3</text>
-    <text class="name" x="1116" y="1141">Output safety (L1-OUT-002)</text>
-    <text class="note-text" x="1096" y="1166">
+    <rect class="note" x="1080" y="1075" width="500" height="210" rx="4"/>
+    <circle class="badge" cx="1100" cy="1096" r="9"/>
+    <text class="badge-text" x="1100" y="1100" text-anchor="middle">3</text>
+    <text class="name" x="1116" y="1101">Output safety (L1-OUT-002)</text>
+    <text class="note-text" x="1096" y="1126">
       <tspan x="1096" dy="0">1. Reject input == output (L2-WRT-014).</tspan>
       <tspan x="1096" dy="16">2. --no-clobber: reported early, ENFORCED at commit by a</tspan>
       <tspan x="1096" dy="16">    non-replacing move (L2-WRT-017, L2-WRT-023).</tspan>
@@ -529,11 +517,11 @@
 
   <!-- Note 4: merge -->
   <g id="note-4">
-    <rect class="note" x="20" y="1345" width="500" height="230" rx="4"/>
-    <circle class="badge" cx="40" cy="1366" r="9"/>
-    <text class="badge-text" x="40" y="1370" text-anchor="middle">4</text>
-    <text class="name" x="56" y="1371">Multi-file merge (L1-MRG, L2-MRG)</text>
-    <text class="note-text" x="36" y="1396">
+    <rect class="note" x="20" y="1305" width="500" height="230" rx="4"/>
+    <circle class="badge" cx="40" cy="1326" r="9"/>
+    <text class="badge-text" x="40" y="1330" text-anchor="middle">4</text>
+    <text class="name" x="56" y="1331">Multi-file merge (L1-MRG, L2-MRG)</text>
+    <text class="note-text" x="36" y="1356">
       <tspan x="36" dy="0">Inputs: positionals / --manifest / --glob, at most 256 (L2-MRG-001).</tspan>
       <tspan x="36" dy="16">Min-heap keyed (IRIG microseconds, input index, sequence); at most</tspan>
       <tspan x="36" dy="16">one record per open input, so memory is O(files) (L2-MRG-002).</tspan>
@@ -550,11 +538,11 @@
 
   <!-- Note 5: canonical row order -->
   <g id="note-5">
-    <rect class="note" x="550" y="1345" width="500" height="230" rx="4"/>
-    <circle class="badge" cx="570" cy="1366" r="9"/>
-    <text class="badge-text" x="570" y="1370" text-anchor="middle">5</text>
-    <text class="name" x="586" y="1371">Canonical row order (L1-OUT-003)</text>
-    <text class="note-text" x="566" y="1396">
+    <rect class="note" x="550" y="1305" width="500" height="230" rx="4"/>
+    <circle class="badge" cx="570" cy="1326" r="9"/>
+    <text class="badge-text" x="570" y="1330" text-anchor="middle">5</text>
+    <text class="name" x="586" y="1331">Canonical row order (L1-OUT-003)</text>
+    <text class="note-text" x="566" y="1356">
       <tspan x="566" dy="0">Buffers one run of CONSECUTIVE equal-TIME_STAMP records and</tspan>
       <tspan x="566" dy="16">stable-sorts it by (RT, subaddress, direction), receive before</tspan>
       <tspan x="566" dy="16">transmit (L2-WRT-021). Never reorders across a timestamp boundary.</tspan>
@@ -570,11 +558,11 @@
 
   <!-- Note 6: configuration precedence -->
   <g id="note-6">
-    <rect class="note" x="1080" y="1345" width="500" height="230" rx="4"/>
-    <circle class="badge" cx="1100" cy="1366" r="9"/>
-    <text class="badge-text" x="1100" y="1370" text-anchor="middle">6</text>
-    <text class="name" x="1116" y="1371">Configuration precedence (highest first)</text>
-    <text class="note-text" x="1096" y="1396">
+    <rect class="note" x="1080" y="1305" width="500" height="230" rx="4"/>
+    <circle class="badge" cx="1100" cy="1326" r="9"/>
+    <text class="badge-text" x="1100" y="1330" text-anchor="middle">6</text>
+    <text class="name" x="1116" y="1331">Configuration precedence (highest first)</text>
+    <text class="note-text" x="1096" y="1356">
       <tspan x="1096" dy="0">1. CLI flags (--no-clobber, --allow-partial, --separate-errors,</tspan>
       <tspan x="1096" dy="16">    --include-rts, ...)</tspan>
       <tspan x="1096" dy="16">2. TOML config file (--config)</tspan>
@@ -585,11 +573,11 @@
 
   <!-- Note 7: exit codes -->
   <g id="note-7">
-    <rect class="note" x="20" y="1595" width="500" height="195" rx="4"/>
-    <circle class="badge" cx="40" cy="1616" r="9"/>
-    <text class="badge-text" x="40" y="1620" text-anchor="middle">7</text>
-    <text class="name" x="56" y="1621">Exit codes (L1-EXIT-001..010; docs/ERROR-CATALOG.md section 1)</text>
-    <text class="note-text" x="36" y="1646">
+    <rect class="note" x="20" y="1555" width="500" height="195" rx="4"/>
+    <circle class="badge" cx="40" cy="1576" r="9"/>
+    <text class="badge-text" x="40" y="1580" text-anchor="middle">7</text>
+    <text class="name" x="56" y="1581">Exit codes (L1-EXIT-001..010; docs/ERROR-CATALOG.md section 1)</text>
+    <text class="note-text" x="36" y="1606">
       <tspan x="36" dy="0">0  complete, partial-recovered, --allow-partial, broken pipe,</tspan>
       <tspan x="36" dy="16">    empty recording</tspan>
       <tspan x="36" dy="16">1  runtime or decode error (record or file I/O)</tspan>

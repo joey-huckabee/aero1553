@@ -44,19 +44,18 @@ shared behavior) holds at any compatible version pair. See
   C++ binary with the Rust one; command lines, config files and downstream
   CSV consumers need no change.
 
+### Added
+
+- **CI builds the Linux binary for SLES 12 SP5** (L3-RS-018). A new job
+  builds `aero1553` with `cargo zigbuild` against glibc 2.22, fails if the
+  binary references a symbol newer than `GLIBC_2.22`, runs the whole
+  conformance suite against that binary, and uploads it as the
+  `aero1553-x86_64-linux-glibc2.22` artifact.
+
 ### Fixed
 
-- **C++ rounds a calibrated Standard timestamp the same way as Rust and
-  Python** (L2-DEC-017). It computed `floor(x + 0.5)`, where the addition
-  rounds before `floor` sees it, so two kinds of input came out 1 µs high:
-  `0.49999999999999994` µs (1 tick at `--standard-tick-rate-hz
-  2000000.0000000002`), and every odd count from 2^52 to 2^53 µs, where
-  doubles are spaced 1 apart -- reached at tick rates below about 0.95 Hz,
-  where `0xFFFFFFFF` ticks at `0.9` Hz read `DELTA` `1.111112` instead of
-  `1.111111`. It now uses `std::round`. Two conformance cases pin both
-  inputs across all three implementations.
 - **An errored record with no room for its Error Word is rejected, not
-  decoded with its Command Word as the error code** (Rust and C++, and so
+  decoded with its Command Word as the error code** (Rust, and so
   the Python package; L2-ERR-002 amended). The Error Word is an errored
   record's last word, but sync validation admits a record that ends at its
   Command Word -- 5 words with an IRIG timestamp, 4 with a Standard one --
@@ -96,42 +95,6 @@ shared behavior) holds at any compatible version pair. See
   Reachable since non-UTF-8 arguments were accepted (#153). The split now
   works on the OS name itself: bytes on POSIX, UTF-16 units on Windows (so
   an unpaired surrogate survives too).
-- **C++ `dump` names a file with a backslash in it correctly on Linux.**
-  The report's `File:` line split the path on `/` and `\` on every
-  platform, so a recording named `odd\name.mie` was reported as
-  `File: name.mie` on POSIX, where a backslash is an ordinary filename
-  character and Rust and Python print the whole name. It now takes the name
-  from the platform layer's `path_filename`, and `--glob`, which already
-  asked the platform layer what a separator is but kept its own copy of the
-  split, uses the same `path_filename` / `path_parent` pair -- so one rule
-  decides where a C++ path's file name begins. Windows is unchanged.
-- **C++ output files get the same permissions as Rust's and Python's**
-  (L3-WRT-001 extended). On POSIX the C++ writer created its files asking
-  for mode `0644`, while Rust -- and the Python package, which writes
-  through it -- ask for `0666`. The two agreed only under umask `022`: under
-  `002`, a per-user-group default, C++ wrote `0644` where the others wrote
-  `0664`. It now asks for `0666`, so every implementation writes
-  `0666 & ~umask`, as a shell redirect does. A new conformance check runs
-  each implementation under four umasks across every commit path. The
-  C++ `--no-clobber` fallback for filesystems without hard links
-  (FAT/exFAT, some network mounts) is split out as `reserve_then_rename`,
-  as Rust's is, and now has a test of its own: no test host's filesystem
-  reaches it, so until now it had never run under test.
-  **Behaviour change** for C++ on POSIX under a umask that leaves group or
-  other write open. Windows is unchanged.
-- **C++ on Windows reads an input through a symlink** (L2-RDR-005 and
-  L2-RDR-006 amended). Its file checks used `GetFileAttributesExW`, which
-  describes a symlink itself rather than what it points to: a recording
-  reached through a link was refused as an empty recording, decoding or
-  dumping a dangling link reported an I/O failure instead of "MIE file not
-  found", a dangling `--config` link was not reported as missing, and
-  `--glob` matched a dangling link that Rust and Python skip, failing the
-  merge. It now opens the path and reads the file's details from the
-  handle, which follows the link as Rust's `std::fs` does; a device such
-  as `NUL` no longer counts as a regular file either. A new conformance
-  check covers decode, `--glob`, `dump` and `--config` through links in
-  all three implementations, and fails rather than skips on CI if the
-  runner cannot create a symlink. POSIX is unchanged.
 - **The `MUX` field is trimmed of spaces and tabs only, in all three
   implementations** (L2-WRT-020 amended). Rust -- and so the Python
   package -- trimmed it with `str::trim`, which also removes Unicode

@@ -136,6 +136,57 @@ jobs:
           RUSTDOCFLAGS: "-D warnings"
         run: cargo doc --no-deps --locked
 
+  rust-glibc-2-22:
+    # SLES 12 SP5 ships glibc 2.22 (L3-RS-018). zig's linker targets an
+    # exact glibc version, so the binary references no symbol newer than
+    # the one requested -- checked below, not assumed -- and the conformance
+    # suite runs against this binary, the one that ships, not a dev build.
+    name: Rust Linux binary for glibc 2.22 (SLES 12 SP5)
+    runs-on: ubuntu-latest
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      - name: Install zig and cargo-zigbuild
+        # Both pinned, so a new release of either cannot change the binary
+        # between two runs of the same commit.
+        run: |
+          python3 -m pip install --user ziglang==0.17.0
+          cargo install --locked cargo-zigbuild@0.23.4
+
+      - name: Build against glibc 2.22
+        working-directory: rust
+        run: cargo zigbuild --locked --release --target x86_64-unknown-linux-gnu.2.22
+
+      - name: No symbol newer than GLIBC_2.22
+        shell: bash
+        run: |
+          bin=rust/target/x86_64-unknown-linux-gnu/release/aero1553
+          newest=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+          echo "newest glibc symbol version: $newest"
+          test "$(printf '%s\nGLIBC_2.22\n' "$newest" | sort -V | tail -1)" = GLIBC_2.22
+
+      - name: Conformance suite against the shipping binary
+        run: >
+          python3 tests/conformance/run.py --only rust
+          --rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: aero1553-x86_64-linux-glibc2.22
+          path: rust/target/x86_64-unknown-linux-gnu/release/aero1553
+          if-no-files-found: error
+
   rust-msrv:
     name: Rust MSRV (1.88)
     runs-on: ubuntu-latest

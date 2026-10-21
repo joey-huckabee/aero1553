@@ -222,6 +222,9 @@ The Rust no-replace commit SHALL be `std::fs::hard_link` followed by `remove_fil
 
 `hard_link` is what keeps this dependency-free (`L3-RS-002`). It maps to `link(2)` on POSIX and `CreateHardLinkW` on Windows, and both fail when the destination exists, so one standard-library call spans both platforms. The no-replace primitives that would be more direct — `renameat2(RENAME_NOREPLACE)`, `MoveFileExW` with no flags — have no `std` wrapper and are reachable only through `libc` or `windows-sys`, which is a dependency this crate will not take for a behaviour it can already reach.
 
+**L3-RS-018** · Parent: L2-CONF-005 · Verification: T
+The Rust `aero1553` binary for Linux SHALL be built against **glibc 2.22**, the SUSE Linux Enterprise Server 12 SP5 system glibc, with `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22`, so SLES 12 SP5 runs the decoder with no Python, no Rust toolchain and no library beyond the system glibc. CI SHALL build that binary on every push and pull request, SHALL fail if it references any symbol version newer than `GLIBC_2.22`, and SHALL run the conformance suite against that binary -- the one that ships -- not against a development build. This replaces the C++ implementation, which existed for this target until 5.0.0 (`L3-CPP-*`, withdrawn).
+
 ---
 
 ## L3-CPP: C++ implementation technology (withdrawn)
