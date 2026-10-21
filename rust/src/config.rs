@@ -608,7 +608,7 @@ fn apply_merge_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), Co
     }
     // L2-MRG-008: cap on the retained survivor set. Range-checked here so a bad
     // value fails at load time rather than silently clamping later; the message
-    // text matches Python's loader and the C++ one (L3-WRT-003).
+    // text matches Python's loader (L3-WRT-003).
     if let Some(n) = toml.get_int("merge", "max_collapse_survivors")? {
         match usize::try_from(n) {
             Ok(v) if (MAX_COLLAPSE_SURVIVORS_MIN..=MAX_COLLAPSE_SURVIVORS_MAX).contains(&v) => {
@@ -1149,7 +1149,7 @@ fn duplicate_key_error(section: &str, key: &str, lineno: usize) -> String {
 /// loader's deliberately flat subset of TOML: a malformed section header or
 /// key/value line, a duplicate key, a re-opened section, a dotted key or
 /// section header, an array-of-tables header, or an unterminated string or
-/// array. The subset is held identical to the Python and C++ loaders by
+/// array. The subset is held identical to the Python loader by
 /// `tests/conformance/config_parity.py`.
 pub fn parse_toml(text: &str) -> Result<TomlDoc, String> {
     let mut doc = TomlDoc::default();

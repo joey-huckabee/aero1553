@@ -690,8 +690,7 @@ def test_merge_input_resolution_tolerates_arbitrary_bytes(tmp_path: Path) -> Non
     expansion must tolerate any pattern.
 
     Mirrors ``merge_input_resolution_tolerates_arbitrary_bytes`` in
-    ``rust/tests/integration.rs`` and the ``[fuzz]`` merge case in
-    ``cpp/tests/test_fuzz.cpp``: same generator, same alphabet, same probes, so
+    ``rust/tests/integration.rs``: same generator, same alphabet, same probes, so
     the ``FUZZ-SUMMARY`` counters are comparable. This harness used to seed
     ``random.Random`` and cover only the manifest -- it was the one harness in
     the project that did not see the same inputs as its counterparts.

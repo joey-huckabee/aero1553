@@ -287,10 +287,10 @@ def is_leap_year(year: int) -> bool:
     """Proleptic Gregorian leap-year test (L2-WRT-025).
 
     Divisible by 4, except centuries, which must also be divisible by 400.
-    Hand-rolled rather than delegated to :mod:`datetime` so that all three
-    implementations compute it identically -- C++11 has no date type at all, and
-    one shared rule is easier to hold aligned than three library behaviours that
-    merely agree today.
+    Hand-rolled rather than delegated to :mod:`datetime` so that every
+    implementation computes it identically -- the C++11 one (removed in 5.0.0)
+    had no date type at all, and one shared rule is easier to hold aligned than
+    several library behaviours that merely agree today.
 
     Returns:
         True if ``year`` has 366 days.

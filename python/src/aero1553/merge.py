@@ -96,7 +96,7 @@ def expand_glob(pattern: str) -> list[Path]:
     recording. A dangling symlink answers ``False`` and is skipped, which is
     also what a broken link deserves: the merge would only fail to open it a
     moment later. Directories -- including one named ``archive.mie`` -- are never
-    matched. All three implementations resolve the same set (L2-MRG-001).
+    matched. Both implementations resolve the same set (L2-MRG-001).
 
     Returns:
         Matching regular files, sorted lexicographically so the order is

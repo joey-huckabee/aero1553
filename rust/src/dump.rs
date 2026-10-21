@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn dump_report_is_pure_ascii_and_lf() {
         // The report is a stdout PAYLOAD -- piped, redirected, and diffed
-        // against the Python and C++ reports -- so it carries no byte above
+        // against the Python report -- so it carries no byte above
         // 0x7F and no CR. Python's report used box-drawing, arrow and en-dash
         // characters until this was written down; those could not be encoded on
         // a redirected Windows stdout at cp1252 and made 11 of 34 lines differ.

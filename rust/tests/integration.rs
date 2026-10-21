@@ -755,7 +755,7 @@ fn header_skip_via_proprietary_prefix() {
 // random bytes; we just need to confirm we never panic, segfault, or enter an
 // unbounded loop.
 //
-// THREE KNOBS, SHARED WITH THE PYTHON AND C++ HARNESSES. All three
+// THREE KNOBS, SHARED WITH THE PYTHON HARNESSES. Both
 // implementations read the same environment variables and mean the same thing
 // by them. That matters because a burn-in scoped differently per language
 // cannot be compared across languages, which is the whole subject of
@@ -780,9 +780,9 @@ fn header_skip_via_proprietary_prefix() {
 // guard would restore the level while a sibling test was still running — the
 // race would be worse than the leak. Both fuzz harnesses set the same value,
 // no other test in this binary asserts on logging, and the unit tests that DO
-// (`src/log.rs`) build into a separate binary. The C++ harness is the opposite
-// case and does use a guard: Catch2 runs its cases sequentially in one process,
-// and leaving the level at OFF there broke `test_log.cpp` two files away.
+// (`src/log.rs`) build into a separate binary. (The former C++ harness was the
+// opposite case and used a guard: Catch2 ran its cases sequentially in one
+// process, and leaving the level at OFF there broke `test_log.cpp`.)
 
 // Module scope rather than inside the harness body: `order_rows` is called from
 // within a `catch_unwind` closure, and an inner `use` after a statement trips
@@ -793,7 +793,7 @@ use aero1553::order::OrderIterExt;
 const FUZZ_SEED: u64 = 0x0DDC_D1EC_DDC0_DEC0;
 
 /// The shared generator: xorshift64, byte-for-byte the one in
-/// `python/tests/test_e2e.py` and `cpp/tests/test_fuzz.cpp`. Not a good PRNG; a
+/// `python/tests/fuzz_support.py`. Not a good PRNG; a
 /// *reproducible* one, which is the property that matters here.
 fn fuzz_xorshift64(state: &mut u64) -> u64 {
     let mut x = *state;
@@ -833,8 +833,8 @@ fn fuzz_configure_logging() {
 /// then one at a time for the tail.
 ///
 /// The *consumption order* is as much a part of the contract as the PRNG —
-/// Python and C++ draw from the stream identically, which is what makes
-/// iteration N the same bytes in all three implementations.
+/// Python draws from the stream identically, which is what makes
+/// iteration N the same bytes in both implementations.
 fn fuzz_bytes(state: &mut u64, size: usize) -> Vec<u8> {
     let mut bytes = vec![0u8; size];
     let mut j = 0;
@@ -851,7 +851,7 @@ fn fuzz_bytes(state: &mut u64, size: usize) -> Vec<u8> {
 
 /// Emit this harness's one-line summary.
 ///
-/// The line has the same shape in all three implementations, so the burn-in
+/// The line has the same shape in both implementations, so the burn-in
 /// jobs produce artifacts that can be *diffed* rather than three
 /// differently-shaped pass messages ("1 passed" vs "2 passed" vs "484 test
 /// cases"). On identical inputs the counters should be identical too; a
@@ -877,8 +877,8 @@ fn fuzz_summary(harness: &str, iterations: usize, fields: &str) {
     }
 }
 
-/// What the reader harness counts. Every field is defined so that Python and
-/// C++ can count the same thing on the same input.
+/// What the reader harness counts. Every field is defined so that Python can
+/// count the same thing on the same input.
 #[derive(Default, Clone, Copy)]
 struct ReaderFuzzCounts {
     opened: u64,
@@ -1390,7 +1390,7 @@ fn read_manifest_grammar_is_exactly_specified() {
 }
 
 /// The glob-pattern alphabet the merge fuzz harness draws from, shared with
-/// `python/tests/fuzz_support.py` and `cpp/tests/test_fuzz.cpp`.
+/// `python/tests/fuzz_support.py`.
 ///
 /// A pattern built by lossily UTF-8-decoding random bytes would be the obvious
 /// thing, and it is wrong twice over. Random bytes almost never contain `*` or
@@ -1400,9 +1400,9 @@ fn read_manifest_grammar_is_exactly_specified() {
 /// the glob matchers disagreeing about anything.
 ///
 /// Drawing from an alphabet fixes both. The last two entries are deliberately
-/// non-ASCII: Rust and Python match over scalar values and the C++ matcher
-/// advances `?` by a whole UTF-8 character, and this is the surface where that
-/// agreement is either real or it is not.
+/// non-ASCII: Rust and Python match over scalar values (as the former C++
+/// matcher did by advancing `?` a whole UTF-8 character), and this is the
+/// surface where that agreement is either real or it is not.
 ///
 /// `*` and `?` are weighted (three and two slots) because the first version of
 /// this harness drew uniformly from a 15-character alphabet over patterns up to

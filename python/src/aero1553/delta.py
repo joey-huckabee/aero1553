@@ -30,7 +30,7 @@ L2-MRG-006).
 The "have I already mentioned this key" bookkeeping *is* kept here, so the
 once-per-key promise has one owner rather than a set in each caller.
 
-Mirrors ``rust/src/delta.rs`` and ``cpp/src/delta.cpp``.
+Mirrors ``rust/src/delta.rs``.
 """
 
 from __future__ import annotations

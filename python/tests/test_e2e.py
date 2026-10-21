@@ -869,7 +869,7 @@ class TestAtomicWriteSafety:
     )
     def test_error_path_for_puts_errors_before_the_final_dot(self, out: str, want: str) -> None:
         """L2-ERR-008: ``_errors`` goes in front of the file name's final ``.``,
-        on every Python version -- the same table as the Rust and C++ suites."""
+        on every Python version -- the same table as the Rust suite."""
         from aero1553.writer import error_path_for
 
         assert error_path_for(Path("dir.d") / out) == Path("dir.d") / want
@@ -1807,12 +1807,11 @@ class TestDeltaAndErrorRecords:
 class TestFuzzHarness:
     """L1-ROB-001: fuzz harnesses asserting no unexpected escape on arbitrary bytes.
 
-    Mirrors the Rust harnesses in ``rust/tests/integration.rs`` and the C++ one
-    in ``cpp/tests/test_fuzz.cpp``: same xorshift64 generator, same seed, same
-    size bands, same draw order — so iteration N is the same bytes in all three
-    implementations.
+    Mirrors the Rust harnesses in ``rust/tests/integration.rs``: same xorshift64
+    generator, same seed, same size bands, same draw order — so iteration N is
+    the same bytes in both implementations.
 
-    THREE KNOBS, SHARED WITH THE RUST AND C++ HARNESSES. All three read the same
+    THREE KNOBS, SHARED WITH THE RUST HARNESSES. Both read the same
     environment variables and mean the same thing by them, because a burn-in
     scoped differently per language cannot be compared across languages — which
     is the subject of ``docs/FUZZING.md`` section 1.
@@ -2055,7 +2054,7 @@ class TestDumpDiagnostics:
         self, tmp_path: Path, capfdbinary: pytest.CaptureFixture[bytes]
     ) -> None:
         """The dump report is a stdout *payload* -- piped, redirected, diffed
-        against the Rust and C++ reports -- so it is pure ASCII with LF endings.
+        against the Rust report -- so it is pure ASCII with LF endings.
 
         This replaces a test that asserted the opposite. The annotation used to
         contain box-drawing, arrow and en-dash characters, which raised
@@ -2101,7 +2100,7 @@ class TestDumpDiagnostics:
         three unrelated CP437 glyphs and was reported as memory corruption.
 
         ``scripts/assert-ascii-output.py`` enforces the rule at the source across
-        all three implementations; this is the runtime half, on the bytes that
+        both implementations; this is the runtime half, on the bytes that
         actually reach the file descriptor.
         """
         from aero1553.cli import main
@@ -2121,7 +2120,7 @@ class TestDumpDiagnostics:
         The IRIG day-of-year advisory ended ``... -- see
         docs/VENDOR-CSV-DIFFS.md section 5``; both the dash and the section sign
         were non-ASCII, so the line ended in mojibake on a Windows console.
-        Rust and C++ emit the identical wording.
+        Rust emits the identical wording.
         """
         import logging
 

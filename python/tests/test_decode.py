@@ -1,8 +1,8 @@
 """Timestamp-format selection, through the public reader and CLI.
 
 The word decoders themselves are the Rust crate's (``rust/src/decode.rs``),
-pinned there and by the exhaustive digest in ``rust/examples/decode_digest.rs``
-and the C++ suite. All expected values are derived from empirically validated
+pinned there and by the exhaustive digest in ``rust/examples/decode_digest.rs``.
+All expected values are derived from empirically validated
 binary data cross-referenced against vendor-generated CSV output.
 """
 
