@@ -19,6 +19,18 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **Decoding to CSV is about 3x faster** (3.0x-3.4x on Windows: a 1 GiB
+  recording from 67.5 s to 19.8 s, the 16-file merge from 35.3 s to
+  11.7 s), with byte-identical output. Each row is rendered into one
+  reused buffer and written once, instead of about 40 small writes
+  through `core::fmt`; the day-of-year `TIME_STAMP` and `DELTA` are
+  rendered without an intermediate `String` or float formatting (falling
+  back to `core::fmt` for any value that does not round-trip); and the
+  output buffer grows from 8 KiB to 256 KiB, which removes about 97% of
+  the `write` system calls.
+
 ## [5.0.0] — 2026-10-22
 
 ### Removed — BREAKING
