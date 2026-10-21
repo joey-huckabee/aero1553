@@ -1171,17 +1171,63 @@ pub fn commit_targets(output: &Path, split_errors: bool, allow_partial: bool) ->
 /// and dropping it turned `o.` into `o_errors` where C++ wrote `o_errors.`;
 /// Python's `pathlib`, which the old Python helper used, splits that name a
 /// third way, and changed its answer in 3.14.
+///
+/// The split works on the OS name itself, never a lossy `String`: a name that
+/// is not Unicode (`out<FF>.csv`, reachable since non-UTF-8 arguments were
+/// accepted) must keep its bytes, or the errors file lands under a name with
+/// U+FFFD in it where C++ writes `out<FF>_errors.csv`.
 fn error_path_for(output: &Path) -> std::path::PathBuf {
-    let name = output
-        .file_name()
-        .map(|s| s.to_string_lossy().into_owned())
-        .unwrap_or_default();
-    let derived = match name.rfind('.') {
-        Some(dot) if dot > 0 => format!("{}_errors{}", &name[..dot], &name[dot..]),
-        _ => format!("{name}_errors"),
-    };
+    let name = output.file_name().unwrap_or_default();
     let parent = output.parent().unwrap_or_else(|| Path::new(""));
-    parent.join(derived)
+    parent.join(errors_name(name))
+}
+
+/// The L2-ERR-008 split of one file name, over its native units: bytes on
+/// Unix, UTF-16 code units on Windows. `.` is ASCII in both, so splitting at
+/// it never cuts a character.
+#[cfg(unix)]
+fn errors_name(name: &std::ffi::OsStr) -> std::ffi::OsString {
+    use std::os::unix::ffi::{OsStrExt, OsStringExt};
+    let bytes = name.as_bytes();
+    let (stem, suffix) = split_final_dot(bytes, b'.');
+    let mut out = Vec::with_capacity(bytes.len() + b"_errors".len());
+    out.extend_from_slice(stem);
+    out.extend_from_slice(b"_errors");
+    out.extend_from_slice(suffix);
+    std::ffi::OsString::from_vec(out)
+}
+
+#[cfg(windows)]
+fn errors_name(name: &std::ffi::OsStr) -> std::ffi::OsString {
+    use std::os::windows::ffi::{OsStrExt, OsStringExt};
+    let units: Vec<u16> = name.encode_wide().collect();
+    let (stem, suffix) = split_final_dot(&units, u16::from(b'.'));
+    let mut out = Vec::with_capacity(units.len() + "_errors".len());
+    out.extend_from_slice(stem);
+    out.extend("_errors".encode_utf16());
+    out.extend_from_slice(suffix);
+    std::ffi::OsString::from_wide(&out)
+}
+
+/// Neither Unix nor Windows: no way to reach the raw name, so the lossy
+/// string is the best available.
+#[cfg(not(any(unix, windows)))]
+fn errors_name(name: &std::ffi::OsStr) -> std::ffi::OsString {
+    let name = name.to_string_lossy();
+    let (stem, suffix) = split_final_dot(name.as_bytes(), b'.');
+    let mut out = String::from_utf8_lossy(stem).into_owned();
+    out.push_str("_errors");
+    out.push_str(&String::from_utf8_lossy(suffix));
+    out.into()
+}
+
+/// `(stem, suffix)` at the final `dot`; a `dot` at index 0 leads a dotfile and
+/// does not split, and no `dot` leaves the suffix empty.
+fn split_final_dot<T: PartialEq>(name: &[T], dot: T) -> (&[T], &[T]) {
+    match name.iter().rposition(|u| *u == dot) {
+        Some(i) if i > 0 => name.split_at(i),
+        _ => (name, &[]),
+    }
 }
 
 #[cfg(test)]
@@ -1383,6 +1429,50 @@ mod tests {
         ] {
             assert_eq!(error_path_for(Path::new(out)), Path::new(want), "{out}");
         }
+    }
+
+    /// A name that is not Unicode keeps its bytes: `out<FF>.csv` gives
+    /// `out<FF>_errors.csv`, not `out<U+FFFD>_errors.csv` (ROADMAP item D).
+    ///
+    /// Requirements: L2-ERR-008
+    #[cfg(unix)]
+    #[test]
+    fn error_path_keeps_a_non_utf8_name() {
+        use std::ffi::OsString;
+        use std::os::unix::ffi::OsStringExt;
+        // Built from numbers, not `\xFF` escapes: the ASCII-output gate
+        // scans test modules in `src/` too.
+        let name = |head: &str, raw: u8, tail: &str| {
+            OsString::from_vec([head.as_bytes(), &[raw], tail.as_bytes()].concat())
+        };
+        assert_eq!(
+            error_path_for(Path::new(&name("d/out", 0xFF, ".csv"))),
+            Path::new(&name("d/out", 0xFF, "_errors.csv"))
+        );
+        assert_eq!(
+            error_path_for(Path::new(&name("o", 0xFE, "."))),
+            Path::new(&name("o", 0xFE, "_errors."))
+        );
+    }
+
+    /// The Windows form of the same rule: an unpaired surrogate survives.
+    ///
+    /// Requirements: L2-ERR-008
+    #[cfg(windows)]
+    #[test]
+    fn error_path_keeps_an_unpaired_surrogate() {
+        use std::ffi::OsString;
+        use std::os::windows::ffi::OsStringExt;
+        let wide = |s: &str, lone: u16, rest: &str| {
+            let mut v: Vec<u16> = s.encode_utf16().collect();
+            v.push(lone);
+            v.extend(rest.encode_utf16());
+            OsString::from_wide(&v)
+        };
+        assert_eq!(
+            error_path_for(Path::new(&wide("out", 0xD800, ".csv"))),
+            Path::new(&wide("out", 0xD800, "_errors.csv"))
+        );
     }
 
     // ── AtomicCsvFile and path identity ──────────────────────────────
