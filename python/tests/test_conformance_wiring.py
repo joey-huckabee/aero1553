@@ -164,6 +164,6 @@ def test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci() -> No
     body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "x86_64-unknown-linux-gnu.2.22" in body, "no glibc 2.22 zigbuild target in CI"
     assert "GLIBC_2.22" in body, "CI does not check the binary's glibc symbol versions"
-    assert (
-        "--rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553" in body
-    ), "CI does not run the conformance suite against the glibc 2.22 binary"
+    assert "--rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553" in body, (
+        "CI does not run the conformance suite against the glibc 2.22 binary"
+    )
