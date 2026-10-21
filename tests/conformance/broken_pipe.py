@@ -13,7 +13,8 @@ It is not a differential check. Each implementation is held to the
 specification on its own, so it runs even when only one is under test -- which
 was the configuration (``--only cpp``, before the C++ implementation was removed
 in 5.0.0) in which the defect it was written for lived. Rust's runtime and
-CPython both ignore SIGPIPE before ``main``; the C++ build did not, so on POSIX it was killed by the signal (exit 141) before the
+CPython both ignore SIGPIPE before ``main``; the C++ build did not, so on POSIX it was killed by
+the signal (exit 141) before the
 failed write could return the EPIPE that the writer already classified as a
 clean stop.
 

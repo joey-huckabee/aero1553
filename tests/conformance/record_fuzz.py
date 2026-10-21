@@ -1,7 +1,8 @@
 """Differential *fuzzer* for the record-stream decoders.
 
 WHAT THIS IS FOR. The in-process L1-ROB-001 harnesses
-(`rust/tests/integration.rs`, `python/tests/test_e2e.py`) share a generator, so iteration N is the same bytes
+(`rust/tests/integration.rs`, `python/tests/test_e2e.py`) share a generator, so iteration N is the
+same bytes
 everywhere -- but each one only ever proves a negative about its own process:
 *it did not crash*. Their ``FUZZ-SUMMARY`` lines compare run totals, which
 catches a disagreement about how many records a file yields but not two

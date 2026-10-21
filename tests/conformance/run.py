@@ -203,9 +203,7 @@ def parse_args() -> argparse.Namespace:
     impl_group.add_argument(
         "--skip",
         metavar="IMPLS",
-        help=(
-            "Comma-separated implementations to leave out; the rest run."
-        ),
+        help=("Comma-separated implementations to leave out; the rest run."),
     )
     impl_group.add_argument(
         "--python-only",
