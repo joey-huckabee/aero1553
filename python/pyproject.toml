@@ -210,7 +210,7 @@ select = [
 ]
 
 # Deliberately NOT disabling the confusable-character rules. The en and em
-# dashes are prose punctuation used consistently across all three
+# dashes are prose punctuation used consistently across both
 # implementations' comments; allowing exactly those keeps the rule live for a
 # genuinely deceptive homoglyph (a Cyrillic `а` in an identifier, say).
 # `×` is the multiplication sign in prose ("2 × 32 words"), not a stand-in

@@ -6,8 +6,8 @@ Read it before adding a fuzz harness, before interpreting a burn-in log, and
 before concluding that two implementations disagree.
 
 **The one rule that governs this page.** A fuzz surface is either exercised by
-**all three** implementations or by **none**. A surface that only one tree
-fuzzes is a parity gap, and it is tracked in [section 5](#5-parity-gaps) until it
+**both** implementations (Rust and Python) or by **neither**. A surface that only
+one tree fuzzes is a parity gap, and it is tracked in [section 5](#5-parity-gaps) until it
 is closed — not left as a virtue of the tree that happens to have it.
 
 Related: [`MAINTAINER-GUIDE.md`](MAINTAINER-GUIDE.md) for CI architecture,
@@ -20,7 +20,7 @@ classified by, [`DATA-SCENARIOS.md`](DATA-SCENARIOS.md) for what the decoder is
 ## 1. Two architectures, and what each can prove
 
 The repository contains two structurally different kinds of fuzzing. Almost
-every surprise about "why don't the three implementations agree?" traces back to
+every surprise about "why don't the implementations agree?" traces back to
 which of the two a given surface uses.
 
 ### A. In-process robustness harnesses (per-language)
@@ -32,11 +32,11 @@ framework, running in its own process:
 |---|---|---|
 | Rust | `rust/tests/integration.rs` | libtest (`#[test]`) |
 | Python | `python/tests/test_e2e.py`, `python/tests/test_merge.py` | pytest |
-| C++ | `cpp/tests/test_fuzz.cpp` | Catch2, tagged `[fuzz]` |
 
 They share a **generator** — the same xorshift64, the same seed
-(`0x0DDCD1ECDDC0DEC0`), the same size bands, the same draw order — so all three
-see the *same bytes* at iteration N. The Python side keeps that machinery in
+(`0x0DDCD1ECDDC0DEC0`), the same size bands, the same draw order — so both
+see the *same bytes* at iteration N. (So did the C++ implementation's Catch2
+harness until that implementation was removed in 5.0.0.) The Python side keeps that machinery in
 `python/tests/fuzz_support.py` so harnesses in different files cannot drift
 apart; they did once, and the merge harness spent a year seeding
 `random.Random`.
@@ -50,14 +50,12 @@ process did not crash*:
 - Python: `except Aero1553Error: pass` ahead of a bare `except Exception:`
   that fails the test — a runtime assertion that the exception *type* is
   documented.
-- C++: `catch (const mie::MieError&)` with an empty body; any other exception
-  type escapes and fails the case.
 
 **What makes them comparable is the summary line.** Every harness ends by
 writing one `FUZZ-SUMMARY` record of counters — inputs, bytes generated, readers
-opened, records yielded, errors — defined to mean the same thing in all three,
+opened, records yielded, errors — defined to mean the same thing in both,
 and `scripts/compare-fuzz-summaries.py` diffs them all-pairs. It runs in the
-nightly burn-in across seven runner configurations, **and on every push** in
+nightly burn-in across four runner configurations, **and on every push** in
 `differential.yml` at default iteration counts, so a divergence fails the PR
 that introduced it rather than the next scheduled run.
 
@@ -74,7 +72,7 @@ turned out to be the length of the input path in the dump header.
 ### B. Shared differential drivers (cross-implementation)
 
 `tests/conformance/` holds the other architecture, and it is the one that
-answers "do the three agree on this input?". A single Python driver:
+answers "do the implementations agree on this input?". A single Python driver:
 
 1. generates one input,
 2. runs it through **every registered implementation's CLI** as a subprocess,
@@ -84,7 +82,7 @@ answers "do the three agree on this input?". A single Python driver:
 The comparator lives in `tests/conformance/differential.py`. It is deliberately
 *not* majority-rule (two implementations sharing a bug would outvote the correct
 one) and *not* reference-implementation (that would make one tree's quirks
-normative). It reports the split — `accept: Rust, Python | reject: C++` — without
+normative). It reports the split — `accept: Rust | reject: Python` — without
 naming a winner, because which side is right is a maintainer's judgement.
 
 Two drivers use it: `config_fuzz.py` for config documents and `record_fuzz.py`
@@ -96,27 +94,26 @@ generator changes.
 
 ## 2. Inventory: what is fuzzed today
 
-| # | Surface | Rust | Python | C++ | Architecture | Compared how |
-|---|---------|:----:|:------:|:---:|--------------|--------------|
-| 1 | Reader / binary record stream | yes | yes | yes | in-process | run totals |
-| 2 | `dump` (record-aware + raw hex) | yes | yes | yes | in-process | run totals |
-| 3 | Merge input resolution (manifest, glob) | yes | yes | yes | in-process | run totals |
-| 4 | Config-parser documents (TOML) | yes | yes | yes | shared differential | per input |
-| 5 | Record stream, structure-aware | yes | yes | yes | shared differential | per input, CSV bytes |
-| 6 | CLI argument vectors | no | no | no | — | — |
+| # | Surface | Rust | Python | Architecture | Compared how |
+|---|---------|:----:|:------:|--------------|--------------|
+| 1 | Reader / binary record stream | yes | yes | in-process | run totals |
+| 2 | `dump` (record-aware + raw hex) | yes | yes | in-process | run totals |
+| 3 | Merge input resolution (manifest, glob) | yes | yes | in-process | run totals |
+| 4 | Config-parser documents (TOML) | yes | yes | shared differential | per input |
+| 5 | Record stream, structure-aware | yes | yes | shared differential | per input, CSV bytes |
+| 6 | CLI argument vectors | no | no | — | — |
 
 Row 6 is listed to record that it is *absent everywhere*, which under the rule in
 the header means it is not a parity gap — it is a future item
 ([section 6](#6-what-could-be-added)).
 
-Adjacent but **not fuzzing** — exhaustive rather than generated, and the
-strongest cross-implementation check in the tree:
+Adjacent but **not fuzzing** — exhaustive rather than generated:
 `rust/examples/decode_digest.rs` sweeps every possible Type Word, every possible
 Command Word and every timestamp field bit through the Rust decoders and prints
-an FNV-1a digest. `cpp/tests/test_decode_exhaustive.cpp` recomputes those four
-constants from its own decoders, so one differing field in ~390 000 decodes
-fails the build. (The Python package has no decoders of its own since v4.0.0 --
-it runs the Rust ones -- so it has nothing to recompute; see L3-PY-017.)
+an FNV-1a digest. Until 5.0.0 the C++ suite recomputed those four constants from
+its own decoders; with C++ removed and the Python package running the Rust
+decoders (since v4.0.0, see L3-PY-017), nothing pins them, and the digest is a
+before/after check for a word-decoder change.
 
 ---
 
@@ -124,7 +121,7 @@ it runs the Rust ones -- so it has nothing to recompute; see L3-PY-017.)
 
 | Driver | Default effort | Deep run | Workflow |
 |---|---|---|---|
-| In-process byte harnesses | `MIE_FUZZ_ITERATIONS` unset -> 256 (reader, dump) / 512 (merge) | `MIE_FUZZ_ITERATIONS` override | `ci.yml` and `cpp-ci.yml` (default, every tier), `differential.yml` (default, plus the cross-impl comparison), `fuzz.yml` (burn-in, seven configurations) |
+| In-process byte harnesses | `MIE_FUZZ_ITERATIONS` unset -> 256 (reader, dump) / 512 (merge) | `MIE_FUZZ_ITERATIONS` override | `ci.yml` (default), `differential.yml` (default, plus the cross-impl comparison), `fuzz.yml` (burn-in, four configurations) |
 | Config-parser fuzz | `MIE_CONFIG_FUZZ_ITERS` unset -> 100 | env override | `differential.yml` only |
 | Record-stream fuzz | `MIE_RECORD_FUZZ_ITERS` unset -> 60 | env override | `differential.yml` only |
 
@@ -139,27 +136,18 @@ language cannot be compared across languages.
 | `MIE_FUZZ_SUMMARY` | unset | File to append the run's `FUZZ-SUMMARY` line to. |
 
 How the log level is set differs by language, and the difference is deliberate.
-C++ uses an RAII guard, because Catch2 runs its cases sequentially in one
-process and leaving the level at `OFF` broke `test_log.cpp` two files away.
-Python uses a context manager for the same reason. Rust sets it and does **not**
-restore it: libtest runs that binary's tests in parallel threads, so a scope
+Python uses a context manager, so the level is restored for the tests that run
+after it (the former C++ harness used an RAII guard for the same reason). Rust
+sets it and does **not** restore it: libtest runs that binary's tests in parallel threads, so a scope
 guard would restore the level while a sibling test was still running — the race
 would be worse than the leak, and no other test in that binary asserts on
 logging.
 
-The burn-in covers **seven** runner configurations: Rust, Python and C++ on
-Linux; Rust, Python and MSVC-built C++ on Windows; and C++ again under
-ASan/UBSan/LSan. Windows matters because the C++ platform layer is entirely
-different code there — file mapping, path identity, binary stdout (ADR-0003) —
-and mapping a file is the first thing every harness does with its garbage input.
-The sanitized job matters because until v2.16.0 the deep sweep ran only against
-an uninstrumented `-O2` build, where a non-faulting out-of-bounds read goes
-unnoticed.
-
-Valgrind is deliberately **not** given a deep run. It is one to two orders of
-magnitude slower than ASan and finds the same class of fault on this code, so a
-25 000-input memcheck would cost hours to duplicate what the ASan job already
-covers. It stays at the default count in `cpp-ci.yml`.
+The burn-in covers **four** runner configurations: Rust and Python, each on
+Linux and on Windows. Windows matters because Rust's and Python's
+memory-mapping paths differ by platform, and mapping a file is the first thing
+every harness does with its garbage input. (Until 5.0.0 the burn-in also ran
+the C++ harness on Linux, under MSVC on Windows, and under ASan/UBSan/LSan.)
 
 ---
 
@@ -209,16 +197,16 @@ matcher and directory expansion with generated patterns.
 
 The patterns are **not** lossily-decoded random bytes. That was the obvious
 choice and it is wrong twice over: random bytes almost never contain `*` or `?`,
-so the matcher's interesting branches are never reached; and the three
+so the matcher's interesting branches are never reached; and different
 languages' lossy decoders do not agree character-for-character on how many
 U+FFFD an ill-formed sequence produces, so the counters could diverge without
 the matchers disagreeing about anything. Patterns are instead drawn from a
 shared 16-entry alphabet weighted toward `*` and `?` — the first version drew
 uniformly over patterns up to 95 characters and matched a probe **zero** times
 in 512 iterations. Two alphabet entries and two of the three probe names are
-non-ASCII, because Rust and Python match over scalar values while the C++
-matcher advances `?` by a whole UTF-8 character, and that agreement is either
-real or it is not.
+non-ASCII, because Rust and Python match over scalar values (as the former C++
+matcher did by advancing `?` a whole UTF-8 character), and that agreement is
+either real or it is not.
 
 The sixteenth entry is `/`. Until it was added every generated pattern was a
 bare filename, so `expand_glob` never saw a directory part: neither the textual
@@ -238,7 +226,7 @@ any I/O, from the pattern's text alone — so it is counted, as `glob_refused`
 
 **This harness found four real divergences the day it started comparing
 counters**, all in `read_manifest` and all now pinned by a
-`read_manifest_grammar_is_exactly_specified` test in each tree. The grammar they
+`read_manifest_grammar_is_exactly_specified` test in the Rust and Python trees. The grammar they
 led to is normative in L2-MRG-001; the short version is that a manifest is
 UTF-8, `\n` is the only separator, one trailing `\r` is stripped, and trimming
 is ASCII space and tab only.
@@ -291,7 +279,7 @@ layer: a flip inside a Type Word changes a record's shape, truncation cuts a
 record in half, spliced noise forces a sync recovery, and a duplicated slice
 produces the repeated timestamps the canonical-order stage exists to handle.
 
-All three implementations write to different output paths but read **one shared
+The implementations write to different output paths but read **one shared
 input file**. That is not tidiness: `MUX` is populated from the input file name
 by default (L2-WRT-020), so per-implementation copies would put a different
 value in every CSV and the comparison would fail on the harness rather than on
@@ -306,26 +294,27 @@ and names the first differing CSV line.
 
 Under the rule at the top of this page, each row is a defect, not a feature of
 the tree in the "has it" column. The v2.16.0 release closed six; these remain.
+(The C++-only gaps, such as the deliberately shallow Valgrind run, went with the
+C++ implementation in 5.0.0.)
 
 | Gap | Has it | Missing from | Why it matters |
 |---|---|---|---|
-| Differential fuzzing of `count` and `dump` | — | all three | `record_fuzz.py` compares `decode` only. The other two subcommands are covered by the in-process harnesses (no crash) and by curated conformance cases, but not by generated input compared across implementations. |
-| Multi-input merge topology | — | all three | Every generated input is a single file. The merge heap, the DELTA scope rules and the duplicate-collapse window interact, and only curated fixtures test them. See [6.2](#6-what-could-be-added). |
-| `expand_glob` results compared | — | all three | Called for crash-safety; its return value is filesystem-dependent and so cannot be a summary field. A driver that controlled the directory could compare it. |
-| Deep run under Valgrind | — | C++ | Deliberate, not an oversight: one to two orders of magnitude slower than ASan for the same fault class here. Recorded so the decision is visible rather than inferred. |
+| Differential fuzzing of `count` and `dump` | — | both | `record_fuzz.py` compares `decode` only. The other two subcommands are covered by the in-process harnesses (no crash) and by curated conformance cases, but not by generated input compared across implementations. |
+| Multi-input merge topology | — | both | Every generated input is a single file. The merge heap, the DELTA scope rules and the duplicate-collapse window interact, and only curated fixtures test them. See [6.2](#6-what-could-be-added). |
+| `expand_glob` results compared | — | both | Called for crash-safety; its return value is filesystem-dependent and so cannot be a summary field. A driver that controlled the directory could compare it. |
 
 ---
 
 ## 6. What could be added
 
 Listed as candidates, not commitments. Each is written so that adopting it means
-adopting it in **all three** implementations at once.
+adopting it in **both** implementations at once.
 
 **6.1 CLI argument-vector fuzzing.** Generated `argv` arrays over the real flag
 surface, compared all-pairs on exit-code class. Deliberately **not** implemented
 today in any tree, so under the rule at the top of this page it is a clean
 addition rather than a gap. The `cli-surface-parity` gate already proves the
-three expose the same *flags*; this would test that they agree on the same
+CLIs expose the same *flags*; this would test that they agree on the same
 *combinations*, including mutually-exclusive ones and malformed values. It is
 the obvious next differential driver: the machinery in `record_fuzz.py`
 generalises to it almost unchanged.
@@ -341,11 +330,11 @@ has been reproduced by hand from the printed hex. Committing them under
 `inputs/` as ordinary conformance cases would make each one a permanent
 regression test rather than a story in a changelog.
 
-**6.4 Corpus-guided fuzzing (libFuzzer / AFL++).** Explicitly considered and
-rejected for the C++ tree when it was scoped, for reasons recorded in
-`cpp/tests/test_fuzz.cpp`: libFuzzer requires clang, which would mean the fuzz
-target ran on one C++ tier and not on the GCC 4.8.5 tier the implementation
-exists for; and coverage-guided exploration is non-deterministic, so a required
+**6.4 Corpus-guided fuzzing (libFuzzer / AFL++ / cargo-fuzz).** Considered and
+rejected for the former C++ tree when it was scoped: libFuzzer required clang,
+which would have meant the fuzz target ran on one C++ tier and not on the
+GCC 4.8.5 tier that implementation existed for. The other reason still holds:
+coverage-guided exploration is non-deterministic, so a required
 job can fail on an input nobody's change produced. If it is ever revisited it
 should be as a **non-blocking** job alongside the deterministic harnesses, not as
 a replacement for them.
@@ -355,19 +344,15 @@ a replacement for them.
 ## 7. Running and triaging
 
 ```bash
-# Deep run of the in-process byte harnesses (all three honour the same knobs)
+# Deep run of the in-process byte harnesses (both honour the same knobs)
 MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic
 MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness -s
-MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 
-# The same, instrumented -- what the fuzz-cpp-asan job runs
-MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz SANITIZE=1
-
-# See the decoder's own diagnostics while it runs (any of the three)
-MIE_FUZZ_ITERATIONS=256 MIE_FUZZ_STREAM_LOGS=1 make -C cpp check-fuzz
+# See the decoder's own diagnostics while it runs (either implementation)
+MIE_FUZZ_ITERATIONS=256 MIE_FUZZ_STREAM_LOGS=1 cargo test --test integration fuzz_arbitrary_bytes_never_panic
 
 # Deep run of the two DIFFERENTIAL fuzzers, across every implementation
-(cd rust && cargo build) && (cd cpp && make all)
+(cd rust && cargo build)
 MIE_RECORD_FUZZ_ITERS=500 MIE_CONFIG_FUZZ_ITERS=2000 \
     uv --directory python run python ../tests/conformance/run.py
 
@@ -378,15 +363,14 @@ export MIE_FUZZ_SUMMARY=/tmp/fuzz-summary.txt && rm -f "$MIE_FUZZ_SUMMARY"
     dump_arbitrary_bytes_never_panics merge_input_resolution_tolerates_arbitrary_bytes)
 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness \
     tests/test_merge.py::test_merge_input_resolution_tolerates_arbitrary_bytes
-make -C cpp check-fuzz
 mkdir -p /tmp/fz/local && cp "$MIE_FUZZ_SUMMARY" /tmp/fz/local/
 python scripts/compare-fuzz-summaries.py /tmp/fz
 ```
 
 **Triaging an in-process finding.** The failure prints the seed, the iteration
 index and the input size, and the harnesses share a generator — so the same
-iteration index reproduces the same bytes in the other two trees. Run the other
-two at the same iteration count before assuming the defect is local. The
+iteration index reproduces the same bytes in the other tree. Run the other
+at the same iteration count before assuming the defect is local. The
 harnesses also emit their `FUZZ-SUMMARY` line on the failure path, with
 `outcome=panic` / `outcome=error` in place of `outcome=ok`, so a run that died at
 iteration 24 000 still reports the counters it had.
@@ -417,8 +401,8 @@ whether either side crashed.
 
 ## 8. Rules for adding a fuzz harness
 
-1. **All three or none.** If a surface is worth fuzzing in one tree it is worth
-   fuzzing in the other two. Land the third before the first is merged, or record
+1. **Both or neither.** If a surface is worth fuzzing in one tree it is worth
+   fuzzing in the other. Land the second before the first is merged, or record
    the gap in section 5 with an owner.
 2. **Deterministic.** A fixed seed and a fixed default iteration count, with an
    environment override for depth. A required job must not fail on an input

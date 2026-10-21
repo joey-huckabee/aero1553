@@ -268,8 +268,8 @@ uv --directory python run python ../tests/conformance/run.py
 ```
 
 The runner defaults to **every** registered implementation and fails if one is
-missing, so leaving one out is explicit — `--skip cpp` when you have no C++
-build, `--only cpp` to check just that one. The alternative, running whichever
+missing, so leaving one out is explicit — `--only rust` or `--skip python`.
+The alternative, running whichever
 binaries happen to be present, would let the suite report a full pass after a
 build step had quietly failed.
 
@@ -290,10 +290,6 @@ each CLI, and compares their CSV output byte-for-byte against checked-in
 oracles. Use `--update-expected` only for intentional shared-output changes;
 the runner updates an oracle only after **every** implementation already
 agrees, so no single one can ratify a change to the shared contract.
-
-An implementation still being delivered in phases declares which cases it
-cannot run, and the runner **names each one it skips**. That is deliberate: a
-skip that printed nothing would read as coverage.
 
 When both CLIs are present, the same runner also cross-checks the two **config
 parsers** — a curated corpus (`tests/conformance/config_parity.py`) plus a
@@ -380,14 +376,14 @@ Two things to know:
 Each implementation carries a deterministic fuzz harness asserting the
 **L1-ROB-001** robustness contract: arbitrary input bytes must never panic
 (Rust) or raise anything other than a documented `Aero1553Error` / `MieError`
-(Python, C++). All of them are seeded from the same `xorshift64` PRNG, with the
+(Python). All of them are seeded from the same `xorshift64` PRNG, with the
 same seed, size bands and draw order, so iteration N is the same bytes in every
 implementation.
 
 `docs/FUZZING.md` is the full map — which surfaces are fuzzed, by which
 implementation, what is deliberately not fuzzed yet, and the rule that governs
-the area (**a fuzz surface is exercised by all three implementations or by
-none**). What follows is how to run them.
+the area (**a fuzz surface is exercised by both implementations, Rust and
+Python, or by neither**). What follows is how to run them.
 
 | Harness | Test |
 |---------|------|
@@ -397,14 +393,13 @@ none**). What follows is how to run them.
 | Python dump | `tests/test_e2e.py::TestFuzzHarness::test_dump_arbitrary_bytes_never_raise_unexpected_exceptions` |
 | Rust merge | `rust/tests/integration.rs::merge_input_resolution_tolerates_arbitrary_bytes` |
 | Python merge | `tests/test_merge.py::test_merge_input_resolution_tolerates_arbitrary_bytes` |
-| C++ (all three) | `cpp/tests/test_fuzz.cpp`, tagged `[fuzz]` |
 
 Two further fuzzers live in `tests/conformance/` and are **differential by
 construction** -- they generate one input, drive it through every
 implementation's CLI, and compare all-pairs: `config_fuzz.py` over config
 documents, and `record_fuzz.py` over recordings built from the committed hex
 fixtures and then damaged. `record_fuzz.py` is the only check anywhere that
-compares what the three *decoders* produce on input nobody wrote.
+compares what the *decoders* produce on input nobody wrote.
 
 Run them (default 256 iterations):
 
@@ -415,9 +410,6 @@ cargo test --test integration dump_arbitrary_bytes_never_panics
 
 # Python (whole class = both reader + dump)
 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness
-
-# C++ (the [fuzz] cases only; they also ride along in `make check`)
-make -C cpp check-fuzz
 
 # The differential fuzzers, across every implementation at once
 python tests/conformance/run.py
@@ -436,14 +428,13 @@ cannot be compared across languages.
 | `MIE_FUZZ_SUMMARY` | unset | File to append the run's `FUZZ-SUMMARY` line to. |
 
 The scheduled [`.github/workflows/fuzz.yml`](.github/workflows/fuzz.yml) job
-runs 25 000 iterations daily, across all three implementations on both Linux and
+runs 25 000 iterations daily, across both implementations on both Linux and
 Windows. The PRNG is deterministic, so a burn-in is a strict superset of the
 default run (same first 256 inputs); a failure prints the reproducer seed.
 
 ```bash
 (cd rust && MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic)
 MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest -s tests/test_e2e.py::TestFuzzHarness
-MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
 ```
 
 On Windows PowerShell set the variable separately: `$env:MIE_FUZZ_ITERATIONS =
@@ -452,14 +443,13 @@ On Windows PowerShell set the variable separately: `$env:MIE_FUZZ_ITERATIONS =
 ### The summary line
 
 Every harness ends by writing one `FUZZ-SUMMARY` record — inputs, bytes
-generated, readers opened, records yielded, errors — with the same shape in all
-three implementations. Point them all at one file and compare:
+generated, readers opened, records yielded, errors — with the same shape in both
+implementations. Point them all at one file and compare:
 
 ```bash
 export MIE_FUZZ_SUMMARY=/tmp/fuzz-summary.txt && rm -f "$MIE_FUZZ_SUMMARY"
 (cd rust && cargo test --test integration -- fuzz_arbitrary_bytes_never_panic dump_arbitrary_bytes_never_panics)
 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness
-make -C cpp check-fuzz
 mkdir -p /tmp/fz/local && cp "$MIE_FUZZ_SUMMARY" /tmp/fz/local/
 python scripts/compare-fuzz-summaries.py /tmp/fz
 ```
@@ -484,9 +474,9 @@ noisy on random input:
 
 **The test runners do not control this, which is why `MIE_FUZZ_STREAM_LOGS`
 exists.** Rust's logger writes through `std::io::stderr()` and libtest's capture
-only intercepts the `print!` / `eprint!` macros; the C++ logger writes to the
-stderr file descriptor, which Catch2 does not redirect. So `--nocapture` is a
-no-op for both and their output used to stream unconditionally — tens of
+only intercepts the `print!` / `eprint!` macros (the former C++ logger had the
+same problem with Catch2). So `--nocapture` is a no-op and the output used to
+stream unconditionally — tens of
 megabytes per burn-in — while pytest, which *does* capture, showed nothing at
 all. The harnesses now silence the logger themselves by default and turn it back
 on for `MIE_FUZZ_STREAM_LOGS=1`. Under pytest you still need `-s` on top of the
@@ -622,94 +612,11 @@ These are codified in `CLAUDE.md`; the highlights:
 - **Test fixtures are byte-exact** translations of records cross-
   referenced against vendor CSV. Treat them as oracles; if a test
   fails, suspect the code first.
-- **All three implementations are maintained.** Changes under `rust/src/` and
-  `rust/tests/` apply to Rust; `python/` to Python; `cpp/` to C++. Preserve
-  shared MIE format semantics and vendor-compatible CSV behavior across all
-  three.
-
-## Working in the C++ tree
-
-The C++ implementation targets **C++11 as accepted by GCC 4.8.5**, the SLES 12
-SP5 system compiler (ADR-0001). The build and CI arrangement is explained in
-`cpp/README.md`; this section covers the two things that will bite you if
-nobody tells you first.
-
-### Two C++14 constructs that MSVC accepts and GCC 4.8.5 rejects
-
-MSVC has no `/std:c++11` — its floor is C++14 — so the Windows build compiles
-C++11-conformant source as C++14. That is valid, but it means MSVC silently
-accepts two things the target compiler refuses. Both produce a build that is
-**green on Windows and red on Linux**, discovered by CI rather than by you:
-
-1. **Aggregate-initializing a class that has a default member initializer.**
-
-   ```cpp
-   struct Options { int records = 8; };
-   Options o{16};   // well-formed C++14, ill-formed C++11
-   ```
-
-   In C++11 the NSDMI makes `Options` a non-aggregate. Rule: a struct either
-   has default member initializers **or** is brace-initialized, never both —
-   give it a constructor if it needs one.
-
-2. **Passing a `const_iterator` to a container mutator.** libstdc++ 4.8 still
-   declares the pre-C++11 `iterator` signatures for `erase` and `insert`; the
-   C++11 signatures landed in GCC 4.9.
-
-Also banned outright: `<regex>` (libstdc++ had no working implementation until
-GCC 4.9), `std::make_unique`, `std::optional`, `std::string_view`,
-`std::filesystem`, `std::is_trivially_copyable`, and `std::put_time` /
-`std::get_time` — all C++14-or-later, or missing from libstdc++ 4.8.
-
-**Run `make check-gcc48` before pushing.** It builds and runs the *full* suite
-inside the pinned GCC 4.8.5 image, which is the only thing that catches the
-above. A compile-only check is not enough and the tier is deliberately not
-reduced to one.
-
-### The platform layer is the only thing that touches the OS
-
-Five concerns live behind `cpp/include/mie/platform.hpp` — mapping the input,
-the atomic temp-file-and-rename output, directory enumeration, binary stdout,
-and path identity. No other file may include `<windows.h>`, `<sys/mman.h>` or
-their neighbours; `scripts/assert-platform-confined.sh` fails the build if one
-does.
-
-If you need a new OS capability, add it to the header and implement it in
-**both** backends. Windows is a shipping target, not a build that happens to
-link (ADR-0003), and a capability implemented on one side only is a runtime
-failure on the other rather than a compile error.
-
-Related: the program must never call `setlocale` and must not use the
-`<cctype>` classification functions — the `DELTA` column is formatted `%.6f`,
-whose decimal separator the locale chooses, so a locale change turns
-`1.234500` into `1,234500` and breaks every conformance oracle.
-`scripts/assert-locale-free.sh` enforces this.
-
-### Adding a source file
-
-Add it to `cpp/sources.txt` — once. Both builds read that file, because the
-GCC 4.8.5 fidelity container has **no CMake at all** and cannot install one
-(Debian 7's repositories are archived), so the Makefile has to stay
-authoritative on Linux. `scripts/assert-sources-agree.sh` compares what each
-build actually resolves.
-
-Test files are globbed rather than listed, deliberately: a source file left out
-of the build fails loudly at link time, whereas a **test** file left out simply
-never runs.
-
-### Tagging a test with a requirement
-
-Requirement ids go in the Catch2 tag string, so the trace matrix can find them
-and so the artifact it names is directly runnable:
-
-```cpp
-TEST_CASE("AtomicFile replaces an existing destination", "[atomic][L3-CPP-006]") {
-```
-
-```bash
-./build/<toolchain>/aero1553_tests "[L3-CPP-006]"
-python scripts/build-trace-matrix.py --check
-```
+- **Both implementations are maintained.** Changes under `rust/src/` and
+  `rust/tests/` apply to Rust; `python/` to Python (since v4.0.0 a PyO3
+  binding over the Rust crate). Preserve shared MIE format semantics and
+  vendor-compatible CSV behavior across both. (The C++ implementation under
+  `cpp/` was removed in 5.0.0.)
 
 ## Reporting issues / proposing changes
 

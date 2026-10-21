@@ -6,13 +6,12 @@ Complete reference for every command-line flag the decoder accepts. Use this whe
 - You're scripting `aero1553` and want the exact semantics of a flag.
 - You're mapping a CLI flag to its `aero1553.toml` equivalent (or vice-versa).
 
-The **Rust, Python and C++ builds expose an identical flag surface** — every flag
-below works the same in all three. The Python package's command line *is* the Rust
-CLI, run in-process through the package's compiled extension, so those two share
-one parser and one help text by construction. C++ has its own, and the
-`cli-surface-parity` check in `tests/conformance/run.py` diffs the long-option set
-across all three CLIs' top-level and per-subcommand `--help` output and fails CI
-on any divergence. Treat this document as the reference and `--help` as the quick
+The **Rust and Python builds expose an identical flag surface** — every flag
+below works the same in both. The Python package's command line *is* the Rust
+CLI, run in-process through the package's compiled extension, so the two share
+one parser and one help text by construction, and the `cli-surface-parity` check
+in `tests/conformance/run.py` diffs the long-option set across both CLIs'
+top-level and per-subcommand `--help` output and fails CI on any divergence. Treat this document as the reference and `--help` as the quick
 reminder.
 
 For the TOML config keys these flags override, see
@@ -38,7 +37,7 @@ count), [`dump`](#dump) (annotated hex dump).
 
 ### Attaching a value to a flag
 
-Every flag that takes a value accepts **both** spellings, in all three
+Every flag that takes a value accepts **both** spellings, in both
 implementations, for global and subcommand flags alike:
 
 ```bash
@@ -98,7 +97,7 @@ and the rest — have nothing to attach, and `--no-mux=true` is a usage error
 rather than a way to spell "on".
 
 > This is `L2-CLI-015`. Both spellings and the rules above are pinned across
-> all three implementations by the `flag-eq-form-*` cases in
+> both implementations by the `flag-eq-form-*` cases in
 > `tests/conformance/manifest.json`, not merely by each implementation's own
 > tests — `cli-surface-parity` compares flag *names*, which cannot see how a
 > value is attached to one.

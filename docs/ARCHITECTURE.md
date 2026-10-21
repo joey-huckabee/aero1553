@@ -3,38 +3,38 @@
 **Document ID:** MIE-ARCH-001
 **Version:** 2.0.0
 
-How the decoder is organized to turn an MIE binary recording into vendor-compatible CSV. Covers the module structure, the cross-implementation correspondence between the Rust, Python and C++ trees, the synchronization strategy, the error pipeline, the structural-invariants subsystem, the output-safety machinery, and the streaming-vs-buffered trade-offs.
+How the decoder is organized to turn an MIE binary recording into vendor-compatible CSV. Covers the module structure, the cross-implementation correspondence between the Rust and Python trees, the synchronization strategy, the error pipeline, the structural-invariants subsystem, the output-safety machinery, and the streaming-vs-buffered trade-offs.
 
 Companion docs: [`MIE-FORMAT.md`](MIE-FORMAT.md) (binary format reference), [`ERROR-CATALOG.md`](ERROR-CATALOG.md) (every error class), [`MAINTAINER-GUIDE.md`](MAINTAINER-GUIDE.md) (how to add things), [`L1-REQ.md`](L1-REQ.md) / [`L2-REQ.md`](L2-REQ.md) / [`L3-REQ.md`](L3-REQ.md) (the spec).
 
 ---
 
-## 1. Three implementations, one architecture
+## 1. Two implementations, one architecture
 
-Aero1553 ships as a Rust crate (`rust/src/`), a Python package (`python/src/aero1553/`) and a C++ implementation (`cpp/`). They are independent implementations that satisfy the same shared specification and produce byte-identical CSV output (verified by the cross-implementation conformance suite under `tests/conformance/`). The module structure is intentionally aligned so the architecture description fits all three.
+Aero1553 ships as a Rust crate (`rust/src/`) and a Python package (`python/src/aero1553/`). Since v4.0.0 the Python package is a PyO3 binding over the Rust crate (`python/native/`), not a second decoder: its modules are the public Python API over the Rust code, and both produce byte-identical CSV output (verified by the cross-implementation conformance suite under `tests/conformance/`). A third, independent C++ implementation shipped alongside them until it was removed in 5.0.0.
 
-> **The port is complete.** Every concern below is implemented in all three, and the C++ build passes the whole shared conformance manifest on Linux and Windows. The prose in the rest of this document is written against Rust and Python for readability; where it names a Rust module, the C++ and Python equivalents in the same row behave identically unless the text says otherwise.
+> The prose in the rest of this document is written against Rust and Python; where it names a Rust module, the Python equivalent in the same row behaves identically unless the text says otherwise.
 
-| Concern | Rust module | Python module | C++ module |
-|---------|-------------|---------------|------------|
-| CLI / argument parsing | `rust/src/cli.rs` | `python/src/aero1553/cli.py` | `cpp/src/cli.cpp` |
-| TOML configuration loader | `rust/src/config.rs` | `python/src/aero1553/config.py` | `cpp/src/config.cpp` + `cpp/src/toml.cpp` |
-| Message filtering | `rust/src/filter.rs` | `python/src/aero1553/filters.py` | `cpp/src/filter.cpp` |
-| Canonical row order (equal-timestamp ties) | `rust/src/order.rs` | `python/src/aero1553/order.py` | `cpp/src/order.cpp` |
-| Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` | `cpp/src/reader.cpp` |
-| Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/aero1553/merge.py` | `cpp/src/merge.cpp` |
-| Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/aero1553/delta.py` | `cpp/src/delta.cpp` |
-| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | -- (the Rust module, via the extension) | `cpp/src/decode.cpp` |
-| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | -- (the Rust module, via the extension) | `cpp/src/sync.cpp` |
-| Domain models + error code constants | `rust/src/models.rs` | `python/src/aero1553/models.py` | `cpp/src/models.cpp` |
-| Error types | `rust/src/error.rs` (single enum) | `python/src/aero1553/exceptions.py` (class hierarchy) | `cpp/src/error.cpp` (single enum + kind) |
-| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (the Rust writer, via the extension) | `cpp/src/writer.cpp` (streaming) |
-| Logging | `rust/src/log.rs` (hand-rolled) | `python/src/aero1553/logger.py` (stdlib `logging`) | `cpp/src/log.cpp` (hand-rolled) |
-| Hex dump | `rust/src/dump.rs` | `python/src/aero1553/dump.py` | `cpp/src/dump.cpp` |
+| Concern | Rust module | Python module |
+|---------|-------------|---------------|
+| CLI / argument parsing | `rust/src/cli.rs` | `python/src/aero1553/cli.py` |
+| TOML configuration loader | `rust/src/config.rs` | `python/src/aero1553/config.py` |
+| Message filtering | `rust/src/filter.rs` | `python/src/aero1553/filters.py` |
+| Canonical row order (equal-timestamp ties) | `rust/src/order.rs` | `python/src/aero1553/order.py` |
+| Reader pipeline (mmap → records) | `rust/src/reader.rs` | `python/src/aero1553/reader.py` |
+| Multi-file time-sorted merge | `rust/src/merge.rs` | `python/src/aero1553/merge.py` |
+| Per-RT/MSG `DELTA` tracking | `rust/src/delta.rs` | `python/src/aero1553/delta.py` |
+| Pure decode (bit-level field extraction) | `rust/src/decode.rs` | -- (the Rust module, via the extension) |
+| Sync helpers (validate, find first, recover) | `rust/src/sync.rs` | -- (the Rust module, via the extension) |
+| Domain models + error code constants | `rust/src/models.rs` | `python/src/aero1553/models.py` |
+| Error types | `rust/src/error.rs` (single enum) | `python/src/aero1553/exceptions.py` (class hierarchy) |
+| CSV writer | `rust/src/writer.rs` (streaming) | `python/src/aero1553/writer.py` (the Rust writer, via the extension) |
+| Logging | `rust/src/log.rs` (hand-rolled) | `python/src/aero1553/logger.py` (stdlib `logging`) |
+| Hex dump | `rust/src/dump.rs` | `python/src/aero1553/dump.py` |
 
-The sync helpers (`sync.rs` / `sync.cpp`; the Python package runs the Rust one) are **pure** — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
+The sync helpers (`sync.rs`; the Python package runs the Rust one) are **pure** — no logging, no I/O. Everything an operator sees about header detection, sync loss, and recovery is emitted by the reader, which is what keeps the two implementations' log output aligned and stops a helper from narrating an outcome the caller has more context about.
 
-Per L1-CONF-001 all three implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*` / `L3-CPP-*`) cover the technology-specific obligations (the compiled Rust extension for Python; memmap2 / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
+Per L1-CONF-001 both implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*`; the `L3-CPP-*` set is withdrawn) cover the technology-specific obligations (the compiled Rust extension for Python; memmap2 / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
 
 The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its name when the reader is constructed (config → `ReaderOptions` / reader kwargs), and attached to every `MieMessage` the reader yields — Rust as a shared `Arc<str>` (a refcount-bump clone per record), Python as a shared `str` reference. The value therefore rides along through the filter and merge iterators unchanged (so a merged stream keeps each record's source-file MUX), and the writer emits it without any extra per-record allocation — preserving the O(1)-in-record-count streaming guarantee.
 
@@ -410,7 +410,7 @@ For per-variant cause / lenient-vs-strict behavior / exit-code mapping, see [`ER
   └──────────────────────┘
 ```
 
-In separate mode the errors file is **not created** if no error rows occur (lazy creation, per L2-ERR-008). Each file is written atomically *on its own* via temp + rename, but the two files are **committed sequentially, not as a single transaction** — there is no cross-file atomicity (the platforms provide no two-file atomic rename). All three implementations commit **main first, then errors**: if the first (main) commit fails the errors file is still an un-renamed temp and neither file appears, and if the second (errors) commit fails after main is in place the residual file is the primary `main.csv` rather than an orphan errors file. This is a known limitation — acknowledged in every writer — and is *not* all-or-nothing across the two files.
+In separate mode the errors file is **not created** if no error rows occur (lazy creation, per L2-ERR-008). Each file is written atomically *on its own* via temp + rename, but the two files are **committed sequentially, not as a single transaction** — there is no cross-file atomicity (the platforms provide no two-file atomic rename). Both implementations commit **main first, then errors**: if the first (main) commit fails the errors file is still an un-renamed temp and neither file appears, and if the second (errors) commit fails after main is in place the residual file is the primary `main.csv` rather than an orphan errors file. This is a known limitation — acknowledged in every writer — and is *not* all-or-nothing across the two files.
 
 The order holds on **every** path that commits the pair, the `--allow-partial` path included: `<dest>.partial` before `<errors-dest>.partial` (L2-WRT-019). Through v2.16.0 that branch ran the other way round in all three implementations, so a failing main `.partial` rename left an orphan `<dest>_errors.csv.partial` beside no main output — the precise residue the order exists to make impossible. That the branch which got it wrong was the *failure* branch is not a coincidence; it is the branch nobody re-reads.
 
@@ -539,9 +539,9 @@ The level and the day-of-year advisory switch (below) are read in two layers:
 - **Process-wide** — an `AtomicU8` level and an `AtomicBool` advisory. This is the library's setting. The Python package installs a sink that forwards each line to the stdlib `logging` logger of the same name (`aero1553::reader` → `aero1553.reader`), and `sync_level` sets the process-wide level from the most verbose `aero1553.*` logger whenever a reader is created or iteration starts, so the decoder never formats a line no Python logger would take. The Python API keeps the stdlib's five level names.
 - **Per CLI run** — `cli::run_to_code`, which every CLI entry point (the binary, `run`, `run_os`, and Python's `aero1553.cli.main`) goes through, runs the command inside `log::with_cli_scope`. That gives the calling thread its own level and advisory, starting from the defaults (`WARNING`, advisory on), and pins its lines to stderr. Inside the scope `set_level` / `set_irig_day_advisory` change only the run; outside it they change the process-wide pair. The scope is restored on return and on unwind (L2-LOG-003). Without it, a `--log-level ERROR` run inside a Python host left the host's open iterators silenced afterwards, and a library call on another thread could change what a run printed mid-run, since the binding releases the GIL while the CLI runs.
 
-Within a run, the level is set from the CLI `--log-level` flag or the config file's `logging.level`; CLI overrides config (L2-CFG-003). One routine per implementation parses level names (`log::LEVEL_NAMES` lists them), shared by `--log-level`, `[logging] level` and Python's `configure_logging`. The C++ binary runs one command per process, so its single process-wide level is already per run.
+Within a run, the level is set from the CLI `--log-level` flag or the config file's `logging.level`; CLI overrides config (L2-CFG-003). One routine per implementation parses level names (`log::LEVEL_NAMES` lists them), shared by `--log-level`, `[logging] level` and Python's `configure_logging`.
 
-One message has a switch of its own beside the level: the IRIG day-of-year advisory (L2-LOG-001), off-switchable via `--no-irig-day-advisory` / `[logging] irig_day_advisory`. It lives in the logging module in all three implementations rather than in the reader's options, because it is a diagnostics switch rather than a decode parameter -- applied where the level is applied, so one call covers `decode`, `count` and `dump`.
+One message has a switch of its own beside the level: the IRIG day-of-year advisory (L2-LOG-001), off-switchable via `--no-irig-day-advisory` / `[logging] irig_day_advisory`. It lives in the logging module in both implementations rather than in the reader's options, because it is a diagnostics switch rather than a decode parameter -- applied where the level is applied, so one call covers `decode`, `count` and `dump`.
 
 | Level | What gets logged |
 |-------|-----------------|
@@ -570,7 +570,7 @@ For either implementation, decoding a 10 GB recording uses the same memory as de
 
 **1. The reorder stage (`order.rs` / `order.py`).** Canonical row ordering (L1-OUT-003) holds one run of consecutive equal-`TIME_STAMP` records so it can sort that run. In practice a run is 1–2 records — a 1553 bus carries one transaction at a time, so genuine ties come from the two concurrent buses or from overlapping recorders in a merge. The pathological case is real though: a corrupt recording whose timestamps all decode to the same value would buffer the whole file. That is why the run length is capped by `max_sort_group` (L2-WRT-022, default `65536`), which turns the exception back into a constant — worst case about 10 MB, independent of record count. Each time a run reaches the cap the stage emits the records buffered so far in arrival order with one WARN, then gathers the rest of the run afresh; it never grows past the cap and never drops a row. A cap of `1` disables reordering silently.
 
-**2. The de-duplication window (`merge.rs` / `merge.py` / `merge.cpp`).** With `--collapse-duplicates`, the merge retains the survivors inside the collapse window so later records can be compared against them. `collapse_window_us` bounds that set in **time** and cannot bound it in **count**: a window admits however many records fall inside it, and *that* is a property of the data. A recording whose timestamps all decode to one value puts every record inside a single window, and so does a legitimately dense bus under a wide operator-set window. `max_collapse_survivors` (L2-MRG-008, default `4096`) supplies the count bound; at the cap the oldest survivor is evicted, **one** WARN is emitted for the whole run, collapsing continues best-effort, and no row is dropped from the output.
+**2. The de-duplication window (`merge.rs` / `merge.py`).** With `--collapse-duplicates`, the merge retains the survivors inside the collapse window so later records can be compared against them. `collapse_window_us` bounds that set in **time** and cannot bound it in **count**: a window admits however many records fall inside it, and *that* is a property of the data. A recording whose timestamps all decode to one value puts every record inside a single window, and so does a legitimately dense bus under a wide operator-set window. `max_collapse_survivors` (L2-MRG-008, default `4096`) supplies the count bound; at the cap the oldest survivor is evicted, **one** WARN is emitted for the whole run, collapsing continues best-effort, and no row is dropped from the output.
 
 Removing either cap would silently reintroduce an unbounded allocation and must be rejected at review — as would replacing the reorder stage's run buffer with a whole-file sort. Note also that the dedup window's *retention* rule is stated over the retained set (`|survivor_us - current_us| <= collapse_window_us`) rather than as a loop over one end of a deque: after a lenient backward timestamp step the front of an arrival-ordered deque can hold a timestamp in the future of the current record, at which point a one-sided test never evicts it and blocks everything behind it (L2-MRG-007).
 
@@ -656,10 +656,9 @@ The heap is the easy part; the constraints come from the MIE timestamp model
   failed file, finishes from the rest, and the writer commits a combined
   `.partial` (L2-MRG-004).
 - **No new dependency.** The heap is `std::collections::BinaryHeap`
-  (with `Reverse`) in Rust, the stdlib `heapq` in Python, and
-  `std::priority_queue` in C++; `--glob` uses a hand-rolled single-directory
-  `*`/`?` matcher with identical semantics in all three (L3-RS-014 /
-  L3-PY-014).
+  (with `Reverse`) in Rust, which the Python package runs through its
+  extension; `--glob` uses a hand-rolled single-directory `*`/`?` matcher
+  (L3-RS-014 / L3-PY-014).
 - **`--glob` is a grammar, not just a matcher** (L2-MRG-001). "Expand it
   identically" turned out to have three answers per implementation and only one
   of them was about wildcards. What is applied *to* the pattern is now specified
@@ -718,15 +717,14 @@ Each `recover_sync` invocation scans at most `MAX_SCAN_BYTES` (64 KB) forward fr
 
 ### Fuzz harness (L1-ROB-001)
 
-All three implementations carry a deterministic-PRNG fuzz harness that feeds random byte sequences (32 B - 8 KB each) through the `MieFileReader -> message iterator -> canonical-order` path and asserts that every outcome is either a successfully decoded message or a documented decoder error variant - never a panic, `IndexError`, `struct.error`, an undocumented exception type, or unbounded iteration. All of them use the same xorshift64 PRNG with seed `0x0DDCD1ECDDC0DEC0`, the same size bands and the same draw order, so iteration N is the same bytes everywhere and a failure in one implementation is exactly reproducible against the others.
+Both implementations carry a deterministic-PRNG fuzz harness that feeds random byte sequences (32 B - 8 KB each) through the `MieFileReader -> message iterator -> canonical-order` path and asserts that every outcome is either a successfully decoded message or a documented decoder error variant - never a panic, `IndexError`, `struct.error`, an undocumented exception type, or unbounded iteration. All of them use the same xorshift64 PRNG with seed `0x0DDCD1ECDDC0DEC0`, the same size bands and the same draw order, so iteration N is the same bytes everywhere and a failure in one implementation is exactly reproducible against the others.
 
 - Rust: `rust/tests/integration.rs::fuzz_arbitrary_bytes_never_panic` (and `dump_arbitrary_bytes_never_panics`)
 - Python: `python/tests/test_e2e.py::TestFuzzHarness` (reader + dump)
-- C++: `cpp/tests/test_fuzz.cpp`, tagged `[fuzz]` (reader, dump and merge)
 
-Each harness ends by writing one `FUZZ-SUMMARY` line of counters - inputs, bytes generated, readers opened, records yielded, errors - defined to mean the same thing in all three. Sharing a generator without sharing an assertion means three implementations can each prove "I did not crash" while decoding the same bytes differently; the `fuzz-compare` job in `fuzz.yml` diffs those lines all-pairs across seven runner configurations, and `differential.yml` runs the same comparison on every push. Beyond the totals, `tests/conformance/record_fuzz.py` compares the decoded **CSV bytes** per input: it builds recordings from the committed fixtures, damages them, and drives all three CLIs over each one.
+Each harness ends by writing one `FUZZ-SUMMARY` line of counters - inputs, bytes generated, readers opened, records yielded, errors - defined to mean the same thing in both. Sharing a generator without sharing an assertion means implementations can each prove "I did not crash" while decoding the same bytes differently; the `fuzz-compare` job in `fuzz.yml` diffs those lines all-pairs across every runner configuration, and `differential.yml` runs the same comparison on every push. Beyond the totals, `tests/conformance/record_fuzz.py` compares the decoded **CSV bytes** per input: it builds recordings from the committed fixtures, damages them, and drives both CLIs over each one.
 
-The default-suite iteration count (256) is sized so the harness completes in a few seconds per implementation. `MIE_FUZZ_ITERATIONS` raises it; the scheduled burn-in in `.github/workflows/fuzz.yml` runs 25 000 across all three implementations on both Linux and Windows. See [`FUZZING.md`](FUZZING.md) for the full picture, including what is *not* fuzzed.
+The default-suite iteration count (256) is sized so the harness completes in a few seconds per implementation. `MIE_FUZZ_ITERATIONS` raises it; the scheduled burn-in in `.github/workflows/fuzz.yml` runs 25 000 across both implementations on both Linux and Windows. See [`FUZZING.md`](FUZZING.md) for the full picture, including what is *not* fuzzed.
 
 ---
 

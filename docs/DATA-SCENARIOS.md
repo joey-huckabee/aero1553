@@ -290,7 +290,7 @@ the number of files. A single input is unaffected by everything in this section.
 The wildcards are the small half: `*` matches any run, `?` matches exactly one
 character, both apply to the **filename only**, and there is no `**` and no brace
 expansion. What the pattern is applied *to* matters just as much, and is fixed so
-all three implementations resolve the same set:
+both implementations resolve the same set:
 
 | Entry in the globbed directory | Matched? |
 |---|---|

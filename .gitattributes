@@ -1,24 +1,10 @@
 python/uv.lock text eol=lf
 tests/conformance/** text eol=lf
-cpp/** text eol=lf
-
-# Vendored third-party sources are byte-identical to upstream and pinned by
-# SHA-256 in cpp/VENDORED.md. -whitespace exempts them from the pre-commit
-# `git diff --check` gate: Catch2's single header ends with a blank line, and
-# "fixing" it would edit a file ADR-0002's vendoring rule forbids editing AND
-# invalidate the recorded hash -- turning the pin into a lie to satisfy a house
-# style rule that was never meant to apply to code we do not own.
-#
-# linguist-vendored keeps 650 kB of generated header out of GitHub's language
-# statistics, so the repository still reads as Rust/Python/C++ rather than as a
-# test framework.
-cpp/third_party/** -whitespace linguist-vendored
 
 # Byte-exact conformance oracles. Their content is whatever the decoders
 # actually emit, so a trailing blank line is DATA, not a style slip: `dump --raw`
 # with an offset past end of file legitimately ends with one -- the range header,
 # then an empty hex block. Trimming it to satisfy `git diff --check` would make
-# the oracle stop matching the output it exists to pin, which is the same
-# reasoning that exempts the vendored sources above. `text eol=lf` from the rule
-# further up still applies; only the whitespace check is switched off.
+# the oracle stop matching the output it exists to pin. `text eol=lf` from the
+# rule further up still applies; only the whitespace check is switched off.
 tests/conformance/expected/** -whitespace
