@@ -19,6 +19,8 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+## [5.0.0] — 2026-10-21
+
 ### Removed — BREAKING
 
 - **The C++ implementation is removed.** `cpp/` is gone, and with it every
@@ -6152,7 +6154,8 @@ Both implementations ship from the same commit at v1.0.0.
 - The CHANGELOG starts here. Earlier history exists in `git log` but is
   not retroactively documented as separate entries.
 
-[Unreleased]: https://github.com/joey-huckabee/aero1553/compare/v4.0.0...HEAD
+[Unreleased]: https://github.com/joey-huckabee/aero1553/compare/v5.0.0...HEAD
+[5.0.0]: https://github.com/joey-huckabee/aero1553/compare/v4.0.0...v5.0.0
 [4.0.0]: https://github.com/joey-huckabee/aero1553/compare/v3.0.0...v4.0.0
 [3.0.0]: https://github.com/joey-huckabee/mie-decoder/compare/v2.18.0...v3.0.0
 [2.18.0]: https://github.com/joey-huckabee/mie-decoder/compare/v2.17.0...v2.18.0
