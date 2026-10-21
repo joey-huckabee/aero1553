@@ -36,6 +36,7 @@ pub mod merge;
 pub mod models;
 pub mod order;
 pub mod reader;
+mod source;
 pub mod sync;
 mod text;
 pub mod writer;

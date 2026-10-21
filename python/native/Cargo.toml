@@ -16,7 +16,7 @@ path = "src/lib.rs"
 
 [dependencies]
 # The decoder itself. PyO3 lives HERE, never in the core crate, so the core
-# keeps memmap2 as its only dependency.
+# keeps no dependencies at all.
 aero1553 = { path = "../../rust" }
 # One abi3 wheel per platform covers every CPython from 3.10 up.
 # `extension-module` is switched on by maturin at build time

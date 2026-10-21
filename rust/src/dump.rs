@@ -6,9 +6,9 @@
 //! Mirrors the Python `dump.py` output format closely enough for diffing.
 
 use std::fmt::Write as _;
-use std::fs::File;
-use std::io::{BufWriter, Read, Write};
+use std::io::{BufWriter, Write};
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::decode::{
     MIN_RECORD_BYTES, MIN_RECORD_WORDS, classify_message_format, decode_command_word,
@@ -19,6 +19,7 @@ use crate::log_warn;
 use crate::models::{
     Direction, MessageFormat, MessageType, TypeWord, ddc_error_description_or_unknown,
 };
+use crate::source::{DEFAULT_CHUNK, Window, open_input};
 
 fn type_name(code: u8) -> String {
     match MessageType::from_code(code) {
@@ -33,28 +34,67 @@ fn type_name(code: u8) -> String {
     }
 }
 
-fn read_file(path: &Path) -> MieResult<Vec<u8>> {
-    if !path.exists() {
-        return Err(MieError::FileNotFound {
-            path: path.to_path_buf(),
-        });
+/// The input recording, read through the same window as the reader's: a dump
+/// reads only the bytes it shows, so `--records 10` on a large file costs ten
+/// records, not the file.
+struct Input {
+    window: Window,
+    len: usize,
+}
+
+impl Input {
+    fn open(path: &Path) -> MieResult<Self> {
+        let (file, len) = open_input(path)?;
+        Ok(Self {
+            window: Window::new(Arc::new(file), DEFAULT_CHUNK),
+            len: usize::try_from(len).unwrap_or(usize::MAX),
+        })
     }
-    let mut file = File::open(path).map_err(|source| MieError::FileIo {
-        path: path.to_path_buf(),
-        source,
-    })?;
-    let mut buf = Vec::new();
-    file.read_to_end(&mut buf)
-        .map_err(|source| MieError::FileIo {
-            path: path.to_path_buf(),
-            source,
-        })?;
-    if buf.is_empty() {
-        return Err(MieError::FileEmpty {
-            path: path.to_path_buf(),
-        });
+
+    /// The bytes from `offset`: at least `need` of them, or up to end of file.
+    /// A read failure is wrapped so it can travel the report's `io::Result`
+    /// and be told apart from an output failure at the public boundary.
+    fn at(&mut self, offset: usize, need: usize) -> std::io::Result<&[u8]> {
+        self.window
+            .ensure(offset, need, &mut self.len)
+            .map_err(|e| std::io::Error::other(InputError(e)))?;
+        let rel = offset - self.window.base();
+        Ok(self.window.bytes().get(rel..).unwrap_or(&[]))
     }
-    Ok(buf)
+}
+
+/// An input read failure, carried inside the report writer's `io::Error`.
+#[derive(Debug)]
+struct InputError(std::io::Error);
+
+impl std::fmt::Display for InputError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
+impl std::error::Error for InputError {}
+
+/// Classify a failed report: an input read failure is [`MieError::FileIo`] on
+/// the input; anything else was writing the report.
+fn report_error(path: &Path, err: std::io::Error) -> MieError {
+    if !err
+        .get_ref()
+        .is_some_and(<dyn std::error::Error + Send + Sync>::is::<InputError>)
+    {
+        return writer_error(err);
+    }
+    match err
+        .into_inner()
+        .map(<dyn std::error::Error + Send + Sync>::downcast::<InputError>)
+    {
+        Some(Ok(input)) => MieError::FileIo {
+            path: path.to_path_buf(),
+            source: input.0,
+        },
+        // Not reached (checked above); kept total rather than panicking.
+        _ => writer_error(std::io::Error::other("input read failed")),
+    }
 }
 
 /// Map an output `io::Error` to a `MieError::WriterError`. The dump always
@@ -113,8 +153,9 @@ pub fn hex_dump_raw(
     length: Option<usize>,
     mut out: impl Write,
 ) -> MieResult<()> {
-    let data = read_file(path)?;
-    write_hex_dump_raw(&data, path, start_offset, length, &mut out).map_err(writer_error)
+    let mut input = Input::open(path)?;
+    write_hex_dump_raw(&mut input, path, start_offset, length, &mut out)
+        .map_err(|e| report_error(path, e))
 }
 
 /// Inner writer for `hex_dump_raw`. Returns `io::Result` so every write —
@@ -123,13 +164,13 @@ pub fn hex_dump_raw(
 /// discarded with `let _ =`, so an output failure (disk full, broken pipe)
 /// was silently reported as success (L2-WRT-018).
 fn write_hex_dump_raw<W: Write>(
-    data: &[u8],
+    input: &mut Input,
     path: &Path,
     start_offset: usize,
     length: Option<usize>,
     out: &mut W,
 ) -> std::io::Result<()> {
-    let file_len = data.len();
+    let file_len = input.len;
 
     // Clamp start to [0, file_len] up-front; reads at start >= file_len
     // produce an empty chunk.
@@ -142,7 +183,6 @@ fn write_hex_dump_raw<W: Write>(
         None => file_len,
     }
     .max(chunk_start);
-    let chunk = &data[chunk_start..end];
 
     let name = path
         .file_name()
@@ -152,13 +192,18 @@ fn write_hex_dump_raw<W: Write>(
     writeln!(out, "Range: 0x{chunk_start:08X}-0x{end:08X}")?;
     writeln!(out)?;
 
-    let mut i = 0;
-    while i < chunk.len() {
-        let line = &chunk[i..(i + 16).min(chunk.len())];
-        // chunk_start is bounded by file_len; i is bounded by chunk.len()
-        // which is bounded by file_len - chunk_start. Sum can't overflow.
-        write_hex_line(out, "  ", chunk_start.saturating_add(i), line)?;
-        i += 16;
+    // `addr` runs from chunk_start, bounded by file_len, to end; the window
+    // is refilled as it goes, so the range is never held whole.
+    let mut addr = chunk_start;
+    while addr < end {
+        let n = (end - addr).min(16);
+        let bytes = input.at(addr, n)?;
+        let line = &bytes[..n.min(bytes.len())];
+        if line.is_empty() {
+            break; // the file ended early (truncated while being read)
+        }
+        write_hex_line(out, "  ", addr, line)?;
+        addr += line.len();
     }
     out.flush()
 }
@@ -175,21 +220,22 @@ pub fn hex_dump_records(
     start_offset: usize,
     mut out: impl Write,
 ) -> MieResult<()> {
-    let data = read_file(path)?;
-    write_hex_dump_records(&data, path, max_records, start_offset, &mut out).map_err(writer_error)
+    let mut input = Input::open(path)?;
+    write_hex_dump_records(&mut input, path, max_records, start_offset, &mut out)
+        .map_err(|e| report_error(path, e))
 }
 
 /// Inner writer for `hex_dump_records`; see `write_hex_dump_raw` for why
 /// this returns `io::Result` (every write, including the trailing flush,
 /// must propagate so an output failure is not silently swallowed).
 fn write_hex_dump_records<W: Write>(
-    data: &[u8],
+    input: &mut Input,
     path: &Path,
     max_records: Option<u64>,
     start_offset: usize,
     out: &mut W,
 ) -> std::io::Result<()> {
-    let file_len = data.len();
+    let file_len = input.len;
     let mut offset = start_offset;
     let mut record_num: u64 = 0;
 
@@ -214,7 +260,10 @@ fn write_hex_dump_records<W: Write>(
             break;
         }
 
-        let Some(type_raw) = read_u16(data, offset) else {
+        // A record is at most 126 bytes; 128 also covers the annotation's
+        // fixed reads when the record is shorter than they reach.
+        let rec = input.at(offset, 128)?;
+        let Some(type_raw) = read_u16(rec, 0) else {
             break;
         };
         let tw = decode_type_word(type_raw);
@@ -226,8 +275,8 @@ fn write_hex_dump_records<W: Write>(
         };
         let record_bytes = record_end - offset;
 
-        write_record_annotation(out, data, tw, offset, record_bytes, record_num)?;
-        write_record_hex_payload(out, &data[offset..record_end], offset)?;
+        write_record_annotation(out, rec, tw, offset, record_bytes, record_num)?;
+        write_record_hex_payload(out, &rec[..record_bytes], offset)?;
         writeln!(out)?;
 
         // offset can advance to record_end; checked again at the top of the
@@ -300,20 +349,21 @@ fn dump_record_extent<W: Write>(
 
 /// Write the decoded-header annotation block (Type / Time / Cmd) for one record.
 /// The IRIG timestamp decode is a best-effort summary — for Standard-format
-/// files the raw bytes below the header remain authoritative.
+/// files the raw bytes below the header remain authoritative. `rec` holds the
+/// file's bytes from the record's start (`offset`, used only for display).
 fn write_record_annotation<W: Write>(
     out: &mut W,
-    data: &[u8],
+    rec: &[u8],
     tw: TypeWord,
     offset: usize,
     record_bytes: usize,
     record_num: u64,
 ) -> std::io::Result<()> {
-    let ts_upper = read_u16(data, offset + 2).unwrap_or(0);
-    let ts_middle = read_u16(data, offset + 4).unwrap_or(0);
-    let ts_lower = read_u16(data, offset + 6).unwrap_or(0);
+    let ts_upper = read_u16(rec, 2).unwrap_or(0);
+    let ts_middle = read_u16(rec, 4).unwrap_or(0);
+    let ts_lower = read_u16(rec, 6).unwrap_or(0);
     let ts = decode_irig_timestamp(ts_upper, ts_middle, ts_lower);
-    let cmd = decode_command_word(read_u16(data, offset + 8).unwrap_or(0));
+    let cmd = decode_command_word(read_u16(rec, 8).unwrap_or(0));
     let dir_char = if cmd.direction == Direction::Transmit {
         'T'
     } else {
@@ -369,7 +419,7 @@ fn write_record_annotation<W: Write>(
     // For an errored record the Error Word is the last word of the record; show
     // its value and the DDC description so the reason is legible at a glance.
     if tw.error {
-        let code = read_u16(data, offset + (tw.word_count as usize - 1) * 2).unwrap_or(0);
+        let code = read_u16(rec, (tw.word_count as usize - 1) * 2).unwrap_or(0);
         let desc = ddc_error_description_or_unknown(code);
         writeln!(out, "  Error:  0x{code:04X}  ->  {desc}")?;
     }
@@ -521,6 +571,34 @@ mod tests {
         assert!(s.contains("Record #0"));
         assert!(s.contains("BC->RT (Receive)"));
         assert!(s.contains("1 records dumped"));
+    }
+
+    /// Both dumps walk a file several times the read window: every record
+    /// and every raw line comes out, across refills.
+    /// Requirements: L2-CLI-009
+    #[test]
+    fn dumps_cover_a_file_larger_than_the_window() {
+        let mut rec = vec![0x02, 0x24];
+        rec.extend_from_slice(&[0u8; 70]);
+        let n = 2 * crate::source::DEFAULT_CHUNK / rec.len() + 100;
+        let f = TempFile::write(&rec.repeat(n));
+
+        let mut out = Vec::new();
+        hex_dump_records(f.path(), None, 0, &mut out).unwrap();
+        let s = String::from_utf8(out).unwrap();
+        assert!(
+            s.ends_with(&format!(
+                "{n} records dumped.
+"
+            )),
+            "{}",
+            &s[s.len() - 80..]
+        );
+
+        let mut out = Vec::new();
+        hex_dump_raw(f.path(), 0, None, &mut out).unwrap();
+        let lines = String::from_utf8(out).unwrap().lines().count();
+        assert_eq!(lines, 3 + (n * rec.len()).div_ceil(16));
     }
 
     /// The record-aware dump surfaces the bit-14 error flag, the classified
