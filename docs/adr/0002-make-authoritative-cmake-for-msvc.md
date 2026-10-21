@@ -1,11 +1,19 @@
 ---
-status: accepted
+status: superseded
 date: 2026-08-18
 amended: 2026-08-27
+superseded: 5.0.0
 decision-makers: Joey
 ---
 
 # GNU make is authoritative on Linux; CMake drives the MSVC build
+
+> **Superseded in 5.0.0.** The C++ implementation was removed in 5.0.0, so this
+> decision no longer governs anything in the repository. SLES 12 SP5 remains a
+> deployment target; it is now served by the Rust `aero1553` binary built
+> against glibc 2.22 (the SLES 12 SP5 system glibc) with `cargo-zigbuild`. The
+> record below is kept unchanged as the history of why the C++ tree existed and
+> how it was built.
 
 ## Context and Problem Statement
 

@@ -5,7 +5,8 @@ stages a record passes through, what each stage **owes** the next (with the
 L1/L2/L3 requirement behind each obligation), and what happens when conditions
 **combine** — several files, several record kinds, and several options at once.
 Every combination listed in [section 5](#5-combination-matrix) was run through
-all three implementations and the outcomes compared byte for byte.
+every implementation of the time (Rust, Python and the C++ tree removed in
+5.0.0) and the outcomes compared byte for byte.
 
 **What it is not.** [`DATA-SCENARIOS.md`](DATA-SCENARIOS.md) is the operator's
 view, one condition at a time, in plain language.
@@ -26,11 +27,11 @@ cap) and 5 (a merge in which every input fails) are taken and implemented.
 
 ## 1. The pipeline
 
-All three implementations run the same stages in the same order. The Python
+Both implementations run the same stages in the same order. The Python
 CLI *is* the Rust CLI (`python/src/aero1553/cli.py` calls `_native.run_cli`,
-which runs the Rust `cli::run_to_code` in process), and each Python library stage is a thin wrapper over the
-Rust stage of the same name, so "three implementations" means two independent
-pipelines (Rust, C++) and one shared one.
+which runs the Rust `cli::run_to_code` in process), and each Python library
+stage is a thin wrapper over the Rust stage of the same name, so there is one
+pipeline (Rust) with a Python surface over it.
 
 ```
  single input:   reader ─────────────────────────────────────────────┐
@@ -42,14 +43,14 @@ pipelines (Rust, C++) and one shared one.
                                                         global only)                          L2-ERR-008)
 ```
 
-| Stage | Rust | C++ | Python library |
-|---|---|---|---|
-| Reader | `rust/src/reader.rs` | `cpp/src/reader.cpp` | `MieFileReader` → Rust reader |
-| Merge (heap, collapse, global DELTA) | `rust/src/merge.rs` `MergedRecordIter` | `cpp/src/merge.cpp` `MergedSource` | `merge_readers` → Rust merge |
-| Filter | `rust/src/filter.rs` | `cpp/src/filter.cpp` | `apply_filters` → Rust filter |
-| Order | `rust/src/order.rs` | `cpp/src/order.cpp` | `order_rows` → Rust `Ordered` |
-| Writer | `rust/src/writer.rs` | `cpp/src/writer.cpp` | `write_csv` / `write_csv_split` → Rust writer |
-| Wiring | `rust/src/cli.rs` (`decode`) | `cpp/src/cli.cpp` (`decode`) | composed by the caller |
+| Stage | Rust | Python library |
+|---|---|---|
+| Reader | `rust/src/reader.rs` | `MieFileReader` → Rust reader |
+| Merge (heap, collapse, global DELTA) | `rust/src/merge.rs` `MergedRecordIter` | `merge_readers` → Rust merge |
+| Filter | `rust/src/filter.rs` | `apply_filters` → Rust filter |
+| Order | `rust/src/order.rs` | `order_rows` → Rust `Ordered` |
+| Writer | `rust/src/writer.rs` | `write_csv` / `write_csv_split` → Rust writer |
+| Wiring | `rust/src/cli.rs` (`decode`) | composed by the caller |
 
 Two properties of this shape matter for everything below:
 
@@ -71,8 +72,8 @@ Two properties of this shape matter for everything below:
 
 **Owes:** a stream of decoded records in **file order** — the order the card
 wrote them — each carrying its final classification. Errors surface as a
-terminal `Err` item; the stream never yields after one (L3-CPP-013; Rust sets
-`done` before yielding).
+terminal `Err` item; the stream never yields after one (Rust sets `done`
+before yielding the `Err`).
 
 | Obligation | Requirement |
 |---|---|
@@ -83,8 +84,7 @@ terminal `Err` item; the stream never yields after one (L3-CPP-013; Rust sets
 | Format resolved once per file | L2-DEC-011 |
 | Sync loss: strict → terminal error; lenient → recover or stop | L2-SYN-015/016, L1-EXIT-003/004 |
 
-**How the continuation flag actually behaves** (`prev_was_error`, identical in
-Rust and C++):
+**How the continuation flag actually behaves** (`prev_was_error` in Rust):
 
 - **Set** only by an errored record that decoded successfully, including a
   lenient unknown-DDC-code record.
@@ -99,7 +99,7 @@ Rust and C++):
   until finding G1 was fixed, because the label tested bit 14 first.
 - **A continuation takes its parent's timestamp** (decision 2, L2-ERR-005). The
   flag is held as the errored record's timestamp itself (`prev_error_timestamp`
-  in Rust, `prev_error_timestamp_` in C++), so "is this a continuation" and
+  in Rust), so "is this a continuation" and
   "what time does it take" come from one value and cannot disagree. A standalone
   record keeps its own time; `dump` always shows the card's stamp.
 
@@ -162,7 +162,7 @@ decision 2 gives them one timestamp so a merge cannot separate them, and
 collapse keeps or drops them together — so that verdict is its parent's. A
 continuation with no errored record before it is judged on its own.
 `FilterConfig::should_exclude` is still the per-record predicate; the pairing
-lives in the `Filtered` adapter (`FilteredSource` in C++).
+lives in the `Filtered` adapter.
 
 ### 2.4 Order
 
@@ -177,7 +177,7 @@ writer, on both paths (L2-WRT-021), with bounded memory (L2-WRT-022).
 | Flush the buffered run before passing an `Err` through | L2-WRT-021, L3-RS-016, L3-PY-016 |
 | Run length capped by `max_sort_group` (default 65536); each time the cap is reached, the records so far in arrival order with **one WARN**, and the rest of the run gathered afresh; `1` disables reordering silently | L2-WRT-022, L3-WRT-003 |
 
-**How pinning is implemented** (identical in all three): a run is split into
+**How pinning is implemented**: a run is split into
 *chunks* — one record with a Command Word plus the pinned records trailing it —
 and the chunks are stable-sorted by their anchor's key. Pins that open a run
 form a leading chunk that sorts first.
@@ -296,7 +296,8 @@ from the vendor CSV, which shows the card's stamp (`VENDOR-CSV-DIFFS.md` §3d).
 
 ## 5. Combination matrix
 
-**How to read it.** Each row was decoded by Rust, Python and C++ with
+**How to read it.** Each row was decoded by Rust, Python and (until its
+removal in 5.0.0) C++ with
 `--no-mux`; "Agree" means identical exit code, main CSV and errors CSV, byte for
 byte. Rows show `TIME_STAMP` (microseconds only), `RT`, `MSG`, `ERROR`,
 `ERROR_CODE`. All timestamps are 192:15:54:50.000xxx, IRIG, bus A, SA 11
@@ -316,17 +317,17 @@ reported at. **Verdict** is against the current requirement text:
 | S6 | clean RT20 @500, spurious @500, clean RT3 @500 | — | RT3; RT20; spurious 2001 | yes | OK (pin follows RT20) | none |
 | S6b | clean RT20 @500, clean RT3 @500, spurious @501 | — | RT20 @500; RT3 @500; spurious 2001 @501 (arrival order) | yes | OK — decision 1 | `tie-standalone-later-timestamp` |
 | S7 | err RT15 @500, spurious **with bit 14** @600, spurious @700 | — | err @500; SPURIOUS 2000 @500; SPURIOUS 2001 @700 | yes | OK — labelled by its type (L2-ERR-010; was `ERROR`, finding G1) | `spurious-bit14` |
-| S8 | err RT15 @500, spurious @600, spurious @700 | — | err @500; SPURIOUS 2000 @500; SPURIOUS 2001 @700 | yes | OK (only the first is a continuation, and only it is re-timed) | C++, Rust and Python reader tests |
+| S8 | err RT15 @500, spurious @600, spurious @700 | — | err @500; SPURIOUS 2000 @500; SPURIOUS 2001 @700 | yes | OK (only the first is a continuation, and only it is re-timed) | Rust and Python reader tests |
 
 ### Order-stage cap
 
 | Row | Input | Options | Output | Agree | Verdict | Pinned by |
 |---|---|---|---|---|---|---|
-| C1 | as S3 | `--max-sort-group 1` | RT3; err RT1; cont 2000 — all @500 | yes | OK (arrival order), no WARN (decision 4; was 3 WARNs for 3 records) | `tie-cap-disabled`; WARN count in Rust CLI, Python and C++ tests |
+| C1 | as S3 | `--max-sort-group 1` | RT3; err RT1; cont 2000 — all @500 | yes | OK (arrival order), no WARN (decision 4; was 3 WARNs for 3 records) | `tie-cap-disabled`; WARN count in Rust CLI and Python tests |
 | C2 | as S3 | `--max-sort-group 2` | RT3; err RT1; cont 2000 — all @500 | yes | OK (the cap → arrival order) | none |
 | C3 | as S1 | `--max-sort-group 2` | err RT15; cont 2000; RT3 | yes | OK | none |
-| C4 | five clean records RT 21, 9, 3, 30, 1 @500 | `--max-sort-group 2` | 21, 9, 3, 30, 1 (arrival) with 2 WARNs, one per chunk | yes | OK — L2-WRT-022 now requires one WARN per cap-sized chunk (decision 4) | `tie-cap-overflow`; WARN count in Python and C++ tests |
-| C5 | as C4 | `--max-sort-group 3` | 21, 9, 3, then **1, 30** (the remainder sorted) with 1 WARN | yes | OK (decision 4) | Rust, Python and C++ order tests |
+| C4 | five clean records RT 21, 9, 3, 30, 1 @500 | `--max-sort-group 2` | 21, 9, 3, 30, 1 (arrival) with 2 WARNs, one per chunk | yes | OK — L2-WRT-022 now requires one WARN per cap-sized chunk (decision 4) | `tie-cap-overflow`; WARN count in Python tests |
+| C5 | as C4 | `--max-sort-group 3` | 21, 9, 3, then **1, 30** (the remainder sorted) with 1 WARN | yes | OK (decision 4) | Rust and Python order tests |
 
 ### Split output
 
@@ -363,7 +364,7 @@ File A = err RT15 stamped @500, cont stamped @510. The other file varies.
 
 ### Merge inputs that fail, under `--allow-partial`
 
-Rust, Python and C++ agree on every row (decision 5). A **single** file is the
+Rust, Python and (before its removal) C++ agreed on every row (decision 5). A **single** file is the
 reference: `--allow-partial` never changes its open or non-MIE failure.
 
 | Row | Inputs (in order) | Result | Pinned by |
@@ -450,7 +451,7 @@ Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
 
 - **G1 — a spurious record with bit 14 set** was labelled `ERROR` but coded —
   and timed — as a continuation (row S7). **Resolved**: the message type now
-  decides the label in all three implementations, and L2-ERR-010 states the
+  decides the label in every implementation, and L2-ERR-010 states the
   precedence it had left as "as appropriate".
 - **G2 — `ERROR-CATALOG.md` promised CSV adjacency unconditionally.**
   **Resolved**: it now states the guarantee as it holds (single files and merges)
@@ -467,7 +468,7 @@ Before decision 5, N1 exited 0 with an empty `.partial` in Rust and Python and
 ## 7. Decisions
 
 Each needs a choice, then an amendment to the requirement text, then code and
-tests in all three implementations.
+tests in every implementation (three, when these were decided).
 
 1. **M3 — which L1-OUT-003 promise gives way** — **decided 2026-10-02**: keep
    that run in **arrival order**, only when the sort would separate the pair,

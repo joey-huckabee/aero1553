@@ -30,7 +30,7 @@ aero1553/
 │       ├── cli.rs           CLI acceptance tests (built binary as a subprocess)
 │       └── integration.rs   cargo integration tests (multi-record, fuzz harness)
 ├── tests/
-│   └── conformance/        cross-implementation suite (Rust / Python / C++)
+│   └── conformance/        cross-implementation suite (Rust / Python)
 │       ├── manifest.json   case catalog
 │       ├── inputs/*.hex    reviewable hex fixtures (NOT committed binaries)
 │       ├── expected/*.csv  byte-exact CSV oracles
@@ -49,9 +49,6 @@ aero1553/
 │   ├── diagnose-vendor-delta.py identifies which DELTA rule a vendor CSV follows
 │   ├── repo-hygiene.sh          CI backstop for the pre-commit file checks
 │   ├── assert-ascii-output.py   no non-ASCII in any shipped string literal
-│   ├── assert-platform-confined.sh  OS headers only in the C++ platform backends
-│   ├── assert-locale-free.sh    no setlocale / <cctype> in the C++ tree
-│   ├── assert-sources-agree.sh  Makefile and CMake resolve the same C++ sources
 │   ├── coverage.sh              local coverage run (Rust + Python)
 │   └── install-hooks.sh         points core.hooksPath at .githooks/
 ├── docs/
@@ -71,7 +68,7 @@ aero1553/
 │   ├── MAINTAINER-GUIDE.md (this file)
 │   └── diagrams/           hand-written SVG diagrams (the source of truth)
 ├── config/default.toml     fully-commented reference TOML schema
-└── .github/workflows/      ci.yml, cpp-ci.yml, differential.yml, fuzz.yml,
+└── .github/workflows/      ci.yml, differential.yml, fuzz.yml,
                             perf.yml, codeql.yml, sonarcloud.yml
 ```
 
@@ -100,7 +97,7 @@ uv --directory python run pytest
 
 `uv sync` installs the package in editable mode, and that includes compiling the PyO3 extension (`python/native/`), so a Rust toolchain is needed as well. An editable install rebuilds the extension only when one of the `[tool.uv] cache-keys` in `python/pyproject.toml` changes -- those list the Rust sources of both the binding and the core crate, so `uv run` picks up a Rust edit by itself. If `python -m aero1553` ever fails to import, re-run sync.
 
-### Cross-impl conformance (needs all three)
+### Cross-impl conformance (needs both)
 
 ```bash
 # Build the Rust binary first so the runner doesn't have to:
@@ -111,7 +108,7 @@ uv --directory python run python ../tests/conformance/run.py
 
 The runner reads `tests/conformance/manifest.json`, materializes each `.hex` fixture into a temp `.mie` file, invokes every registered CLI against it, and diffs the produced CSVs against the checked-in oracle (or asserts the exit code for negative cases), and every case's stderr against its stderr oracle.
 
-The runner additionally cross-checks the **config parsers** (the hand-rolled Rust and C++ loaders; the Python package runs the Rust one, L3-PY-005): a curated corpus (`config_parity.py`) plus a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts both implementations agree on accept/reject. Both run inside `run.py` — there is no separate command. The fuzzer is deterministic (fixed seed + `MIE_CONFIG_FUZZ_ITERS` iterations, default 100); for a deeper local sweep run `MIE_CONFIG_FUZZ_ITERS=5000 uv --directory python run python ../tests/conformance/run.py` (a *distinct* knob from the reader/dump `MIE_FUZZ_ITERATIONS` in §11's fuzz workflow). A divergence prints the exact config to pin in `config_parity.py`. See `tests/conformance/README.md`.
+The runner additionally cross-checks the **config parsers** (the hand-rolled Rust loader, which the Python package also runs, L3-PY-005, compared through both CLIs): a curated corpus (`config_parity.py`) plus a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts both implementations agree on accept/reject. Both run inside `run.py` — there is no separate command. The fuzzer is deterministic (fixed seed + `MIE_CONFIG_FUZZ_ITERS` iterations, default 100); for a deeper local sweep run `MIE_CONFIG_FUZZ_ITERS=5000 uv --directory python run python ../tests/conformance/run.py` (a *distinct* knob from the reader/dump `MIE_FUZZ_ITERATIONS` in §11's fuzz workflow). A divergence prints the exact config to pin in `config_parity.py`. See `tests/conformance/README.md`.
 
 A third guard, `config_path_parity.py`, covers the layer above the parsers: the `--config` **path** rather than its contents. The other two never vary the path, so what counts as a usable config file — and which exit code and message a bad one produces — was pinned only by per-implementation unit tests that could drift apart unnoticed. It compares the **exact exit code** (not just accept/reject) and requires the promised message text from both CLIs, over the surface documented in `CONFIG-REFERENCE.md` §"Trust boundary": regular files only, missing/unusable is exit `5`, and any readable location is accepted (spaces, non-ASCII names, `..` segments). Platform-dependent cases (character devices, symlinks) skip themselves and report the skip, so a corpus that quietly shrinks on one OS is visible.
 
@@ -351,7 +348,7 @@ cargo test --all-targets               # unit + integration + cli together (what
 
 ## 6. Adding a conformance fixture
 
-Cross-implementation conformance fixtures verify byte-identical CSV output (or matching exit code), and identical stderr, across Rust, Python and C++. Add a case only for behavior that's specified at L2 as shared.
+Cross-implementation conformance fixtures verify byte-identical CSV output (or matching exit code), and identical stderr, across Rust and Python. Add a case only for behavior that's specified at L2 as shared.
 
 ### Steps
 
@@ -486,6 +483,7 @@ shows up as a gap rather than silently drifting:
 |-----|---------------|-----------|--------------|
 | `rust` | `cargo fmt --check`, `cargo clippy -- -D warnings`, `cargo test --all-targets` (unit + `rust/tests/integration.rs` + `rust/tests/cli.rs` CLI acceptance suite — see section 5 for the test pyramid); `cargo cov-ci` (90% line / 89% region coverage floors) Linux-only | `ubuntu-latest`, `windows-latest` | Block merge |
 | `rust-doc` | `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps` — fails on broken intra-doc links and other rustdoc lints in the doc-heavy crate | `ubuntu-latest` | Block merge |
+| `rust-glibc-2-22` | `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22` -- the SLES 12 SP5 binary (L3-RS-018); fails on any symbol newer than `GLIBC_2.22`, runs the conformance suite against that binary, uploads it as the `aero1553-x86_64-linux-glibc2.22` artifact | `ubuntu-latest` | Block merge |
 | `rust-msrv` | `cargo check --all-targets` on the pinned **1.88** toolchain — enforces the declared `rust-version` (the main `rust` job builds on stable) | `ubuntu-latest` | Block merge |
 | `cargo-deny` | `cargo deny check` — RustSec advisories, license allow-list, bans (duplicates/wildcards), and crates.io-only sources (config in `rust/deny.toml`) | `ubuntu-latest` | Block merge |
 | `cargo-semver-checks` | `cargo semver-checks check-release` vs the latest release tag (`baseline-rev`, `release-type: minor`) — fails a PR that makes a **breaking** public-API change without a major bump; additive changes pass | `ubuntu-latest` | Block merge |
@@ -496,49 +494,22 @@ shows up as a gap rather than silently drifting:
 | `vulture` | `uv run vulture` — dead-code scan over the package **and tests**; scan paths + intentional-name ignores (interface args, documented constants) in `python/pyproject.toml` `[tool.vulture]` | `ubuntu-latest` (3.12) | Block merge |
 | `bandit` | `uv run bandit -r src/aero1553` — Python security static analysis (SAST) over the package source; fails on any finding at the default severity/confidence | `ubuntu-latest` (3.12) | Block merge |
 | `python-coverage` | `uv run pytest --cov` — 92% combined line+branch floor (`fail_under` in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
-| `conformance` | `pip install -e ./python` then `python tests/conformance/run.py --skip cpp` — every fixture, Rust and Python. The opt-out is explicit: the runner defaults to every registered implementation and fails if one is missing, so this job cannot pass by silently testing fewer | `ubuntu-latest`, `windows-latest` | Block merge |
+| `conformance` | `pip install -e ./python` then `python tests/conformance/run.py` — every fixture, Rust and Python. The runner defaults to every registered implementation and fails if one is missing, so this job cannot pass by silently testing fewer | `ubuntu-latest`, `windows-latest` | Block merge |
 | `trace-matrix` | `python scripts/build-trace-matrix.py --check` — fails if `docs/TRACE-MATRIX.md` is stale relative to the spec docs + test markers | `ubuntu-latest` | Block merge |
-| `repo-hygiene` | `bash scripts/repo-hygiene.sh` — re-runs the pre-commit hook's file-level checks (final newline, CRLF, merge markers, 1 MB cap, `*.mie`, `Cargo.lock` parity, `dbg!()`, `unsafe`/`SAFETY:`) over the whole tracked tree, so a `--no-verify` commit is still caught, plus the doc-drift checks that have no hook counterpart (this table lists every `ci.yml` job; the config-key set agrees across its three text sources; no TRACE-MATRIX row claims Implemented with no artifact; the declared Rust MSRV agrees across `Cargo.toml`, CI and the docs; `ROADMAP.md` doesn't restate a `TRACE-MATRIX.md` status; the Python exception hierarchy matches its ASCII-tree and UML drawings; every shipped string literal in all three implementations is ASCII, via `scripts/assert-ascii-output.py` — L2-CLI-014) | `ubuntu-latest` | Block merge |
+| `repo-hygiene` | `bash scripts/repo-hygiene.sh` — re-runs the pre-commit hook's file-level checks (final newline, CRLF, merge markers, 1 MB cap, `*.mie`, `Cargo.lock` parity, `dbg!()`, `unsafe`/`SAFETY:`) over the whole tracked tree, so a `--no-verify` commit is still caught, plus the doc-drift checks that have no hook counterpart (this table lists every `ci.yml` job; the config-key set agrees across its three text sources; no TRACE-MATRIX row claims Implemented with no artifact; the declared Rust MSRV agrees across `Cargo.toml`, CI and the docs; `ROADMAP.md` doesn't restate a `TRACE-MATRIX.md` status; the Python exception hierarchy matches its ASCII-tree and UML drawings; every shipped string literal in both implementations is ASCII, via `scripts/assert-ascii-output.py` — L2-CLI-014) | `ubuntu-latest` | Block merge |
 
 The jobs above are `.github/workflows/ci.yml`, which gates the Rust and Python
-implementations. The C++ implementation gates separately in
-`.github/workflows/cpp-ci.yml`, so a Rust change never waits on a Valgrind run
-and a C++ change never waits on the Python matrix. Its jobs:
+implementations. (A separate `cpp-ci.yml` gated the C++ implementation until it
+was removed in 5.0.0.)
 
-| Job | What it does | Runner | Gate |
-|-----|--------------|--------|------|
-| `build-test-modern` | `make check` on a pinned modern g++. Fast feedback, and the only Linux tier whose compiler is new enough to host the instrumentation below | `ubuntu-24.04` | Any test failure |
-| `build-test-gcc48` | `make check-gcc48` — builds and runs the **full suite** inside the pinned GCC 4.8.5 mirror image. The tier that proves C++11 conformance on the SLES 12 SP5 system compiler (ADR-0001). Do not reduce it to a compile check | `ubuntu-24.04` (container) | Any test failure |
-| `build-test-msvc` | CMake + MSVC at `/W4 /WX /permissive-`, then `ctest`, then a smoke check that stdout carries no CR. Windows is a shipping target, not a convenience build (ADR-0003) | `windows-2022` | Any test failure, any warning |
-| `sanitizers` | `make check SANITIZE=1` — AddressSanitizer, UndefinedBehaviorSanitizer and LeakSanitizer, all fatal on first finding. Modern toolchain only; GCC 4.8 has partial ASan and no LSan | `ubuntu-24.04` | Any finding |
-| `valgrind` | `make check-valgrind` with `--errors-for-leak-kinds=all`. A still-reachable block at exit is a leak for a short-lived CLI, not a tolerable steady state | `ubuntu-24.04` | Any leak or invalid access |
-| `coverage` | `make -C cpp coverage` — rebuilds from clean with `--coverage` at `-O0`, runs the **full** Catch2 suite, gates with `gcovr` on 90% lines and 76% branches. Driven through the Makefile target so this job and a developer's `make coverage` are one invocation with one threshold — deliberately one number rather than a tighter CI-only value, because gcov branch counts vary ~5pp with compiler version and a CI-only floor would let local pass while CI failed. Excludes the conformance suite, as the Rust and Python gates do — it drives the CLI out-of-process, and counting it would measure a different thing in each implementation | `ubuntu-24.04` | Below either floor |
-| `static-analysis` | `cppcheck` over `cpp/src` and `cpp/tests`. Vendored Catch2 excluded — it is third-party code the project is forbidden to edit | `ubuntu-24.04` | Any finding |
-| `clang-tidy` | `bear` generates a compilation database from the real build, then `make tidy` runs clang-tidy with `--warnings-as-errors`. Without that flag clang-tidy exits 0 on warnings and the gate reports success while printing findings | `ubuntu-24.04` | Any finding |
-| `format` | `make format-check`. Covers **both** platform backends, not just the one this host compiles — the inactive backend is checked by no other tier | `ubuntu-24.04` | Any diff |
-| `cpp-conformance` | The C++ binary against the **same** byte-exact oracles in `tests/conformance/expected/`, via `run.py --only cpp`. Needs no cargo and no installed `aero1553`, because it compares against the committed oracles rather than against the other CLIs. The C++ build runs **every** case in the manifest, so nothing is skipped | `ubuntu-24.04`, `windows-2022` | Block merge |
-| `invariants` | The three properties that make the portability claim true rather than aspirational: OS headers confined to the platform backends, no locale-sensitive parsing or formatting, and the Makefile and CMake resolving the same source list | `ubuntu-24.04` | Any violation |
-
-Each of the three `invariants` gates has been verified to fail on a planted
-violation as well as to pass on clean code. A check that has only ever been
-seen passing is not known to work.
-
-Three further workflows cut **across** all three implementations rather than
-gating one of them:
+Three further workflows cut **across** the implementations rather than gating
+one of them:
 
 | Workflow / job | Covers | Notes |
 |-----|--------------|--------|
-| `cross-impl-differential` | all three | **The only job that runs all three implementations together**, and therefore the only one that can run the differential config checks (`config_parity`, `config_fuzz`, `config_path_parity`), which compare **all pairs** and skip themselves when fewer than two implementations are selected. Lives alone in `.github/workflows/differential.yml`. It runs `run.py` with no `--only` / `--skip`, so a missing implementation is an error rather than a smaller pass. Deliberately **unfiltered**: it previously lived in `cpp-ci.yml` behind a `cpp/**` filter, which meant the check written to catch a divergence *between* implementations only ran when the C++ tree changed. Its first run found two real divergences. |
-| `.github/workflows/codeql.yml` | `rust`, `python`, `c-cpp` | Rust and Python use `build-mode: none` and extract from source. C++ **must** be compiled — the extractor observes a real build — so it uses `build-mode: manual` with an explicit `make -C cpp all`. Not `autobuild`: this tree has a specific build driven by `sources.txt`, and letting an extractor guess is how it silently analyses less than you think. `all` compiles every translation unit without running the suite, which is what the extractor needs. |
-| `.github/workflows/sonarcloud.yml` | `rust/src`, `python/src`, `cpp/src`, `cpp/include` | The CFamily analyser cannot read C++ from source alone; it needs the compile flags per translation unit. This passes `sonar.cfamily.compile-commands` pointing at the database `bear` writes, rather than using SonarCloud's build-wrapper, so the analyser sees the flags the **real** build uses instead of a second description that could drift from `sources.txt`. Vendored Catch2 and the per-toolchain `build/` trees are excluded. |
-
-One caveat from when C++ analysis was added is still live: **measure before
-making C++ blocking.**
-The tree joins a job that already waits on the quality gate, so if the first
-analysis surfaces a large pile of style findings, the answer is to scope C++ to
-the security and taint rules — the ones no other gate here runs — rather than to
-unpick the integration. clang-tidy 22, cppcheck, ASan, UBSan, LSan and Valgrind
-already cover the rest.
+| `cross-impl-differential` | Rust, Python | **The job that runs every implementation together**, with no path filter, and therefore the one that runs the differential config checks (`config_parity`, `config_fuzz`, `config_path_parity`), which compare **all pairs** and skip themselves when fewer than two implementations are selected. Lives alone in `.github/workflows/differential.yml`. It runs `run.py` with no `--only` / `--skip`, so a missing implementation is an error rather than a smaller pass. Deliberately **unfiltered**: it previously lived in the (since removed) C++ workflow behind a `cpp/**` filter, which meant the check written to catch a divergence *between* implementations only ran when the C++ tree changed. Its first run found two real divergences. |
+| `.github/workflows/codeql.yml` | `rust`, `python` | Both use `build-mode: none` and extract from source. |
+| `.github/workflows/sonarcloud.yml` | `rust/src`, `python/src` | Rust (clippy disabled; lcov coverage) and Python (coverage XML) analysis, waiting on the quality gate. |
 
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
 
@@ -554,22 +525,19 @@ and the JSON report to an artifact. Run it locally with
 `uv --directory python run python ../perf/run.py`; `perf/README.md` explains
 the cases, the report and how to calibrate a gate.
 
-A separate scheduled workflow, `.github/workflows/fuzz.yml`, runs a deeper L1-ROB-001 fuzz burn-in daily (and on manual `workflow_dispatch`), across **all three** implementations and on **both** Linux and Windows. The normal `rust` / `python` / C++ suites run the fixed 256-iteration default; the burn-in sets `MIE_FUZZ_ITERATIONS` (default 25 000) so the deterministic harness sweeps a much larger input space. `docs/FUZZING.md` is the full map of what is fuzzed and what is not; this section covers the CI wiring.
+A separate scheduled workflow, `.github/workflows/fuzz.yml`, runs a deeper L1-ROB-001 fuzz burn-in daily (and on manual `workflow_dispatch`), across **both** implementations and on **both** Linux and Windows. The normal `rust` / `python` suites run the fixed 256-iteration default; the burn-in sets `MIE_FUZZ_ITERATIONS` (default 25 000) so the deterministic harness sweeps a much larger input space. `docs/FUZZING.md` is the full map of what is fuzzed and what is not; this section covers the CI wiring.
 
 | Workflow / job | Covers | Notes |
 |-----|--------------|--------|
 | `fuzz-rust` | `ubuntu-latest`, `windows-latest` | Reader, dump and merge harnesses as **separate steps**, so the Actions UI shows pass/fail and duration per harness. |
-| `fuzz-cpp` | `ubuntu-24.04` | `make -C cpp check-fuzz` — the `[fuzz]` cases only. It ran `make check` (the whole suite, from a cold build) until v2.15.1, so its wall time was mostly not fuzzing, and Catch2 reports no per-case duration without `-d yes` to recover it from. `make check` stays the single unparameterised command a developer runs, and the fuzz cases still ride along in it. |
-| `fuzz-cpp-asan` | `ubuntu-24.04` | The same harnesses with ASan/UBSan/LSan on, at the same iteration count. Until v2.16.0 the burn-in raised the count only on the uninstrumented `-O2` build, so the deep sweep ran precisely where a non-faulting out-of-bounds read goes unnoticed. Valgrind deliberately stays at the default count in `cpp-ci.yml`: one to two orders of magnitude slower for the same fault class here. |
-| `fuzz-cpp-msvc` | `windows-2022` | CMake + the test binary invoked directly with the `[fuzz]` tag. Not `ctest`: it registers the whole suite as one test and offers no way to pass Catch2 a tag filter. |
-| `fuzz-python` | `ubuntu-latest`, `windows-latest` | `TestFuzzHarness` plus the merge harness in `test_merge.py`. Runs with `-s` so the harnesses' own stderr reaches the job log the way the other two already do. |
-| `fuzz-compare` | all three, both platforms, instrumented and not | Downloads every job's `FUZZ-SUMMARY` artifact and fails if any two disagree. Seven runner configurations must produce identical counters. |
+| `fuzz-python` | `ubuntu-latest`, `windows-latest` | `TestFuzzHarness` plus the merge harness in `test_merge.py`. Runs with `-s` so the harnesses' own stderr reaches the job log the way the Rust one already does. |
+| `fuzz-compare` | both implementations, both platforms | Downloads every job's `FUZZ-SUMMARY` artifact and fails if any two disagree. Four runner configurations must produce identical counters. |
 
-All harnesses use the **same xorshift64 generator with the same seed and the same draw order**, so iteration N is the same bytes everywhere. Until v2.15.1 that was as far as it went: nothing compared the results, so three implementations could each prove "I did not crash" while decoding the same bytes differently. Each harness now ends by writing one `FUZZ-SUMMARY` line of counters defined to mean the same thing in all three, and `fuzz-compare` diffs them all-pairs (`scripts/compare-fuzz-summaries.py`, same no-majority / no-reference reasoning as `tests/conformance/differential.py`). Every counter must be **path-independent**: the harnesses name their temp files differently, so anything derived from a path measures the harness rather than the decoder. The dump harness counts output *lines* for exactly this reason — it counted bytes first, and the implementations disagreed by a constant offset that turned out to be the length of the file path in the dump header.
+All harnesses use the **same xorshift64 generator with the same seed and the same draw order**, so iteration N is the same bytes everywhere. Until v2.15.1 that was as far as it went: nothing compared the results, so the implementations could each prove "I did not crash" while decoding the same bytes differently. Each harness now ends by writing one `FUZZ-SUMMARY` line of counters defined to mean the same thing in every implementation, and `fuzz-compare` diffs them all-pairs (`scripts/compare-fuzz-summaries.py`, same no-majority / no-reference reasoning as `tests/conformance/differential.py`). Every counter must be **path-independent**: the harnesses name their temp files differently, so anything derived from a path measures the harness rather than the decoder. The dump harness counts output *lines* for exactly this reason — it counted bytes first, and the implementations disagreed by a constant offset that turned out to be the length of the file path in the dump header.
 
-**The comparison also runs on every push**, not only in the nightly burn-in: `differential.yml` runs all three implementations' harnesses at their default counts into one summary file and compares them. A PR that introduced a divergence would otherwise stay green until the next scheduled run. That is how the four `read_manifest` divergences of v2.16.0 would have been caught the day they landed.
+**The comparison also runs on every push**, not only in the nightly burn-in: `differential.yml` runs both implementations' harnesses at their default counts into one summary file and compares them. A PR that introduced a divergence would otherwise stay green until the next scheduled run. That is how the four `read_manifest` divergences of v2.16.0 would have been caught the day they landed.
 
-Three environment variables are shared by all three harnesses:
+Three environment variables are shared by every harness:
 
 | Variable | Default | Effect |
 |---|---|---|
@@ -586,17 +554,13 @@ Two further fuzzers live in `tests/conformance/` and are **differential by const
 
 `record_fuzz.py` is the one that compares what the **decoders** produce. It is structure-aware on purpose: uniform random bytes reach the recovery paths densely and the valid-record paths almost never — across a 25 000-iteration burn-in they never once produced enough consecutive equal-timestamp records to reach the canonical-order cap branch. It starts from real fixtures, concatenates a few, and applies bit flips, truncations, spliced noise and duplicated slices. On a divergence it prints the input as a ready-to-commit `inputs/*.hex` fixture, because a seed stops reproducing anything the moment the generator changes.
 
-`MIE_FUZZ_STREAM_LOGS` replaced a `--nocapture` / `-s` pair that did not work: Rust's logger writes through `std::io::stderr()` and libtest's capture only intercepts the `print!` / `eprint!` macros, and C++ writes to the stderr fd, which Catch2 does not redirect — so two of the three jobs streamed unconditionally (tens of megabytes into every scheduled run) while pytest captured Python's and showed nothing. Silencing is the harness's job, not the runner's. In C++ the level is set through an RAII guard: Catch2 runs its cases sequentially in one process, and leaving the level at `OFF` broke `test_log.cpp` two files away. In Rust it is set and deliberately *not* restored — libtest runs that binary's tests in parallel threads, so a scope guard would restore the level while a sibling test was still running.
-
-C++ deliberately does **not** use libFuzzer: it needs clang, so it would skip the GCC 4.8.5 fidelity tier this implementation exists for, and its non-determinism would make a required gate fail on inputs no change produced. The C++ harness is an ordinary Catch2 case (`cpp/tests/test_fuzz.cpp`), so it rides along on every tier including MSVC, ASan/UBSan and Valgrind, with no committed corpus. Because the PRNG seed is fixed, the burn-in is a strict superset of the default run and any failure prints a reproducible seed.
+`MIE_FUZZ_STREAM_LOGS` replaced a `--nocapture` / `-s` pair that did not work: Rust's logger writes through `std::io::stderr()` and libtest's capture only intercepts the `print!` / `eprint!` macros (and the former C++ harness wrote to the stderr fd, which Catch2 did not redirect) — so those jobs streamed unconditionally (tens of megabytes into every scheduled run) while pytest captured Python's and showed nothing. Silencing is the harness's job, not the runner's. In Rust the level is set and deliberately *not* restored — libtest runs that binary's tests in parallel threads, so a scope guard would restore the level while a sibling test was still running.
 
 To reproduce locally:
 
 ```bash
 MIE_FUZZ_ITERATIONS=25000 cargo test --test integration fuzz_arbitrary_bytes_never_panic
 MIE_FUZZ_ITERATIONS=25000 uv --directory python run pytest tests/test_e2e.py::TestFuzzHarness
-MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz
-MIE_FUZZ_ITERATIONS=25000 make -C cpp check-fuzz SANITIZE=1   # what fuzz-cpp-asan runs
 MIE_RECORD_FUZZ_ITERS=500 python tests/conformance/run.py     # the differential one
 ```
 
@@ -608,19 +572,16 @@ Pre-commit hooks (set up locally via `bash scripts/install-hooks.sh`, which poin
 
 ## 10. Coverage workflow
 
-All three implementations are gated. Rust uses `cargo-llvm-cov`; Python uses `pytest-cov` (which wraps `coverage.py`); C++ uses `gcov` via `gcovr`. Each gate runs once on Linux only — coverage isn't platform-dependent, so fanning the gate across the full matrix would waste CI minutes.
+Both implementations are gated. Rust uses `cargo-llvm-cov`; Python uses `pytest-cov` (which wraps `coverage.py`). Each gate runs once on Linux only — coverage isn't platform-dependent, so fanning the gate across the full matrix would waste CI minutes.
 
-**None of the three includes the conformance suite.** Rust measures its `cargo test` targets, Python measures `python/tests`, C++ measures the Catch2 suite. The conformance runner drives each CLI out-of-process, so counting it would measure a different thing in each implementation and make the numbers incomparable. Paths reached only through conformance therefore read as uncovered — the conservative direction.
+**Neither includes the conformance suite.** Rust measures its `cargo test` targets, Python measures `python/tests`. The conformance runner drives each CLI out-of-process, so counting it would measure a different thing in each implementation and make the numbers incomparable. Paths reached only through conformance therefore read as uncovered — the conservative direction.
 
-**The second metric is not the same thing in each language, and the floors reflect that.** Rust gates on llvm-cov *regions*, Python and C++ on *branches*. `gcov` counts every conditional the compiler emits, including ones the source never spells out, so it runs systematically lower than LLVM region coverage for equally well-tested code. Forcing the three numbers to match would not make them mean the same thing.
+**The second metric is not the same thing in each language, and the floors reflect that.** Rust gates on llvm-cov *regions*, Python on *branches*. Forcing the numbers to match would not make them mean the same thing.
 
 | | lines | regions / branches | floor |
 |---|---|---|---|
 | Rust | 90.40% | 89.37% (regions) | 90 / 89 |
 | Python | 95.50% | 92.89% (branches) | 92 combined |
-| C++ | 90.9% CI / 91.1% local | 81.5% CI / 76.5% local (branches) | 90 / 76 |
-
-The C++ row has two numbers because **gcov branch coverage is not portable across compiler versions**: the same suite measures 76.5% branches on g++ 11.4 (the documented WSL2 host) and 81.5% on CI's ubuntu-24.04 g++. Lines barely move. The floor is set to hold on the oldest compiler in use, so CI carries ~5pp of slack — the alternative, pinning CI to its own higher number, would make a local `make coverage` pass while CI fails.
 
 ### Rust
 
@@ -645,34 +606,9 @@ uv --directory python run pytest --cov --cov-report=term-missing
 uv --directory python run pytest --cov --cov-report=html
 ```
 
-### C++
-
-The CI gate is `make -C cpp coverage`, the same target a developer runs. It
-rebuilds from clean with `--coverage` at `-O0` (optimisation reorders and merges
-basic blocks, so branch counts would describe the optimised control flow rather
-than the source), runs the **full** Catch2 suite, then gates with `gcovr` on
-`COVERAGE_MIN_LINE` and `COVERAGE_MIN_BRANCH` from the Makefile.
-
-```bash
-cd cpp
-make coverage          # what CI runs: measure and gate
-make coverage-report   # same measurement, no gate, with per-branch detail
-```
-
-Two files are excluded, both deliberately. `src/main.cpp` is the executable
-entry point and nothing else — its body is three calls, and the Rust gate
-ignores its own `bin/aero1553.rs` for the same reason, which keeps the two
-numbers comparable. `src/platform_win32.cpp` is not compiled on Linux so gcov
-never sees it; it is named in the exclusion list anyway, so that the omission is
-a stated fact rather than an accident of which host ran the build. It is covered
-by the MSVC tier, which has **no** coverage measurement — a real gap this gate
-does not close.
-
 ### Ratcheting the floor
 
-When coverage is consistently above the floor by >2pp, bump it. For Rust, edit the `cov-ci` alias in `rust/.cargo/config.toml`. For Python, edit `fail_under` in `python/pyproject.toml`'s `[tool.coverage.report]` block (the CI job has no `--cov-fail-under` flag — the config value is authoritative). For C++, edit `COVERAGE_MIN_LINE` / `COVERAGE_MIN_BRANCH` in `cpp/Makefile`. Update the rationale comment in each file when you do.
-
-**The C++ branch floor is the one that needs work, not just a bump.** CI measures 81.5% and the WSL2 host 76.5%; either way it is several hundred uncovered branch outcomes short of the 90% the other columns reach, concentrated in `reader.cpp`, `writer.cpp` and `merge.cpp`. The floor sits at the lower, portable figure so nothing regresses on any supported compiler — not because 76% is the intended destination. Raise it toward CI's number once the spread is understood, and toward 90% once the tests exist.
+When coverage is consistently above the floor by >2pp, bump it. For Rust, edit the `cov-ci` alias in `rust/.cargo/config.toml`. For Python, edit `fail_under` in `python/pyproject.toml`'s `[tool.coverage.report]` block (the CI job has no `--cov-fail-under` flag — the config value is authoritative). Update the rationale comment in each file when you do.
 
 ---
 
@@ -696,22 +632,11 @@ uv --directory python build   # sdist + one abi3 wheel, via maturin
 
 This produces `python/dist/aero1553-<version>.tar.gz` and one `aero1553-<version>-cp310-abi3-<platform>.whl`: a single wheel per platform that serves every CPython from 3.10 up. The sdist is self-contained -- it bundles the core crate from `rust/` -- so it builds anywhere a Rust toolchain is available. A local Linux build is tagged `linux_x86_64`, which pip installs locally but PyPI refuses; publishable `manylinux` wheels come from CI.
 
-### C++ implementation
-
-```bash
-cd cpp
-make all                 # Linux; the Makefile is authoritative there (ADR-0002)
-make check               # build + full Catch2 suite, -Werror
-make check-gcc48         # SLES 12 SP5 fidelity: full suite on GCC 4.8.5, in a container
-```
-
-Windows uses CMake/MSVC (`cmake --build build-msvc --config Release`); `cpp/README.md` carries both paths in full.
-
-C++ **ships as source in the joint cut**, at the same version as the other two — that is what has happened since v2.13.0, and `repo-hygiene.sh` fails the build if the three disagree. No release attaches prebuilt binaries, for any implementation; whether to start doing so is the open Phase 3 question in `ROADMAP.md`.
+No release attaches prebuilt binaries, for any implementation; whether to start doing so is the open Phase 3 question in `ROADMAP.md`. (The C++ implementation, which shipped as source in the joint cut from v2.13.0, was removed in 5.0.0.)
 
 ### Version coordination
 
-**A release is a joint cut** — all three implementations ship together at one version from a single repository tag. Subsequent releases may diverge in version, but the cross-implementation conformance contract (CSV byte-for-byte equivalence on shared behavior) holds at any compatible version pair.
+**A release is a joint cut** — both implementations ship together at one version from a single repository tag. Subsequent releases may diverge in version, but the cross-implementation conformance contract (CSV byte-for-byte equivalence on shared behavior) holds at any compatible version pair.
 
 Tagging scheme:
 
@@ -738,19 +663,15 @@ The version bump itself rolls up the accumulated `[Unreleased]` entries into a d
 
 1. Renames `[Unreleased]` to `[<version>] — YYYY-MM-DD` in `CHANGELOG.md` and seeds a new empty `[Unreleased]` section.
 2. Updates the compare-URL footer (`[<version>]: .../compare/<previous>...<version>`) — see the warning below; this is the step most often missed.
-3. Updates the version in **all six places**, because a joint cut ships one number from one tag:
+3. Updates the version in **all five places**, because a joint cut ships one number from one tag:
    `rust/Cargo.toml`, `rust/Cargo.lock` (the `aero1553` entry — a `cargo build` refreshes it),
-   `python/pyproject.toml`, `cpp/src/cli.cpp` (`kVersion`, which is what `--version` prints),
-   `cpp/CMakeLists.txt` (`project(... VERSION ...)`), and the **two CLI smoke assertions** in
-   `.github/workflows/cpp-ci.yml` — one bash, one PowerShell — which compare `--version` output
-   against a literal string.
+   `python/pyproject.toml`, `python/native/Cargo.toml`, and `python/native/Cargo.lock` (the
+   `aero1553-py` entry).
 
-   > This step named only the first three until v2.13.0, and the smoke assertions were missed even
-   > then — the v2.13.0 cut failed CI on them. The C++ implementation was added after
-   > the checklist was written and nobody came back to it, so `mie-decoder --version` could have
-   > reported a different number depending on which implementation an operator ran.
-   > `repo-hygiene.sh` now fails when the five disagree, so the checklist and the gate say the
-   > same thing.
+   > Until 5.0.0 the C++ implementation added three more places (its `kVersion`, its CMake
+   > project version and two CI smoke assertions); the v2.13.0 cut failed CI on the smoke
+   > assertions after the checklist missed them. `repo-hygiene.sh` fails when the version
+   > sources disagree, so the checklist and the gate say the same thing.
 4. Updates any per-version doc references (e.g. "X-test suite (as of vN.M.0)" in MAINTAINER-GUIDE.md §10).
 
 > **Watch the footer (step 2).** This step was silently skipped on the `1.4.0` and `1.4.1` cuts: the body sections were dated correctly but the footer's `[Unreleased]` link was left pointing at `v1.3.0...HEAD` and no `[1.4.0]`/`[1.4.1]` entries were added. It was repaired during the `1.5.0` cut. The body roll-up (step 1) is visible in the rendered changelog so it's hard to forget; the footer is easy to miss because nothing breaks without it. When cutting, after editing, confirm the footer's `[Unreleased]` line points at the *new* version (`compare/v<new>...HEAD`) and that every released version since the last footer update has its own `compare/<prev>...<this>` line — `git tag --sort=-creatordate` is the cross-check.
@@ -767,7 +688,7 @@ These are the operating rules that keep the two crates from drifting:
 2. **Conformance fixtures for cross-impl behavior.** Anything that affects CSV output or exit codes belongs in `tests/conformance/`.
 3. **Per-impl detail goes in L3.** Python-specific constraints (the compiled extension, uv + maturin) live as `L3-PY-*`. Rust-specific constraints (memmap2, BufWriter) live as `L3-RS-*`. The shared L2 stays implementation-agnostic.
 4. **Error variants ship together.** When you add a new variant in one language, add it in the other in the same PR.
-5. **What an operator reads to fix their command is a contract; the decoder's narration is not.** Configuration errors, the unknown-key WARN, usage errors, and the help and version text read the same from every implementation, byte for byte and line ending included (L2-CLI-022). The config differential checks and `tests/conformance/cli_message_parity.py` compare them, paths aside. The help text is Rust's `HELP`, copied verbatim into C++'s `kHelp`: edit both together, and the parity check will say if you did not. Quote a value the operator wrote with the shared `text::quote` in Rust and C++ -- never `{:?}` or a hand-built `"\"" + s + "\""` -- so a non-ASCII byte or an embedded quote is shown the same way everywhere. The decoder's own INFO and DEBUG lines (record traces, progress, detection scores) may still be worded per implementation. This rule replaced "log wording can drift", under which the two CLIs' config errors had come to differ for 60 of 79 corpus snippets and one printed a rejected value as an empty string.
+5. **What an operator reads to fix their command is a contract; the decoder's narration is not.** Configuration errors, the unknown-key WARN, usage errors, and the help and version text read the same from every implementation, byte for byte and line ending included (L2-CLI-022). The config differential checks and `tests/conformance/cli_message_parity.py` compare them, paths aside. The help text is Rust's `HELP`, which the Python CLI runs. Quote a value the operator wrote with `text::quote` -- never `{:?}` or a hand-built `"\"" + s + "\""` -- so a non-ASCII byte or an embedded quote is shown the same way everywhere. The decoder's own INFO and DEBUG lines (record traces, progress, detection scores) may still be worded per implementation. This rule replaced "log wording can drift", under which the two CLIs' config errors had come to differ for 60 of 79 corpus snippets and one printed a rejected value as an empty string.
 6. **CLI capability parity is the contract** (per L1-CLI-001) — capability parity matters, exact spelling doesn't. Today the two CLIs share one identical argument surface: the same subcommands (`decode` / `count` / `dump`), the same `--separate-errors` flag, the same global `--config`, and the same comma-separated filter syntax. They are free to diverge in spelling so long as capability parity holds.
 7. **`memmap2` is the only Rust runtime dep.** Argument parsing, CSV writing, TOML loading, logging, and error types are all hand-rolled. Adding a crate requires explicit justification — see `docs/ROADMAP.md` and `CLAUDE.md` "Conventions worth preserving".
 

@@ -6,8 +6,8 @@ thing: run one input through every implementation and compare the verdicts. They
 each had their own copy of "compare Rust to Python", written when there were
 exactly two implementations and the comparison was a single `!=`.
 
-A third implementation makes the comparison a real operation rather than an
-inline test, and this is where it lives.
+A third implementation (the C++ tree, removed in 5.0.0) made the comparison a
+real operation rather than an inline test, and this is where it lives.
 
 ALL-PAIRS, NOT MAJORITY. Every implementation must agree with every other; any
 disagreement fails. The alternatives were considered and rejected:
@@ -23,8 +23,8 @@ disagreement fails. The alternatives were considered and rejected:
 
 Because agreement here is plain equality, all-pairs is *equivalent* to "every
 implementation returned the same verdict". The reason to think of it as pairs is
-the failure message: "3 implementations disagreed" is not actionable, and
-"accept: Rust, Python | reject: C++" is — it says which side to look at first
+the failure message: "implementations disagreed" is not actionable, and
+"accept: Rust | reject: Python" is — it says which side to look at first
 without claiming which side is right.
 
 WHAT IS COMPARED depends on the check, so these helpers are generic over the
@@ -107,9 +107,8 @@ def normalized_stderr(stderr: bytes, paths: Mapping[str, str]) -> str:
     Bytes that are not UTF-8 survive as lone surrogates, so they still compare
     and still fail `describe_stderr_problems`'s ASCII check.
 
-    Line endings ARE compared. On Windows the C++ binary once wrote stderr in
-    text mode, ending every line CRLF where Rust and Python write LF; it now
-    opens stderr in binary mode, as it already did stdout.
+    Line endings ARE compared. On Windows the former C++ binary once wrote
+    stderr in text mode, ending every line CRLF where Rust and Python write LF.
     """
     text = stderr.decode("utf-8", "surrogateescape")
     for path, placeholder in sorted(paths.items(), key=lambda item: -len(item[0])):

@@ -820,7 +820,8 @@ fn decode_emits_exit_class_summary_at_info_level() {
     );
 }
 
-/// The non-monotonic WARN reads exactly as the C++ one does (L2-RDR-017).
+/// The non-monotonic WARN reads exactly as L2-RDR-017 pins it (as the former
+/// C++ one did).
 ///
 /// Checked as a whole line, not a keyword: through v4.0.0 the Rust literal had
 /// lost its `\` line continuations in a refactor, so the message carried two

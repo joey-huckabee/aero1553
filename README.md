@@ -6,20 +6,20 @@ Decoder for DDC MIL-STD-1553 MIE binary recording files.
 
 Aero1553 reads proprietary binary files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI recording cards and outputs decoded messages in CSV format compatible with DDC's own recording software output.
 
-Aero1553 is maintained in three implementations:
+Aero1553 is maintained in two implementations:
 
 - **Rust** — streaming CSV writer (constant memory), hand-rolled CLI, single
   native release binary. See [`rust/README.md`](rust/README.md).
-- **Python** — the Python package and CLI. See
-  [`python/README.md`](python/README.md).
-- **C++** — C++11 as accepted by GCC 4.8.5, so **SLES 12 SP5** is a first-class
-  deployment target rather than a documented exception; the same source ships a
-  Windows binary via MSVC. See [`cpp/README.md`](cpp/README.md).
+- **Python** — the Python package and CLI, a binding over the Rust crate
+  since v4.0.0. See [`python/README.md`](python/README.md).
 
-All three ship together as a joint cut from a single repository tag, at one
+SLES 12 SP5 is served by the Rust binary built against glibc 2.22. A C++
+implementation shipped for that target until 5.0.0, when it was removed (see
+[`CHANGELOG.md`](CHANGELOG.md)).
+
+Both ship together as a joint cut from a single repository tag, at one
 version number — a CI gate fails the build if they disagree. Future releases
-may diverge via impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`,
-`cpp-vX.Y.Z`). The implementations share the MIE format documentation, the
+may diverge via impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`). The implementations share the MIE format documentation, the
 vendor-compatible CSV behavior, an identical CLI flag surface, and a byte-exact
 cross-implementation conformance suite (`tests/conformance/`) that every one of
 them must pass. See
@@ -33,8 +33,6 @@ Build, install, and library-usage instructions live with each implementation:
   library API, `cargo` workflow.
 - **Python** — [`python/README.md`](python/README.md): `aero1553` CLI plus the
   importable `aero1553` package, uv + maturin workflow.
-- **C++** — [`cpp/README.md`](cpp/README.md): `make` on Linux (authoritative),
-  CMake/MSVC on Windows, and the GCC 4.8.5 fidelity tier.
 
 The CLI surface, configuration schema, and CSV output documented below are
 shared by both implementations.
@@ -58,15 +56,15 @@ aero1553 --config config/default.toml decode recording.mie -o decoded.csv
 ## CLI Reference
 
 `aero1553` has three subcommands — `decode` (binary → CSV), `count`, and
-`dump` — with an identical flag surface in the Rust, Python and C++ builds. The
+`dump` — with an identical flag surface in the Rust and Python builds. The
 **complete per-flag reference** (every option, with its default, value range, and
 config-key equivalent) lives in
 **[`docs/CLI-REFERENCE.md`](docs/CLI-REFERENCE.md)**. The Python package's
 command line is the Rust CLI, run in-process, so those two share one parser and
-one help text. C++ keeps its own, and the `cli-surface-parity` check in
-`tests/conformance/run.py` fails CI if any of the three ever advertises a
-different set of long options — including a flag a parser still accepts but its
-help stopped listing.
+one help text, and the `cli-surface-parity` check in
+`tests/conformance/run.py` fails CI if they ever advertise a different set of
+long options — including a flag a parser still accepts but its help stopped
+listing.
 
 Config-file keys are documented in
 [`docs/CONFIG-REFERENCE.md`](docs/CONFIG-REFERENCE.md); task-oriented

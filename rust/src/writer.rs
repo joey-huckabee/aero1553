@@ -1175,7 +1175,7 @@ pub fn commit_targets(output: &Path, split_errors: bool, allow_partial: bool) ->
 /// The split works on the OS name itself, never a lossy `String`: a name that
 /// is not Unicode (`out<FF>.csv`, reachable since non-UTF-8 arguments were
 /// accepted) must keep its bytes, or the errors file lands under a name with
-/// U+FFFD in it where C++ writes `out<FF>_errors.csv`.
+/// U+FFFD in it where the former C++ tree wrote `out<FF>_errors.csv`.
 fn error_path_for(output: &Path) -> std::path::PathBuf {
     let name = output.file_name().unwrap_or_default();
     let parent = output.parent().unwrap_or_else(|| Path::new(""));
@@ -1406,8 +1406,8 @@ mod tests {
         assert_eq!(error_path_for(Path::new("out")), Path::new("out_errors"));
     }
 
-    /// The whole L2-ERR-008 table, the same rows as the C++ suite and the
-    /// conformance runner. The trailing-dot rows are the ones that diverged:
+    /// The whole L2-ERR-008 table, the same rows as the conformance runner
+    /// (and the former C++ suite). The trailing-dot rows are the ones that diverged:
     /// Rust wrote `o_errors`, C++ `o_errors.`, and Python's helper claimed
     /// `o._errors` (or `o_errors.`, on Python 3.14).
     ///

@@ -2,13 +2,15 @@
 
 ## Purpose
 
-This document establishes the Level 1 (L1) SHALL-statement requirements for Aero1553: maintained Rust, Python and C++ libraries plus CLIs that decode proprietary binary recording files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI cards into CSV output that is column-compatible with DDC's own recording software.
+This document establishes the Level 1 (L1) SHALL-statement requirements for Aero1553: maintained Rust and Python libraries plus CLIs that decode proprietary binary recording files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI cards into CSV output that is column-compatible with DDC's own recording software.
 
 L1 requirements define **what** the product must do at the highest level of abstraction. They are the root of the requirements tree; L2 requirements decompose each L1 into architectural decisions, and L3 requirements decompose each L2 into implementation-level obligations. All three levels are traced through `docs/TRACE-MATRIX.md`.
 
 ## Scope
 
-This document covers the active **three-implementation** release: Rust under `rust/`, Python under `python/`, and C++ under `cpp/`. All three ship from a single repository tag at one version number, and every requirement below binds all three unless it names an implementation explicitly. Where a statement below says "both implementations" it predates the C++ port and is to be read as binding all three; the cross-implementation conformance suite (`tests/conformance/`) runs every registered implementation and fails if one is missing, so the binding is enforced rather than asserted.
+This document covers the active **two-implementation** release: Rust under `rust/` and Python under `python/` (since v4.0.0 a PyO3 binding over the Rust crate). Both ship from a single repository tag at one version number, and every requirement below binds both unless it names an implementation explicitly; the cross-implementation conformance suite (`tests/conformance/`) runs every registered implementation and fails if one is missing, so the binding is enforced rather than asserted.
+
+A C++ implementation under `cpp/` shipped alongside them until 5.0.0, when it was removed. It existed so SUSE Linux Enterprise Server 12 SP5 was a first-class deployment target; that target remains, and is now met by the Rust `aero1553` binary built against glibc 2.22 (the SLES 12 SP5 system glibc) with `cargo zigbuild`. Requirements whose rationale cites C++ behaviour record history; the `L3-CPP-*` requirements are withdrawn with their IDs reserved (see `L3-REQ.md`).
 
 Items explicitly out of scope are recorded in the **Non-Requirements** section below. Items deferred to future releases are recorded in `docs/ROADMAP.md` rather than in this document.
 

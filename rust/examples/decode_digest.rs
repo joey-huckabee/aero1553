@@ -1,10 +1,12 @@
 //! Emit FNV-1a digests over **exhaustive** sweeps of the field decoders.
 //!
-//! This exists so the C++ implementation can be proved to decode identically to
-//! this one over the *entire* input space of each word decoder, rather than
-//! over a hand-picked sample. `cpp/tests/test_decode_exhaustive.cpp` pins the
-//! numbers this prints and recomputes them from its own decoders; a divergence
-//! anywhere in 65 536 inputs changes the digest.
+//! It was written so the C++ implementation (removed in 5.0.0) could be proved
+//! to decode identically to this one over the *entire* input space of each word
+//! decoder, rather than over a hand-picked sample: the C++ suite pinned the
+//! numbers this prints and recomputed them from its own decoders. Nothing pins
+//! them now. It remains useful for showing that a change to the word decoders
+//! is behaviour-preserving: run it before and after, and a divergence anywhere
+//! in 65 536 inputs changes the digest.
 //!
 //! Why a digest rather than a committed table: the sweeps below cover several
 //! hundred thousand decodes, and a table of them would be megabytes of
@@ -18,16 +20,14 @@
 //! ```
 //!
 //! It is deterministic and takes no input, so re-running it on any host must
-//! print the same numbers. If the C++ test fails, run this first: a changed
-//! digest here means the *Rust* decoder changed, which is a different problem
-//! from the C++ one having drifted.
+//! print the same numbers.
 
 use aero1553::decode::{
     decode_command_word, decode_irig_timestamp, decode_standard_timestamp, decode_type_word,
 };
 
-/// FNV-1a, 64-bit. Chosen for being trivial to reimplement identically in C++
-/// -- the point is cross-language agreement, not cryptographic strength.
+/// FNV-1a, 64-bit. Chosen for being trivial to reimplement identically in
+/// another language -- the point is agreement, not cryptographic strength.
 struct Fnv1a(u64);
 
 impl Fnv1a {

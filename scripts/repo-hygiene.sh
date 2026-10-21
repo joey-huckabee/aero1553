@@ -123,41 +123,26 @@ elif [[ "$toml_ver" != "$lock_ver" ]]; then
 fi
 
 # ── 6b. Joint-cut version agreement ───────────────────────────────────
-# Every release so far has been a JOINT CUT: the three implementations ship the
-# same version from one tag. Nothing enforced that. The version lives in five
-# places and the release checklist named four of them -- C++ was added to the
-# repository after that checklist was written and never got added to it, so
-# `aero1553 --version` could report a different number depending on which
-# implementation the operator happened to run.
-step "all three implementations declare the same version"
+# Every release so far has been a JOINT CUT: the implementations ship the same
+# version from one tag. Nothing enforced that until an implementation added
+# after the release checklist was written (the C++ tree, removed in 5.0.0) was
+# found reporting a different `aero1553 --version` number than the others.
+# The version now lives in four places: the Rust crate, the Python package,
+# and the PyO3 binding crate's manifest and lockfile.
+step "both implementations declare the same version"
 py_ver=$(awk '/^\[project\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/pyproject.toml)
-cpp_ver=$(awk -F'"' '/kVersion *=/{print $2; exit}' cpp/src/cli.cpp)
-cmake_ver=$(awk '/^ *VERSION [0-9]/{print $2; exit}' cpp/CMakeLists.txt)
 # The PyO3 binding crate is compiled into the Python wheel, so its version is
 # the Python package's too -- and its Cargo.lock records it a second time.
 native_ver=$(awk '/^\[package\]/{p=1;next} /^\[/{p=0} p && /^version *=/{gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/native/Cargo.toml)
 native_lock_ver=$(awk '/^name = "aero1553-py"$/{getline; gsub(/[" ]/,""); sub(/version=/,""); print; exit}' python/native/Cargo.lock)
-# The C++ CI smoke steps assert the exact --version STRING, once for Linux and
-# once for Windows. They are a sixth place the version lives, and the first cut
-# to use this gate still missed them: the gate passed while CI failed on
-# `mie-decoder 2.12.0` != `mie-decoder 2.13.0`. Both are checked here now, and
-# distinct values are collapsed so one wrong line is enough to fail.
-smoke_vers=$(grep -o 'aero1553 [0-9][0-9.]*' .github/workflows/cpp-ci.yml \
-             | awk '{print $2}' | sort -u)
-smoke_count=$(printf '%s\n' "$smoke_vers" | grep -c .)
-if [[ -z "$py_ver" || -z "$cpp_ver" || -z "$cmake_ver" || -z "$smoke_vers" \
-      || -z "$native_ver" || -z "$native_lock_ver" ]]; then
-    bad "could not read a version (python=$py_ver native=$native_ver native-lock=$native_lock_ver cpp=$cpp_ver cmake=$cmake_ver smoke=$smoke_vers)"
-elif [[ "$toml_ver" != "$py_ver" || "$toml_ver" != "$cpp_ver" \
-     || "$toml_ver" != "$native_ver" || "$toml_ver" != "$native_lock_ver" \
-     || "$toml_ver" != "$cmake_ver" || "$smoke_count" != "1" || "$smoke_vers" != "$toml_ver" ]]; then
+if [[ -z "$py_ver" || -z "$native_ver" || -z "$native_lock_ver" ]]; then
+    bad "could not read a version (python=$py_ver native=$native_ver native-lock=$native_lock_ver)"
+elif [[ "$toml_ver" != "$py_ver" \
+     || "$toml_ver" != "$native_ver" || "$toml_ver" != "$native_lock_ver" ]]; then
     list "rust/Cargo.toml            $toml_ver" \
          "python/pyproject.toml      $py_ver" \
          "python/native/Cargo.toml   $native_ver" \
-         "python/native/Cargo.lock   $native_lock_ver" \
-         "cpp/src/cli.cpp            $cpp_ver" \
-         "cpp/CMakeLists.txt         $cmake_ver" \
-         "cpp-ci.yml --version smoke $(printf '%s ' $smoke_vers)"
+         "python/native/Cargo.lock   $native_lock_ver"
     bad "version sources disagree — a joint cut must ship one number"
 fi
 
@@ -195,25 +180,26 @@ done < <(grep -rnE '^[[:space:]]*unsafe[[:space:]]*([{(]|fn[[:space:]])' rust/sr
 # fifteen), so the number is gone and the table is the list — which only works
 # if something keeps it honest. Adding a job without a row now fails here.
 #
-# Both gating workflows are scanned. When cpp-ci.yml was added it was invisible
-# to this check, which read only ci.yml — so the guide could have gone on
-# describing two implementations' worth of CI while a third ran unlisted, and
-# the check would still have reported success. A gate that silently narrows as
-# the repository grows is worse than one that was never written.
+# Every gating workflow is scanned. When the (since removed) C++ workflow was
+# added it was invisible to this check, which read only ci.yml — so the guide
+# could have gone on describing two implementations' worth of CI while a third
+# ran unlisted, and the check would still have reported success. A gate that
+# silently narrows as the repository grows is worse than one that was never
+# written.
 step "MAINTAINER-GUIDE §9 lists every CI job"
 # FNR==1 resets the in-jobs flag at the start of each file. Without it the flag
-# set by ci.yml stays on into cpp-ci.yml, and every two-space key ABOVE that
-# file's own `jobs:` — `push:`, `group:`, `contents:`, `CXX:` — gets collected
+# set by ci.yml stays on into the next workflow, and every two-space key ABOVE
+# that file's own `jobs:` — `push:`, `group:`, `contents:` — gets collected
 # as though it were a job name, demanding guide rows for things that are not
 # jobs.
 mapfile -t yml_jobs < <(
     awk 'FNR==1{inj=0} /^jobs:/{inj=1;next} inj && /^  [a-z0-9-]+:/{gsub(/[ :]/,"");print}' \
-        .github/workflows/ci.yml .github/workflows/cpp-ci.yml \
+        .github/workflows/ci.yml \
         .github/workflows/differential.yml .github/workflows/fuzz.yml
 )
 # A job name reused across the two workflows would satisfy this check with ONE
 # guide row, leaving the other job undocumented while the gate reported success.
-# That is not hypothetical: the C++ conformance job was first written as
+# That was not hypothetical: the C++ conformance job was first written as
 # `conformance`, which is also ci.yml's Rust/Python job, and it passed here
 # having never been described. Names are the key this check looks things up by,
 # so they have to be unique across every workflow it scans.
@@ -457,7 +443,7 @@ if (( ${#offenders[@]} )); then
     bad "TRACE-MATRIX rows claim Implemented with no verification artifact"
 fi
 
-# ── 15. Shipped output is ASCII in all three implementations ──────────
+# ── 15. Shipped output is ASCII in both implementations ───────────────
 #
 # L2-CLI-014. A Windows console runs at the OEM code page (437 in a US
 # install), not UTF-8, so a non-ASCII byte in a log message or help banner
@@ -465,10 +451,11 @@ fi
 # diagnostics reads as memory corruption, which is how it was reported.
 #
 # The check is delegated because it needs a real string-literal parser rather
-# than a grep: C++ had spelled its em dash "\xE2\x80\x94", which is pure ASCII
-# on disk and non-ASCII on the wire, so a byte-level scan of the tree reported
-# it clean while the console showed garbage.
-step "shipped string literals are ASCII (cpp, rust, python)"
+# than a grep: the former C++ tree had spelled its em dash "\xE2\x80\x94",
+# which is pure ASCII on disk and non-ASCII on the wire, so a byte-level scan
+# of the tree reported it clean while the console showed garbage. Rust and
+# Python have escape spellings of their own, so the parser stays.
+step "shipped string literals are ASCII (rust, python)"
 if [[ -n "$PY_BIN" ]]; then
     if ! "$PY_BIN" scripts/assert-ascii-output.py >/dev/null 2>&1; then
         "$PY_BIN" scripts/assert-ascii-output.py 2>&1 >/dev/null | sed 's/^/  /' >&2
@@ -486,7 +473,7 @@ fi
 # that sets them. Nothing failed, because nothing compared them.
 #
 # Enforcing sources, in order: the `cov-ci` alias in rust/.cargo/config.toml,
-# `fail_under` in python/pyproject.toml, COVERAGE_MIN_* in cpp/Makefile.
+# `fail_under` in python/pyproject.toml.
 step "documented coverage floors match the gates that enforce them"
 rust_lines=$(grep -oE 'fail-under-lines[[:space:]]+[0-9]+' rust/.cargo/config.toml \
              | grep -oE '[0-9]+' | head -1)
@@ -494,13 +481,9 @@ rust_regions=$(grep -oE 'fail-under-regions[[:space:]]+[0-9]+' rust/.cargo/confi
                | grep -oE '[0-9]+' | head -1)
 py_floor=$(grep -oE '^fail_under[[:space:]]*=[[:space:]]*[0-9]+' python/pyproject.toml \
            | grep -oE '[0-9]+' | head -1)
-cpp_line=$(grep -oE '^COVERAGE_MIN_LINE[[:space:]]*\?=[[:space:]]*[0-9]+' cpp/Makefile \
-           | grep -oE '[0-9]+' | head -1)
-cpp_branch=$(grep -oE '^COVERAGE_MIN_BRANCH[[:space:]]*\?=[[:space:]]*[0-9]+' cpp/Makefile \
-             | grep -oE '[0-9]+' | head -1)
 
-if [[ -z "$rust_lines" || -z "$rust_regions" || -z "$py_floor" || -z "$cpp_line" || -z "$cpp_branch" ]]; then
-    bad "could not read a coverage floor from its enforcing file (rust/.cargo/config.toml, python/pyproject.toml, cpp/Makefile)"
+if [[ -z "$rust_lines" || -z "$rust_regions" || -z "$py_floor" ]]; then
+    bad "could not read a coverage floor from its enforcing file (rust/.cargo/config.toml, python/pyproject.toml)"
 else
     offenders=()
     # A doc that names a coverage floor must name the CURRENT one. Match the
@@ -527,106 +510,15 @@ else
         offenders+=("CONTRIBUTING.md: 'Regions: ${con_r}%' but the gate enforces ${rust_regions}%")
     fi
 
-    # Python and C++ floors, as the CI table states them.
+    # The Python floor, as the CI table states it.
     if ! grep -qE "${py_floor}% combined line\+branch floor" docs/MAINTAINER-GUIDE.md; then
         offenders+=("docs/MAINTAINER-GUIDE.md: python floor is ${py_floor}% (fail_under) but the CI table does not say so")
-    fi
-    if ! grep -qE "${cpp_line}% lines and ${cpp_branch}% branches" docs/MAINTAINER-GUIDE.md; then
-        offenders+=("docs/MAINTAINER-GUIDE.md: C++ floors are ${cpp_line}/${cpp_branch} (cpp/Makefile) but the CI table does not say so")
     fi
 
     if (( ${#offenders[@]} )); then
         list "${offenders[@]}"
         bad "documented coverage floors disagree with the gates that enforce them"
     fi
-fi
-
-# ── 17. cpp/README does not deny a gate that exists ───────────────────
-#
-# It claimed "no coverage gate" while cpp/Makefile set COVERAGE_MIN_* and
-# cpp-ci.yml ran a gcovr job, and "deliberately no fuzz tier" while fuzz.yml
-# ran a fuzz-cpp burn-in. A README that under-claims is as misleading as one
-# that over-claims: it sends a contributor looking for work already done.
-step "cpp/README does not deny the coverage or fuzz tiers it has"
-offenders=()
-grep -qiE 'no coverage gate' cpp/README.md \
-    && offenders+=("cpp/README.md claims 'no coverage gate'; cpp/Makefile sets COVERAGE_MIN_* and cpp-ci.yml runs gcovr")
-grep -qiE 'deliberately \*\*no fuzz tier\*\*|no fuzz tier' cpp/README.md \
-    && offenders+=("cpp/README.md claims 'no fuzz tier'; .github/workflows/fuzz.yml runs a fuzz-cpp job")
-if (( ${#offenders[@]} )); then
-    list "${offenders[@]}"
-    bad "cpp/README.md understates the tiers that actually run"
-fi
-
-# ── 18. The analyser version agrees between the Makefile and CI ───────
-# `cpp/Makefile`'s LLVM_VERSION drives `make verify-ci`, whose entire purpose
-# is to reproduce CI's analyser gates locally. `.github/workflows/cpp-ci.yml`
-# pins the same number as `env.LLVM_VERSION` for the clang-tidy and
-# clang-format jobs. Both files carried a comment asking the other to be
-# edited alongside it, and a comment is not a mechanism.
-#
-# The failure this prevents is silent in the worst direction. If verify-ci
-# runs an OLDER analyser than CI, it passes locally and the PR fails; if it
-# runs a NEWER one, it reports findings CI will never show, and the natural
-# response is to stop trusting the target. Either way the number nobody
-# noticed had drifted is the explanation, and nothing points at it.
-step "the C++ analyser version agrees between cpp/Makefile and cpp-ci.yml"
-mk_llvm=$(sed -n 's/^LLVM_VERSION[[:space:]]*?\{0,1\}=[[:space:]]*\([0-9][0-9]*\).*/\1/p' cpp/Makefile | head -1)
-ci_llvm=$(sed -n 's/^[[:space:]]*LLVM_VERSION:[[:space:]]*"\{0,1\}\([0-9][0-9]*\)"\{0,1\}[[:space:]]*$/\1/p' \
-              .github/workflows/cpp-ci.yml | head -1)
-if [[ -z "$mk_llvm" ]]; then
-    list "cpp/Makefile declares no LLVM_VERSION"
-    bad "cannot read the analyser version from cpp/Makefile"
-elif [[ -z "$ci_llvm" ]]; then
-    list ".github/workflows/cpp-ci.yml declares no env.LLVM_VERSION"
-    bad "cannot read the analyser version from cpp-ci.yml"
-elif [[ "$mk_llvm" != "$ci_llvm" ]]; then
-    list "cpp/Makefile: LLVM_VERSION = $mk_llvm" \
-         ".github/workflows/cpp-ci.yml: env.LLVM_VERSION = $ci_llvm"
-    bad "analyser version differs; 'make verify-ci' no longer predicts the CI gates"
-fi
-
-# Nothing may reintroduce a hardcoded major alongside the variable: a stray
-# `clang-tidy-20` next to `LLVM_VERSION: "22"` would satisfy the comparison
-# above while running the wrong tool, which is precisely the drift being
-# closed. The variable spellings are excluded by requiring a literal digit.
-step "no hardcoded clang-tidy/clang-format major outside LLVM_VERSION"
-if grep -nE 'clang-(tidy|format)-[0-9]+|llvm-toolchain-noble-[0-9]+' \
-        .github/workflows/cpp-ci.yml cpp/Makefile >&2; then
-    bad "spell the analyser major as \$LLVM_VERSION / \$(LLVM_VERSION), not a literal"
-fi
-
-# ── 20. Nothing claims the fidelity container has a CMake ─────────────
-# The gcc:4.8 image has NO CMake and cannot install one -- Debian 7 is past end
-# of life, its repositories are archived, `apt-get update` there exits 100 and
-# `apt-cache policy cmake` reports Candidate: (none). That fact is the whole
-# reason ADR-0002 keeps two build descriptions.
-#
-# It was written down as "ships CMake 2.8" in SIX places -- ADR-0002, CLAUDE.md,
-# CONTRIBUTING.md, cpp/Makefile, cpp/CMakeLists.txt and L3-CPP-002 -- and was
-# wrong in all six. The error mattered in a specific direction: "2.8" reads as
-# surmountable (lower the floor, backport one), so it invites re-opening a
-# question that is more closed than the record admitted. Which is what happened.
-#
-# Three exemptions, each for a different reason:
-#   - CHANGELOG.md is a historical record and legitimately quotes what was
-#     believed at the time.
-#   - The ADR-0002 amendment quotes the wrong text deliberately, to correct it.
-#   - This file, which necessarily contains the string it searches for. A check
-#     that greps for a phrase cannot also be a document that explains the
-#     phrase, unless it declines to read itself.
-step "no document claims the gcc:4.8 fidelity container has a CMake"
-mapfile -t cmake28_hits < <(
-    grep -rniE 'container[^.]{0,40}(ships|has|with)[^.]{0,20}cmake[ -]?2|cmake 2\.8' \
-        --include='*.md' --include='Makefile' --include='*.txt' --include='*.sh' \
-        --exclude-dir=target --exclude-dir=.venv . 2>/dev/null \
-    | grep -v '^\./CHANGELOG\.md:' \
-    | grep -v '^\./docs/adr/0002-' \
-    | grep -v '^\./scripts/repo-hygiene\.sh:' || true
-)
-if (( ${#cmake28_hits[@]} )); then
-    list "${cmake28_hits[@]}"
-    bad "the fidelity container has no CMake at all; see the ADR-0002 amendment"
 fi
 
 # ── 21. The Python package ships the repository LICENSE ──────────────

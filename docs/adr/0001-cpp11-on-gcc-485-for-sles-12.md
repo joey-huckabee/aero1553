@@ -1,10 +1,18 @@
 ---
-status: accepted
+status: superseded
 date: 2026-08-18
+superseded: 5.0.0
 decision-makers: Joey
 ---
 
 # Implement the C++ decoder in C++11 targeting GCC 4.8.5 on SLES 12 SP5
+
+> **Superseded in 5.0.0.** The C++ implementation was removed in 5.0.0, so this
+> decision no longer governs anything in the repository. SLES 12 SP5 remains a
+> deployment target; it is now served by the Rust `aero1553` binary built
+> against glibc 2.22 (the SLES 12 SP5 system glibc) with `cargo-zigbuild`. The
+> record below is kept unchanged as the history of why the C++ tree existed and
+> how it was built.
 
 ## Context and Problem Statement
 

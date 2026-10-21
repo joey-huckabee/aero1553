@@ -100,8 +100,9 @@ class TestCalendarArithmetic:
     def test_every_day_matches_the_standard_library(self, year: int) -> None:
         """Exhaustive cross-check against :mod:`datetime` for a spread of years.
 
-        The implementation is hand-rolled (C++11 has no date type, so all three
-        share one rule rather than three library behaviours). This is what
+        The implementation is hand-rolled (the since-removed C++11 tree had no
+        date type, so every implementation shares one rule rather than several
+        library behaviours). This is what
         pins the hand-rolled version to a known-correct calendar.
         """
         length = 366 if is_leap_year(year) else 365

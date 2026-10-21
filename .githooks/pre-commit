@@ -226,12 +226,13 @@ fi
 # mojibake on a Windows console, which runs at the OEM code page rather than
 # UTF-8 -- and mojibake in a decoder's own diagnostics reads as memory
 # corruption. Catching it here matters more than for most checks because the
-# offending form is invisible to review: C++ spells its em dash
-# "\xE2\x80\x94", which looks like ASCII in the diff.
+# offending form can be invisible to review: an escaped em dash such as
+# "\xE2\x80\x94" (the spelling the former C++ tree used) looks like ASCII in
+# the diff.
 need_ascii=0
 for file in "${STAGED[@]}"; do
     case "$file" in
-        cpp/src/*|cpp/include/*|rust/src/*|python/src/*) need_ascii=1; break ;;
+        rust/src/*|python/src/*) need_ascii=1; break ;;
     esac
 done
 if (( need_ascii == 1 )) && [ -n "$PY_BIN" ]; then

@@ -47,12 +47,6 @@ jobs:
           # Python needs no build either; none extracts directly from source.
           - language: python
             build-mode: none
-          # C/C++ is the one language here that MUST be compiled: the extractor
-          # observes a real build rather than reading source. `autobuild` is not
-          # used because it would guess at the build, and this tree has a
-          # specific one -- the Makefile that `sources.txt` drives (ADR-0002).
-          - language: c-cpp
-            build-mode: manual
 
     steps:
       - name: Checkout repository
@@ -65,17 +59,6 @@ jobs:
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
-
-      # Only c-cpp reaches this step; the other two use build-mode: none and
-      # extract straight from source (Rust does not support autobuild).
-      #
-      # `all` compiles every translation unit -- library, CLI and the Catch2
-      # suite -- without running the tests. That is exactly what the extractor
-      # needs: it observes compilation, not execution. Running the suite is
-      # cpp-ci.yml's job, on more tiers than this one would cover.
-      - name: Build C++ for the CodeQL extractor
-        if: matrix.language == 'c-cpp'
-        run: make -C cpp -j"$(nproc)" all
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@v4

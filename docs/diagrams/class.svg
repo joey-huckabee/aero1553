@@ -1,16 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
-  Aero1553: class diagram (Rust, Python, C++).
+  Aero1553: class diagram (Rust, Python).
 
   HAND-MAINTAINED. This file is the source: edit it directly (there is no
   generator). Every box is a <g id=...> preceded by a comment naming it.
   Coordinates sit on a 10px grid. Colours come from the CSS custom
   properties in <style>, which switch for prefers-color-scheme: dark.
-  Names are the Rust spellings; see the legend note for the Python and C++
+  Names are the Rust spellings; see the legend note for the Python
   equivalents. Text is ASCII only.
 -->
 <svg xmlns="http://www.w3.org/2000/svg" version="1.1" width="1800" height="2200" viewBox="0 0 1800 2200">
-  <title>Aero1553 - Class Diagram (Rust, Python, C++)</title>
+  <title>Aero1553 - Class Diagram (Rust, Python)</title>
   <style>
     svg { --bg: #ffffff; --fg: #1f2328; --muted: #59636e; --box: #f6f8fa; --stroke: #8c959f; --accent: #0969da; --note: #fff8c5; }
     @media (prefers-color-scheme: dark) {
@@ -59,8 +59,8 @@
   <rect x="0" y="0" width="1800" height="2200" style="fill: var(--bg)"/>
 
   <!-- Title -->
-  <text class="title" x="20" y="36">Aero1553 - Class Diagram (Rust, Python, C++)</text>
-  <text class="subtitle" x="20" y="58">The shared semantic model. The conformance suite under tests/conformance/ holds the three implementations to byte-exact CSV equivalence; docs/ARCHITECTURE.md section 1 maps the modules.</text>
+  <text class="title" x="20" y="36">Aero1553 - Class Diagram (Rust, Python)</text>
+  <text class="subtitle" x="20" y="58">The shared semantic model. The conformance suite under tests/conformance/ holds the Rust CLI and the Python package to byte-exact CSV equivalence; docs/ARCHITECTURE.md section 1 maps the modules.</text>
 
   <!-- ===== Package: Domain Model (models) ===== -->
   <g id="pkg-models">
@@ -399,14 +399,13 @@
   </g>
     <!-- Note: legend -->
     <g id="legend">
-      <path class="note" d="M1480,850 H1780 l10,10 V1080 H1480 Z"/>
+      <path class="note" d="M1480,850 H1780 l10,10 V1065 H1480 Z"/>
       <text class="notetext" x="1488" y="867" xml:space="preserve">
         <tspan x="1488" dy="0">Legend</tspan>
         <tspan x="1488" dy="15">Names are the Rust spellings. Python</tspan>
         <tspan x="1488" dy="15">uses UPPER_SNAKE enum members</tspan>
         <tspan x="1488" dy="15">(BcToRt -&gt; BC_TO_RT) and the same field</tspan>
-        <tspan x="1488" dy="15">names; C++ mirrors the Rust names in</tspan>
-        <tspan x="1488" dy="15">namespace mie::.</tspan>
+        <tspan x="1488" dy="15">names.</tspan>
         <tspan x="1488" dy="15"></tspan>
         <tspan x="1488" dy="15">hollow triangle   inherits from</tspan>
         <tspan x="1488" dy="15">filled diamond    owns (composition)</tspan>

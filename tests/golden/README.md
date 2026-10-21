@@ -29,5 +29,5 @@ python tests/golden/golden.py --update --cli rust/target/release/aero1553   # re
 
 Re-pinning is a deliberate act, like updating a conformance oracle: do it
 only after the change that moved the hashes has been reviewed, and confirm
-the other implementations agree (`aero1553 decode` from the Rust, Python and
-C++ builds should produce the pinned CSV).
+the other implementation agrees (`aero1553 decode` from the Rust and Python
+builds should produce the pinned CSV).

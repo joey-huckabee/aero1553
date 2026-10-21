@@ -50,7 +50,7 @@ use crate::models::{Direction, MieMessage, Timestamp};
 /// from the two concurrent buses or from overlapping recorders in a merge, and
 /// the longest run in the large golden merge is 7 — while bounding worst-case
 /// buffering to about 10 MB (152 bytes a record). Only a broken clock reaches
-/// it. Shared in value with the Python and C++ implementations (L3-WRT-003).
+/// it. Shared in value with the Python implementation (L3-WRT-003).
 pub const DEFAULT_MAX_SORT_GROUP: usize = 65_536;
 
 /// Valid range for `output.max_sort_group` / `--max-sort-group` (L3-WRT-003).

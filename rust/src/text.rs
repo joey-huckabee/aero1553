@@ -1,20 +1,20 @@
-//! Text rules shared across modules, mirroring `cpp/include/mie/text.hpp`.
+//! Text rules shared across modules.
 
 /// Remove leading and trailing ASCII spaces and tabs -- nothing else.
 ///
 /// The one trim for text taken from a file name: a `--manifest` line
 /// (L2-MRG-001 rule 4) and the `MUX` field (L2-WRT-020) both call it, as
-/// `text::trim_ascii_blank` does in C++. The Python package reaches both
+/// `text::trim_ascii_blank` did in the former C++ tree. The Python package reaches both
 /// through this crate. The config parser uses it too, for the blanks around a
 /// line, a key, a value and an array item (L2-CFG-010).
 ///
 /// Deliberately NOT `str::trim`, which also removes Unicode whitespace -- a
 /// no-break space (U+00A0), an ideographic space (U+3000), a line break. A
 /// filename may legitimately contain any of them, and the C++ implementation
-/// cannot classify them: it is locale-free by rule
-/// (`scripts/assert-locale-free.sh`) and would have to embed a Unicode table to
-/// agree. Each caller once differed exactly here, each found separately --
-/// two implementations silently editing text the third passed through.
+/// (removed in 5.0.0) could not classify them: it was locale-free by rule and
+/// would have had to embed a Unicode table to agree. Each caller once differed
+/// exactly here, each found separately -- two implementations silently editing
+/// text the third passed through.
 pub(crate) fn trim_ascii_blank(s: &str) -> &str {
     s.trim_matches([' ', '\t'])
 }
@@ -25,7 +25,8 @@ pub(crate) fn trim_ascii_blank(s: &str) -> &str {
 /// A printable ASCII byte stands for itself, except `"` and `\`, which are
 /// written `\"` and `\\`; every other byte is `\xNN` in upper-case hex. Byte by
 /// byte rather than character by character, so a non-ASCII character reads the
-/// same here as in C++, which sees only bytes: an e-acute is `\xC3\xA9` in both.
+/// same here as it did in the former C++ tree, which saw only bytes: an e-acute
+/// is `\xC3\xA9` in both.
 ///
 /// `{:?}` did this job before and did it differently: it escapes control
 /// characters but passes non-ASCII through, so a diagnostic could carry the
@@ -81,7 +82,7 @@ mod tests {
         assert_eq!(quote("a\"b\\c"), "\"a\\\"b\\\\c\"");
         assert_eq!(quote("a\tb\r\n"), "\"a\\x09b\\x0D\\x0A\"");
         assert_eq!(quote("~ \x7f"), "\"~ \\x7F\"");
-        // Byte by byte, upper-case hex, as C++ writes it.
+        // Byte by byte, upper-case hex.
         let e_acute = char::from_u32(0xE9).unwrap().to_string();
         assert_eq!(quote(&e_acute), "\"\\xC3\\xA9\"");
         let bom = char::from_u32(0xFEFF).unwrap().to_string();

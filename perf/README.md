@@ -2,7 +2,7 @@
 
 One suite for the Rust and Python implementations: every case timed on the
 same golden recording, every case's output checked against the golden pins,
-and one report. C++ is not part of it.
+and one report.
 
 ```bash
 # from the repository root, in the Python package's environment

@@ -608,7 +608,7 @@ fn apply_merge_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), Co
     }
     // L2-MRG-008: cap on the retained survivor set. Range-checked here so a bad
     // value fails at load time rather than silently clamping later; the message
-    // text matches Python's loader and the C++ one (L3-WRT-003).
+    // text matches Python's loader (L3-WRT-003).
     if let Some(n) = toml.get_int("merge", "max_collapse_survivors")? {
         match usize::try_from(n) {
             Ok(v) if (MAX_COLLAPSE_SURVIVORS_MIN..=MAX_COLLAPSE_SURVIVORS_MAX).contains(&v) => {
@@ -845,7 +845,7 @@ pub fn parse_type_value(v: &TomlValue) -> Result<u8, ConfigError> {
 pub fn parse_type_name(s: &str) -> Result<u8, ConfigError> {
     // ASCII case and ASCII blanks only: Unicode upper-casing maps a dotless i
     // to `I` and a long s to `S`, and `str::trim` removes a no-break space --
-    // each made a name valid here that C++ refuses.
+    // each made a name valid here that the former C++ loader refused.
     let upper = trim_ascii_blank(s).to_ascii_uppercase();
     let by_name: &[(&str, u8)] = &[
         ("MODE_COMMAND", MessageType::ModeCommand as u8),
@@ -862,7 +862,7 @@ pub fn parse_type_name(s: &str) -> Result<u8, ConfigError> {
         }
     }
     // `0x` and one or more hex digits, nothing else. `from_str_radix` alone
-    // would also take a sign (`0x+1`), which C++ refuses.
+    // would also take a sign (`0x+1`), which the former C++ loader refused.
     if let Some(rest) = upper.strip_prefix("0X")
         && !rest.is_empty()
         && rest.bytes().all(|b| b.is_ascii_hexdigit())
@@ -1149,7 +1149,7 @@ fn duplicate_key_error(section: &str, key: &str, lineno: usize) -> String {
 /// loader's deliberately flat subset of TOML: a malformed section header or
 /// key/value line, a duplicate key, a re-opened section, a dotted key or
 /// section header, an array-of-tables header, or an unterminated string or
-/// array. The subset is held identical to the Python and C++ loaders by
+/// array. The subset is held identical to the Python loader by
 /// `tests/conformance/config_parity.py`.
 pub fn parse_toml(text: &str) -> Result<TomlDoc, String> {
     let mut doc = TomlDoc::default();
@@ -1158,8 +1158,8 @@ pub fn parse_toml(text: &str) -> Result<TomlDoc, String> {
 
     // Lines end at `\n`, and one `\r` before it -- or at the end of the file --
     // belongs to the line ending. `str::lines` keeps a final lone `\r`, and
-    // `str::trim` then removed any Unicode space as well; C++ removes exactly
-    // the `\r`, then spaces and tabs (L2-CFG-010).
+    // `str::trim` then removed any Unicode space as well; the rule (once the
+    // C++ loader's) removes exactly the `\r`, then spaces and tabs (L2-CFG-010).
     for (index, raw) in text.split('\n').enumerate() {
         let raw = raw.strip_suffix('\r').unwrap_or(raw);
         let line = trim_ascii_blank(strip_comment(raw));
@@ -1230,7 +1230,7 @@ fn parse_scalar(s: &str, lineno: usize) -> Result<TomlValue, String> {
         return Err(format!("line {lineno}: empty value"));
     }
     // A boolean is exactly `true` or `false`. Anything else that merely starts
-    // like one (`tru`, `falsey`) is just an unparseable value, as in C++.
+    // like one (`tru`, `falsey`) is just an unparseable value.
     match s {
         "true" => return Ok(TomlValue::Bool(true)),
         "false" => return Ok(TomlValue::Bool(false)),
@@ -1275,8 +1275,8 @@ fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
                 Some('\\') => out.push('\\'),
                 Some('n') => out.push('\n'),
                 Some('t') => out.push('\t'),
-                // The byte after the backslash, as C++ reports it: one
-                // byte, so a non-ASCII character shows as its lead byte.
+                // The byte after the backslash, as the former C++ loader
+                // reported it: one byte, so a non-ASCII character shows as its lead byte.
                 Some(o) => {
                     let mut lead = [0u8; 4];
                     let lead = o.encode_utf8(&mut lead).as_bytes()[0];

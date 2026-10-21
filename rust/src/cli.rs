@@ -1007,7 +1007,7 @@ fn not_an_integer(name: &str, value: &str) -> String {
 ///
 /// One routine for every bounded integer flag, so the "not a number" and "out
 /// of range" messages read the same for each. Parsed as `i64`, so `-1` reports
-/// the range rather than failing to parse, as it does in C++.
+/// the range rather than failing to parse, as it did in the former C++ CLI.
 fn parse_ranged(s: &str, name: &str, lo: i64, hi: i64) -> Result<i64, String> {
     let n: i64 = s
         .trim_ascii()
@@ -2249,7 +2249,7 @@ fn format_mie_error(e: MieError) -> String {
 mod tests {
     use super::*;
 
-    /// One whitespace rule on every numeric flag, shared with the C++ CLI:
+    /// One whitespace rule on every numeric flag (once shared with the C++ CLI):
     /// surrounding ASCII whitespace is trimmed (`str::trim_ascii`); whitespace
     /// inside the number, or a non-ASCII space around it, is refused. `--year`
     /// used to trim nothing, while every other numeric flag trimmed all Unicode
@@ -3488,7 +3488,7 @@ mod tests {
     /// Windows console -- which runs at the OEM code page, not UTF-8 -- drew
     /// as three unrelated glyphs. Operators reported it as memory corruption.
     ///
-    /// `scripts/assert-ascii-output.py` enforces this across all three trees at
+    /// `scripts/assert-ascii-output.py` enforces this across the source trees at
     /// the source level. This test is the runtime half, on the string that is
     /// actually written.
     ///

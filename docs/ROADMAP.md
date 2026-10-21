@@ -26,13 +26,14 @@ checklist in `docs/MAINTAINER-GUIDE.md` section 11.
 
 | Version | Feature |
 |---------|---------|
-| 5.0 | Data word decoders, additional per-message-type CSVs. |
-| 6.0 | Apache Parquet output. |
+| 6.0 | Data word decoders, additional per-message-type CSVs. |
+| 7.0 | Apache Parquet output. |
 
 3.0 was taken by the timestamp-rendering split (`--input-time-format` /
-`--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), and 4.0 by the rename to
-Aero1553 and the Python package becoming a binding over the Rust crate; each
-renumbered the two rows above. One breaking topic per major: the migration note for a flag rename
+`--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), 4.0 by the rename to
+Aero1553 and the Python package becoming a binding over the Rust crate, and 5.0
+by removing the C++ implementation (and, pending a benchmark, replacing the
+`memmap2` reader -- see `CHANGELOG.md`); each renumbered the two rows above. One breaking topic per major: the migration note for a flag rename
 and the one for a new output format have nothing to say to each other, and
 bundling them would have made both harder to read.
 
@@ -172,7 +173,8 @@ the flow and the reasoning written out next to the exclusion.
 **Since v4.0.0** the Python reader, manifest read and dump are the Rust crate's,
 run through the compiled extension, so the `reader.py` / `merge.py` / `dump.py`
 suppressions were removed: the code they covered no longer exists. The judgement
-below is unchanged and is what the C++ `dump.cpp` entry records.
+below is unchanged (the C++ `dump.cpp` entry recorded the same one until the C++
+implementation was removed in 5.0.0).
 
 The justification is narrower than the `config.py` one: a manifest's contents are
 exactly as trusted as the operator who chose that manifest. Reading the files it
@@ -212,66 +214,34 @@ are per-rule and per-file by design. `docs/CONFIG-REFERENCE.md`'s "Trust boundar
 section carries the operator-facing statement of the same decision — keep the two
 in step.
 
-## Phase 3: release artifacts and the versioning scheme (needs direction)
+## Phase 3: release artifacts (needs direction)
 
-Carried over from the retired open-decisions register, where this was the only
-entry still unresolved. Nothing here is built.
+Carried over from the retired open-decisions register. Nothing here is built.
 
-`CLAUDE.md` anticipates impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`,
-`cpp-vX.Y.Z`) while every release so far has been a joint cut from one tag.
+`CLAUDE.md` anticipates impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`)
+while every release so far has been a joint cut from one tag, and
+`scripts/repo-hygiene.sh` fails the build when the implementations declare
+different versions. No impl-prefixed tag is needed unless they later diverge.
+No release so far attaches prebuilt binaries for any implementation.
 
-**Decided — C++ ships in the joint cut, as source.** It has shipped that way
-since **v2.13.0**: all three implementations declare one version from one tag,
-and `scripts/repo-hygiene.sh` fails the build when they disagree. No `cpp-v*`
-tag is needed unless the implementations later diverge. This entry asked the
-question long after the facts had answered it; recorded here as settled so it
-is not re-opened. Note the scope: *source* ships, in the sense every release so
-far has shipped — no release attaches prebuilt binaries for any implementation.
+With the C++ implementation removed in 5.0.0, the binary that serves SLES 12 SP5
+is the Rust `aero1553` CLI. The intended artifacts:
 
-**Still needs deciding** (the artifact questions, which are genuinely open):
+- **Linux x86-64**, built with
+  `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22`, so the
+  binary links against glibc 2.22 symbols at most -- the glibc SLES 12 SP5
+  ships -- and runs there and on any newer glibc.
+- **Windows x64**, built with the MSVC toolchain
+  (`x86_64-pc-windows-msvc`).
 
-- Linux artifact built in the `gcc:4.8` container (runs on glibc 2.13 and up,
-  so SLES 12 SP5 is covered) -- confirm that is the intended build host.
-- Windows artifact: MSVC Release x64. Is a static CRT wanted so the binary does
-  not depend on the VC++ redistributable being present?
-- Real SLES 12 SP5 deployment verification is **manual and out of CI** -- the
-  `gcc:4.8` container is Debian 7 / glibc 2.13, a conservative proxy that proves
-  C++11 conformance, not deployability. Who does that check, and against what?
+**Still needs deciding:**
 
-**The three decisions that shared that file are settled**, and their reasoning
-lives where it is acted on rather than in a register of its own: the merge
-overwrite question (closed, no change -- pinned by the `clobber-*` conformance
-cases), the C++ coverage and fuzz gates (built -- see `cpp/Makefile`'s coverage
-threshold comment and `cpp/tests/test_fuzz.cpp`'s header), and SonarCloud C++
-analysis (added -- see the suppression list in
-`.github/workflows/sonarcloud.yml`, where each entry carries its own
-justification). `CHANGELOG.md` records all three.
-
-## C++ modernisations deferred from the SonarCloud sweep (deferred)
-
-Two SonarCloud C++ rules are suppressed in `.github/workflows/sonarcloud.yml`
-as **deferred, not rejected**. Both are real improvements; both are recorded
-here so the suppression does not quietly become a decision nobody revisits.
-
-**`cpp:S3642` — replace `enum` with `enum class` (16 sites).** Blocked on
-cross-implementation contract rather than on C++ taste. These enums carry
-**wire values** and are used as integers throughout, mirroring Rust's
-`#[repr(u8)]` discriminants and Python's `IntEnum`. `enum class` removes the
-implicit conversion to `int`, so adopting it means an explicit cast at every
-use and a C++-only divergence from a shape the other two implementations
-share. Worth doing only as a deliberate three-implementation decision about
-how message types are spelled, not as a lint cleanup.
-
-**`cpp:S2807` — make member operator overloads hidden friends (18 sites).**
-A broad reshuffle of operator declarations with no behavioural effect and no
-effect on the conformance oracles. Genuinely better C++; simply not worth a
-sweeping diff across `models.hpp`, `merge.hpp` and `order.cpp` on its own.
-A reasonable rider on the next change that touches those types.
-
-Everything else from that sweep is either fixed or suppressed for a reason
-that will not expire — a C API signature, the C++11 floor, a documented design
-decision, or a tool that cannot parse the alternative. Those are catalogued at
-the suppression list itself.
+- Windows: is a static CRT (`-C target-feature=+crt-static`) wanted, so the
+  binary does not depend on the VC++ redistributable being present?
+- Real SLES 12 SP5 deployment verification is **manual and out of CI**: a
+  glibc-2.22 link target proves which symbols the binary asks for, not that it
+  runs on the real host. Who does that check, on what machine, and how is it
+  recorded for each release?
 
 ## Performance refinements (deferred)
 
@@ -294,8 +264,8 @@ conformance oracle if attempted.
 
 ## Config ergonomics (deferred)
 
-The config parsers (Rust's, which the Python package also runs, and C++'s) are
-aligned on a **whitelist** of the flat `[section]` + `key = value` schema:
+The config parser (Rust's, which the Python package also runs) is
+held to a **whitelist** of the flat `[section]` + `key = value` schema:
 anything outside it is a config error (exit 5) on every implementation, and a differential parity corpus keeps them aligned. When that
 whitelist was drawn, a few *readable* full-TOML number forms were **rejected on
 both** for strictness and consistency:
@@ -307,8 +277,7 @@ These are genuinely handy for a human writing a config, and `tomllib` already
 accepts them; the decision to reject was about keeping the Rust hand-rolled
 parser minimal and the two implementations identical, not because the forms are
 harmful. A future release could instead **accept them on both** — teach the Rust
-number parser to strip `_` and honor the `0x` / `0o` / `0b` prefixes, teach the C++
-loader the same, and flip the corresponding
+number parser to strip `_` and honor the `0x` / `0o` / `0b` prefixes, and flip the corresponding
 `config_parity.py` snippets from `reject` to `accept`. It is an additive
 ergonomics change with no effect on `config/default.toml` (which uses plain
 numbers); not scheduled, recorded here so the option isn't lost. Any change must
@@ -316,7 +285,8 @@ keep the two parsers byte-for-byte aligned via the parity corpus.
 
 ## Cross-implementation review follow-ups (2026-09)
 
-A review of all three implementations in September 2026 found six
+A review of all three implementations of the time (Rust, Python and the C++
+tree removed in 5.0.0) in September 2026 found six
 high-severity defects; those were fixed in #136 and are recorded in
 `CHANGELOG.md` under `[4.0.0]`. Its medium-severity findings have since
 been fixed or decided (#139 to #156, each recorded in `CHANGELOG.md`), the
@@ -333,9 +303,9 @@ against the current code. Known follow-ups:
   passed (0.992). To do: find which loop or buffer in the merge hot path is
   alignment-sensitive.
 
-- **Python long paths on Windows -- untested.** #136 made the C++ build accept
-  paths longer than 260 characters by adding the `\\?\` prefix itself, as Rust's
-  standard library does. Python reads through the Rust extension, but writes
+- **Python long paths on Windows -- untested.** Rust's standard library accepts
+  paths longer than 260 characters by adding the `\\?\` prefix itself (#136
+  made the former C++ build do the same). Python reads through the Rust extension, but writes
   CSV through its own file handling, and passed `tests/conformance/long_paths.py`
   only on a machine where the `LongPathsEnabled` registry switch is on (where
   `python.exe`'s long-path manifest takes effect). With the switch off, writing
@@ -346,47 +316,39 @@ against the current code. Known follow-ups:
 
 - **Keeping the implementations aligned by contract, not by code shape.** Every
   C++-only defect in the review was behaviour that Rust's runtime or standard
-  library provides implicitly and C++ has to ask for (ignoring SIGPIPE, the
-  `\\?\` long-path prefix), or a flag combination no test exercised
-  (`--separate-errors` with `--output-time-format`). Making the C++ read like
-  the Rust would have prevented none of them. Two pieces of work would:
-  - **An inventory of implicit runtime behaviour**: what Rust and CPython do
-    for free that C++ must do explicitly. Known entries: SIGPIPE disposition,
-    long paths, locale independence, binary stdout, UTF-16 command-line
-    arguments, flushing on exit. Each entry gets a contract check in
-    `tests/conformance/` in the style of `broken_pipe.py` and `long_paths.py`,
-    so it holds for all three implementations, `--only cpp` included.
+  library provides implicitly (ignoring SIGPIPE, the `\\?\` long-path prefix),
+  or a flag combination no test exercised (`--separate-errors` with
+  `--output-time-format`). The C++ implementation is gone (5.0.0), but the
+  second lesson still applies to Rust and Python:
   - **Differential testing over flag combinations.** A generator, like
     `record_fuzz.py` is for inputs, that runs every implementation over
     pairwise combinations of the decode flags and compares exit codes and
     output all-pairs. Single-flag cases cannot catch a defect that needs two
     flags to appear.
 
-  The working rule that goes with both, already followed in #136: a bug fixed in
-  one implementation still gets a shared test that runs against all three.
+  The working rule that goes with it, already followed in #136: a bug fixed in
+  one implementation still gets a shared test that runs against both.
 
 ## Non-ASCII text in output (deferred, needs direction)
 
 Found while fixing non-UTF-8 command-line arguments (#153). `L2-CLI-014` says
 every byte written to stdout or stderr is ASCII, and that holds for the
 program's own text -- but text taken from outside (file names, operating-system
-error messages) is written as it comes. Parked on 2026-10-04 pending the C++
-direction below, since several of the fixes are C++ work.
+error messages) is written as it comes.
 
 **What is wrong today**
 
-| | Where | Rust (and the Python CLI, which is Rust) | C++ | Effect |
-|---|---|---|---|---|
-| A | File names in diagnostics and log lines ("MIE file not found: ...", "opened ...", writer and merge messages) | about 47 `path.display()` sites: UTF-8 as-is, invalid bytes as U+FFFD | about 25 sites: raw bytes | non-ASCII on stderr; `café.mie` reads as `cafÃ©.mie` on a code-page-437 Windows console |
-| B | `dump`'s `File:` line (stdout payload) | `to_string_lossy` (U+FFFD) | raw bytes | not ASCII, and not byte-identical across implementations as `L2-CLI-014` requires |
-| C | Operating-system error text inside messages | localized by Windows | localized | non-ASCII on any non-English Windows |
-| D | The `_errors` file name under `--separate-errors` | **fixed**: built from the OS name, byte-exact (was a lossy stem: `out<FF>.csv` yielded `out<U+FFFD>_errors.csv`) | byte-exact | none now (was a wrong file name, reachable since #153) |
-| E | The `MUX` column, derived from the input file name | lossy | raw bytes | CSV differs between implementations for a name that is not UTF-8 |
+| | Where | Rust (and the Python CLI, which is Rust) | Effect |
+|---|---|---|---|
+| A | File names in diagnostics and log lines ("MIE file not found: ...", "opened ...", writer and merge messages) | about 47 `path.display()` sites: UTF-8 as-is, invalid bytes as U+FFFD | non-ASCII on stderr; `café.mie` reads as `cafÃ©.mie` on a code-page-437 Windows console |
+| B | `dump`'s `File:` line (stdout payload) | `to_string_lossy` (U+FFFD) | not ASCII, as `L2-CLI-014` requires |
+| C | Operating-system error text inside messages | localized by Windows | non-ASCII on any non-English Windows |
+| D | The `_errors` file name under `--separate-errors` | **fixed**: built from the OS name, byte-exact (was a lossy stem: `out<FF>.csv` yielded `out<U+FFFD>_errors.csv`) | none now (was a wrong file name, reachable since #153) |
+| E | The `MUX` column, derived from the input file name | lossy | a name that is not UTF-8 is not reproduced exactly |
 
 **Proposed fix (not started)**
 
-1. One ASCII rendering rule for anything printed, identical in every
-   implementation: printable ASCII as-is (backslash included, so Windows paths
+1. One ASCII rendering rule for anything printed: printable ASCII as-is (backslash included, so Windows paths
    read normally); any other valid character as `\u{e9}`; a byte that is not
    UTF-8 as `\xFF`; an unpaired surrogate as `\u{d800}`; control characters
    escaped, so a file name holding a newline cannot forge log lines. The #153
@@ -394,8 +356,7 @@ direction below, since several of the fixes are C++ work.
    doubles every backslash in a Windows path).
 2. Apply it at every site in A and B. (D, building the `_errors` name from the
    raw OS name, is done.)
-3. Tests: one table of names and expected renderings run against both
-   renderers; conformance cases for `dump` and a "not found" message on a
+3. Tests: one table of names and expected renderings; conformance cases for `dump` and a "not found" message on a
    non-ASCII name (the runner needs a field to name a case's input file).
 
 **Open decisions**
@@ -412,19 +373,8 @@ direction below, since several of the fixes are C++ work.
   ASCII guard on diagnostics and log lines to catch localized OS text: correct
   on every console, pipe and server. *Unicode output* replaces the rule with
   UTF-8 and `WriteConsoleW` for Windows consoles; Rust's standard library
-  already writes to a console that way, so this is mainly C++ platform work,
-  and Windows pipes and non-UTF-8 server locales would still garble.
-
-## C++ implementation: deprecation after v4.0.0 (planned)
-
-The C++ implementation is to be deprecated after the v4.0.0 release. The
-maintainer will set out the details -- timing, what deprecation means for the
-SLES 12 SP5 deployment it exists to serve, and the fate of its CI tiers and of
-the shared conformance and fuzz gates that currently require all three
-implementations -- before any of it is acted on. Until then it remains a
-maintained implementation and the parity rules in `CLAUDE.md` apply to it.
-
-Decisions that depend on it: the C++ work in "Non-ASCII text in output" above.
+  already writes to a console that way, but Windows pipes and non-UTF-8 server
+  locales would still garble.
 
 ## Shared Commitments
 

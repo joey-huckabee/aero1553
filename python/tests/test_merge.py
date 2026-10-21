@@ -643,12 +643,11 @@ def test_read_manifest_grammar_is_exactly_specified(tmp_path: Path) -> None:
     * At most one trailing ``\\r`` is stripped, so CRLF works and a filename
       containing a bare CR survives.
     * Trimming is ASCII space and tab only. ``str.strip()`` also removes U+00A0,
-      U+3000 and the rest; the C++ implementation is locale-free by rule and
-      cannot, so two implementations silently edited a filename the third passed
-      through.
+      U+3000 and the rest; the C++ implementation (removed in 5.0.0) was
+      locale-free by rule and could not, so two implementations silently edited
+      a filename the third passed through.
 
-    Mirrors ``read_manifest_grammar_is_exactly_specified`` in Rust and the
-    C++ case of the same name.
+    Mirrors ``read_manifest_grammar_is_exactly_specified`` in Rust.
     """
 
     def read(body: bytes) -> list[str]:
@@ -690,8 +689,7 @@ def test_merge_input_resolution_tolerates_arbitrary_bytes(tmp_path: Path) -> Non
     expansion must tolerate any pattern.
 
     Mirrors ``merge_input_resolution_tolerates_arbitrary_bytes`` in
-    ``rust/tests/integration.rs`` and the ``[fuzz]`` merge case in
-    ``cpp/tests/test_fuzz.cpp``: same generator, same alphabet, same probes, so
+    ``rust/tests/integration.rs``: same generator, same alphabet, same probes, so
     the ``FUZZ-SUMMARY`` counters are comparable. This harness used to seed
     ``random.Random`` and cover only the manifest -- it was the one harness in
     the project that did not see the same inputs as its counterparts.

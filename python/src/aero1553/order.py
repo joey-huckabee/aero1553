@@ -55,7 +55,7 @@ if TYPE_CHECKING:
 #: real tie — a 1553 bus carries one transaction at a time, so genuine ties come
 #: from the two concurrent buses or from overlapping recorders in a merge —
 #: while bounding worst-case buffering to about 10 MB. Only a broken clock
-#: reaches it. Shared in value with Rust and C++ (L3-WRT-003).
+#: reaches it. Shared in value with Rust (L3-WRT-003).
 DEFAULT_MAX_SORT_GROUP = 65_536
 
 #: Valid range for ``output.max_sort_group`` / ``--max-sort-group``

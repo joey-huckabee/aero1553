@@ -1,9 +1,9 @@
 """Shared machinery for the L1-ROB-001 fuzz harnesses.
 
-Every fuzz harness in this tree draws from the same generator as the Rust and
-C++ ones -- same xorshift64, same seed, same draw order -- and reports through
-the same ``FUZZ-SUMMARY`` line. That is the whole point: three implementations
-proving "I did not crash" in three different shapes cannot be compared, and a
+Every fuzz harness in this tree draws from the same generator as the Rust
+ones -- same xorshift64, same seed, same draw order -- and reports through
+the same ``FUZZ-SUMMARY`` line. That is the whole point: implementations
+proving "I did not crash" in different shapes cannot be compared, and a
 shared generator is wasted if the harnesses do not also agree on what they
 count.
 
@@ -51,11 +51,11 @@ GLOB_ALPHABET = (
 )
 """The glob-pattern alphabet the merge fuzz harness draws from.
 
-Shared verbatim with ``rust/tests/integration.rs`` and ``cpp/tests/test_fuzz.cpp``.
+Shared verbatim with ``rust/tests/integration.rs``.
 
 A pattern built by lossily UTF-8-decoding random bytes would be the obvious
 thing, and it is wrong twice over. Random bytes almost never contain ``*`` or
-``?``, so the matcher's interesting branches are never reached; and the three
+``?``, so the matcher's interesting branches are never reached; and the
 languages' lossy decoders do not agree character-for-character on how many
 U+FFFD an invalid sequence produces, so the counters could diverge without the
 glob matchers disagreeing about anything.
@@ -64,9 +64,8 @@ glob matchers disagreeing about anything.
 this harness drew uniformly over patterns up to 95 characters long and matched a
 probe *zero* times in 512 iterations -- it fuzzed the reject path and nothing
 else. The last two entries are deliberately non-ASCII: Rust and Python match
-over scalar values and the C++ matcher advances ``?`` by a whole UTF-8
-character, and this is the surface where that agreement is either real or it is
-not.
+over scalar values, and this is the surface where that agreement is either real
+or it is not.
 
 ``/`` is there so ``expand_glob`` sees a directory part at all: without it every
 pattern was a bare filename, and neither the textual split at the last separator
@@ -99,15 +98,14 @@ def xorshift64(state: int) -> tuple[int, int]:
     """One step of the shared PRNG.
 
     Not a good PRNG; a *reproducible* one, which is the property that matters.
-    Byte-for-byte the generator in ``rust/tests/integration.rs`` and
-    ``cpp/tests/test_fuzz.cpp``.
+    Byte-for-byte the generator in ``rust/tests/integration.rs``.
 
     Args:
         state: The current 64-bit state.
 
     Returns:
-        ``(new_state, output)`` -- both are the same value, as in the Rust and
-        C++ spellings.
+        ``(new_state, output)`` -- both are the same value, as in the Rust
+        spelling.
     """
     x = state & _U64
     x ^= (x << 13) & _U64
@@ -120,9 +118,9 @@ def xorshift64(state: int) -> tuple[int, int]:
 def fill(state: int, size: int) -> tuple[int, bytes]:
     """Draw ``size`` bytes: eight at a time little-endian, then the tail.
 
-    The draw *order* is as much a part of the contract as the PRNG -- Rust and
-    C++ consume the stream identically, which is what makes iteration N the same
-    bytes in all three implementations.
+    The draw *order* is as much a part of the contract as the PRNG -- Rust
+    consumes the stream identically, which is what makes iteration N the same
+    bytes in both implementations.
 
     Args:
         state: The current 64-bit PRNG state.
@@ -148,7 +146,7 @@ def iterations(default: int = 256) -> int:
     """``MIE_FUZZ_ITERATIONS``, or ``default``.
 
     A value that does not parse, or parses to zero, falls back rather than
-    guessing -- the same rule in all three implementations.
+    guessing -- the same rule in both implementations.
 
     Args:
         default: What to use when the variable is absent or unusable.
@@ -179,8 +177,7 @@ def fuzz_logging() -> Iterator[None]:
     configured (the fuzz tests call the library directly, not the CLI) pytest's
     log capture swallows the records -- but the package still *formats* every
     one of them. Setting the level to ``OFF`` skips the formatting entirely,
-    which is what the Rust and C++ harnesses do with ``Level::Off`` /
-    ``LEVEL_OFF``.
+    which is what the Rust harnesses do with ``Level::Off``.
 
     When the knob is set, the package's own stderr handler is installed at
     WARNING so the diagnostics stream under ``pytest -s``. The package logger is
@@ -211,12 +208,12 @@ def fuzz_logging() -> Iterator[None]:
 def summary(harness: str, count: int, fields: str) -> None:
     """Emit one harness's ``FUZZ-SUMMARY`` line.
 
-    The line has the same shape in all three implementations, so the burn-in
-    jobs produce artifacts that can be *diffed* rather than three differently
+    The line has the same shape in both implementations, so the burn-in
+    jobs produce artifacts that can be *diffed* rather than differently
     shaped pass messages. On identical inputs the counters should be identical
     too; ``scripts/compare-fuzz-summaries.py`` fails the run when they are not.
 
-    Every field must be **path-independent**. The three implementations name
+    Every field must be **path-independent**. The implementations name
     their temp files differently, so anything derived from a path measures the
     harness rather than the decoder -- which is why the dump harness counts
     output lines and not bytes.
