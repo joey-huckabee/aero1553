@@ -1,0 +1,96 @@
+name: Performance baseline
+
+# The previous release against this build (perf/baseline.py), on large
+# synthetic recordings tiled from the golden one.
+#
+# The Performance workflow's gates are ratios between two cases of ONE build
+# (Python against Rust), so a slowdown in the shared Rust core moves both sides
+# and passes. This times two builds side by side on one runner instead: the
+# latest release tag and the candidate. A case fails when the candidate's
+# output differs from the baseline's, or when the median of its per-round
+# time ratios exceeds 1 + the margin (perf/README.md records how the margin
+# was measured).
+#
+# It runs on release pull requests (head branch release/*), on any pull
+# request labelled perf-baseline, and by hand -- not on every pull request:
+# it builds twice and decodes about 12 GB, a few minutes per run.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled]
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Tag or commit to compare against (default: the latest v* tag reachable from the ref)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: perf-baseline-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  baseline:
+    name: Baseline against candidate
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      startsWith(github.head_ref, 'release/') ||
+      contains(github.event.pull_request.labels.*.name, 'perf-baseline')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    steps:
+      - name: Check out repository (with tags, for the baseline)
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      - name: Choose the baseline
+        id: base
+        shell: bash
+        env:
+          REQUESTED: ${{ inputs.baseline }}
+        run: |
+          base="${REQUESTED:-$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD)}"
+          echo "Baseline: $base ($(git rev-parse --short "$base^{commit}"))"
+          echo "ref=$base" >> "$GITHUB_OUTPUT"
+
+      - name: Build the candidate
+        working-directory: rust
+        run: cargo build --release --locked --bin aero1553 --example synth_large
+
+      - name: Build the baseline
+        shell: bash
+        env:
+          BASE: ${{ steps.base.outputs.ref }}
+        run: |
+          git worktree add --detach "$RUNNER_TEMP/base" "$BASE"
+          CARGO_TARGET_DIR="$RUNNER_TEMP/base-target" \
+            cargo build --release --locked --bin aero1553 --manifest-path "$RUNNER_TEMP/base/rust/Cargo.toml"
+
+      - name: Compare
+        shell: bash
+        run: |
+          python3 perf/baseline.py \
+            --base "$RUNNER_TEMP/base-target/release/aero1553" \
+            --cand rust/target/release/aero1553 \
+            --synth rust/target/release/examples/synth_large \
+            --data "$RUNNER_TEMP/data" \
+            --out baseline-out
+
+      - name: Keep the report
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: perf-baseline-report
+          path: baseline-out/
+          if-no-files-found: ignore
+

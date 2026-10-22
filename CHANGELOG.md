@@ -21,6 +21,18 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- **A performance check against the previous release** (`perf/baseline.py`,
+  `.github/workflows/perf-baseline.yml`). The existing gates compare Python
+  with Rust inside one build, so a slowdown in the shared Rust core moved
+  both sides and passed. On release pull requests (`release/*`), on pull
+  requests labelled `perf-baseline` and by hand, CI now builds the latest
+  release tag beside the candidate, requires identical output on three
+  256 MiB recordings tiled from the golden one (plain, corrupt with
+  `--separate-errors`, eight-file merge), and fails a case whose
+  interleaved candidate/baseline time ratio exceeds 1.15. The margin is
+  twice the worst deviation measured comparing a build with itself on CI
+  (+7.5%); `perf/README.md` has the calibration.
+
 - **`CsvWriter::write_messages(messages, threads)`** writes a whole message
   stream through the threaded renderer (L2-WRT-027) for a caller with a
   destination of its own; the output and failure behaviour are those of a

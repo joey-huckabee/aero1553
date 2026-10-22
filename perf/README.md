@@ -84,6 +84,51 @@ iterating a reader through Python rather than taking its native stream over.
 Everything else is reported, not gated. To compare two builds directly,
 run the suite on each on the same machine and compare the JSON reports.
 
+## Baseline against candidate
+
+The gates above cannot see a slowdown in the Rust core: it moves the Python
+case and the Rust case it is divided by alike. `perf/baseline.py` compares two
+*builds* instead -- the previous release's CLI and the candidate's, side by
+side on one machine:
+
+```bash
+python perf/baseline.py --base OLD/aero1553 --cand NEW/aero1553 \
+    --synth NEW/examples/synth_large [--data DIR] [--mib 256] [--rounds 7] [--margin 0.15]
+```
+
+It tiles the golden recording into three 256 MiB cases with
+`rust/examples/synth_large.rs` -- one recording; the same with junk every 5000
+records, decoded with `--separate-errors`; eight recordings merged -- and
+requires both binaries to give the same exit code, stdout, stderr and output
+files before it times anything. Then it runs the two in shuffled order, round
+by round, and gates each case on the median of the per-round ratios
+candidate / baseline: pairing each run with the one beside it cancels a runner
+that drifts during the job.
+
+CI runs it (`.github/workflows/perf-baseline.yml`) on release pull requests
+(`release/*`), on any pull request labelled `perf-baseline`, and by hand, with
+the latest `v*` tag as the baseline. It is not run on every pull request: it
+builds twice and takes a few minutes.
+
+**The margin, 15%, is measured, not chosen.** Calibration ran the candidate
+against itself (A/A) on three runners, twice each, at two sizes:
+
+| Inputs, rounds | A/A median ratios (18 per size) | Single rounds | Job |
+|---|---|---|---|
+| 256 MiB, 7 | 0.947-1.075 | 0.81-1.27 | 2-3 min |
+| 512 MiB, 11 | 0.957-1.066 | 0.79-1.20 | 5-9 min |
+
+Doubling the work did not narrow the noise -- it is the shared runner, not
+start-up -- so the check uses the cheaper size, and the margin sits about twice
+the worst A/A deviation seen (+7.5%). It catches a regression of 15% or more in
+any case; a smaller one needs `--rounds` raised or a quiet machine. For scale,
+5.3.0's candidate measured 0.64-0.73 of 5.2.0's time in the same runs.
+
+A release that changes output on purpose fails the identity check, because
+timing two different answers measures nothing. Compare against a baseline
+that produces the new output (`workflow_dispatch` takes a `baseline` input),
+or say in the release pull request why the check is skipped.
+
 ## Changing a gate
 
 Calibrate on the CI runner, not a workstation: run the suite a few times
