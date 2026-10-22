@@ -179,17 +179,20 @@ impl<I, E> Ordered<I, E> {
     /// collecting chunk vectors for every timestamp cost twice as long as
     /// reading and decoding the file.
     fn flush(&mut self, keep_tail: bool) {
+        debug_assert!(self.out.is_empty(), "flush with records awaiting emission");
         match self.buf.len() {
             0 => return,
             1 => {
-                self.out.extend(self.buf.pop());
+                // Swapping the buffers hands the record over without moving it.
+                std::mem::swap(&mut self.buf, &mut self.out);
                 return;
             }
             _ => {}
         }
         if chunk_run(&self.buf, &mut self.chunks) {
             // A stable sort of chunks already in key order is the identity.
-            self.out.extend(self.buf.drain(..).rev());
+            std::mem::swap(&mut self.buf, &mut self.out);
+            self.out.reverse();
             return;
         }
         let last_arrival = self.chunks.len() - 1;

@@ -19,6 +19,27 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **Decoding is 6-15% faster: two stages stop doing work they did not need
+  on the decoding thread**, which since 5.2.0 is what a decode waits on. A
+  profile of that thread put a third of its time in copying the 152-byte
+  record from stage to stage, and 5% in filter checks with no filter set.
+  - With no filter configured, the filter stage now hands records straight
+    through. It drops nothing in that case, so the output cannot change.
+  - Canonical ordering emits a run that needs no reordering -- nearly every
+    run, most of them one record -- by swapping its two buffers, instead of
+    moving each record from one to the other.
+
+  Measured on 256 MiB recordings in WSL with `perf/baseline.py` (15 paired
+  rounds, output identical), candidate / baseline time:
+
+  | Case | filter, against 5.3.0 | ordering, on top |
+  |---|---|---|
+  | decode | 0.945 | 0.899 |
+  | eight-file merge | 0.971 | 0.941 |
+  | corrupt, `--separate-errors` | 0.932 | 0.951 |
+
 ## [5.3.0] — 2026-10-22
 
 ### Added

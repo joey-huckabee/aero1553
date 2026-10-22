@@ -167,6 +167,10 @@ impl FilterConfig {
 pub struct Filtered<I> {
     inner: I,
     filters: FilterConfig,
+    /// `filters.is_active()`, fixed at construction. An inactive set drops
+    /// nothing, so `next` hands records straight through: the per-record checks
+    /// cost 8% of a decode's calling thread with no filter configured.
+    active: bool,
     passed: u64,
     excluded: u64,
     /// For the record just seen, when it was an errored (non-spurious) one:
@@ -197,6 +201,9 @@ where
 {
     type Item = Result<MieMessage, E>;
     fn next(&mut self) -> Option<Self::Item> {
+        if !self.active {
+            return self.inner.next();
+        }
         loop {
             match self.inner.next()? {
                 Err(e) => return Some(Err(e)),
@@ -281,7 +288,8 @@ where
     I: Iterator<Item = Result<MieMessage, E>>,
 {
     fn filter_messages(self, filters: FilterConfig) -> Filtered<Self> {
-        if filters.is_active() {
+        let active = filters.is_active();
+        if active {
             log_active_filters(&filters);
         } else {
             crate::log_debug!("No filters active, passing all messages through");
@@ -289,6 +297,7 @@ where
         Filtered {
             inner: self,
             filters,
+            active,
             passed: 0,
             excluded: 0,
             parent_kept: None,
@@ -375,6 +384,24 @@ mod tests {
         };
         assert!(!cfg.should_exclude(&msg(15, 0, Bus::A, 0x02)));
         assert!(cfg.should_exclude(&msg(14, 0, Bus::A, 0x02)));
+    }
+
+    /// Requirements: L2-FLT-001
+    #[test]
+    fn inactive_filters_pass_every_item_through_in_order() {
+        let items: Vec<Result<MieMessage, u8>> = vec![
+            Ok(msg(31, 1, Bus::A, 0x02)),
+            Err(7),
+            Ok(msg(0, 1, Bus::B, 0x20)),
+            Ok(msg(15, 30, Bus::A, 0x02)),
+        ];
+        let expected = vec![Ok(Some(31)), Err(7), Ok(Some(0)), Ok(Some(15))];
+        let got: Vec<_> = items
+            .into_iter()
+            .filter_messages(FilterConfig::default())
+            .map(|r| r.map(|m| m.rt()))
+            .collect();
+        assert_eq!(got, expected);
     }
 
     /// Requirements: L2-FLT-001
