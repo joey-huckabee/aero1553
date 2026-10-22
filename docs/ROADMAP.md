@@ -301,8 +301,9 @@ measured no faster than four. Candidates, in the order they are expected to pay:
   without random failures. Record the runner's core count in the report too:
   the default thread count depends on it.
 - **A large-file benchmark in CI.** The 1 GiB / 4 GiB synthetic recordings and
-  the 16-file merge that justified 5.0.0 to 5.2.0 were run by hand (generator:
-  `rust/examples/synth_large.rs` on the unmerged `perf/io-backends` branch). A
+  the 16-file merge that justified 5.0.0 to 5.2.0 were run by hand, with the
+  generator `rust/examples/synth_large.rs` (the full experiment is tagged
+  `archive/perf-io-backends`). A
   scheduled job on a generated file would catch a regression the 21 MB golden
   file is too small to show.
 - **PGO and fat LTO for the release binaries.** Typically 5-15% with no source
@@ -450,11 +451,6 @@ error messages) is written as it comes.
 
 ## Housekeeping
 
-- **The `perf/io-backends` branch (local, unmerged).** It holds the three-backend
-  reader experiment behind 5.0.0's decision to stream (results in the 5.0.0
-  release notes), the large-file generator `rust/examples/synth_large.rs` and the
-  driver `perf/io_backends.py`. Decide whether to keep the generator (see the
-  large-file benchmark above) and delete the branch.
 - **Keep this file current.** Remove an entry when it ships -- the shipped
   record lives in `CHANGELOG.md` and the requirements -- and add new candidates
   here so they are not lost.
