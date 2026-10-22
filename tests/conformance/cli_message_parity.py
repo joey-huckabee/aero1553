@@ -88,6 +88,7 @@ CASES: list[tuple[str, list[str]]] = [
     ("mux-field-text", ["decode", "{IN}", "--mux-field", "x"]),
     ("collapse-window-negative", ["decode", "{IN}", "--collapse-window-us", "-5"]),
     ("max-sort-group-zero", ["decode", "{IN}", "--max-sort-group", "0"]),
+    ("threads-over", ["decode", "{IN}", "--threads", "17"]),
     ("max-collapse-survivors-over", ["decode", "{IN}", "--max-collapse-survivors", "1048577"]),
     ("exclude-types-bad", ["decode", "{IN}", "--exclude-types", "BOGUS"]),
     ("exclude-types-signed-hex", ["decode", "{IN}", "--exclude-types", "0x+1"]),

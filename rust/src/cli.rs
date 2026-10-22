@@ -25,7 +25,7 @@ use crate::models::{
 use crate::order::OrderIterExt;
 use crate::reader::{MieFileReader, ReaderOptions};
 use crate::text::{escape_bytes, quote};
-use crate::writer::{WriteOptions, write_csv, write_csv_split};
+use crate::writer::{WriteOptions, write_csv_split_threaded, write_csv_threaded};
 use crate::{log_error, log_info, log_warn};
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -135,6 +135,11 @@ DECODE OPTIONS:
                                         set by COUNT where the window bounds it
                                         by TIME. Past the cap collapsing is
                                         best-effort, with one WARN. L2-MRG-008.
+  --threads N                           Worker threads rendering CSV rows
+                                        (range 0..=16; 0 renders on the
+                                        decoding thread). Default: one fewer
+                                        than the CPU cores, at most 2. Output
+                                        is identical at any count. L2-WRT-027.
   --exclude-types VAL                   Comma-separated names or 0xNN
   --exclude-rts VAL                     Comma-separated RT addresses
   --exclude-buses VAL                   Comma-separated A|B
@@ -216,6 +221,8 @@ struct DecodeArgs {
     /// `--max-collapse-survivors <N>`: cap on the de-duplication survivor set
     /// (L2-MRG-008).
     max_collapse_survivors: Option<usize>,
+    /// `--threads <N>`: CSV rendering threads (L2-WRT-027).
+    threads: Option<usize>,
 
     exclude_types: Vec<u8>,
     exclude_rts: Vec<u8>,
@@ -1157,6 +1164,9 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
                 args.max_sort_group =
                     Some(parse_max_sort_group(&a.value("--max-sort-group", iter)?)?);
             }
+            "--threads" => {
+                args.threads = Some(parse_threads(&a.value("--threads", iter)?)?);
+            }
             "--delta-scope" => {
                 args.delta_scope = Some(parse_delta_scope(&a.value("--delta-scope", iter)?)?);
             }
@@ -1494,6 +1504,18 @@ fn parse_max_sort_group(s: &str) -> Result<usize, String> {
     )
 }
 
+/// `--threads` (L2-WRT-027): CSV rendering threads. Range-checked here so a bad
+/// value is a usage error (exit 4) rather than a silent clamp, mirroring
+/// `--max-sort-group`.
+fn parse_threads(s: &str) -> Result<usize, String> {
+    ranged_usize(
+        s,
+        "--threads",
+        crate::writer::THREADS_MIN,
+        crate::writer::THREADS_MAX,
+    )
+}
+
 /// `--max-collapse-survivors` (L2-MRG-008): cap on the de-duplication survivor
 /// set. Range-checked here so a bad value is a usage error (exit 4) rather than
 /// a silent clamp, mirroring `--max-sort-group`.
@@ -1678,6 +1700,7 @@ fn build_config_overrides(
         collapse_window_us: args.collapse_window_us,
         max_sort_group: args.max_sort_group,
         max_collapse_survivors: args.max_collapse_survivors,
+        threads: args.threads,
         delta_scope: args.delta_scope,
         exclude_types: std::mem::take(&mut args.exclude_types),
         exclude_rts: std::mem::take(&mut args.exclude_rts),
@@ -1758,6 +1781,8 @@ fn execute_decode_or_merge(
     write_opts: WriteOptions,
     merge_requested: bool,
 ) -> Result<crate::error::MieResult<crate::writer::WriteOutcome>, EarlyExit> {
+    // L2-WRT-027: an unset count takes the host-derived default.
+    let threads = cfg.threads.unwrap_or_else(crate::writer::default_threads);
     let readers = &opened.readers;
     if !merge_requested {
         // L2-WRT-021: canonical row order is the LAST stage before the writer, so
@@ -1766,7 +1791,13 @@ fn execute_decode_or_merge(
             .iter()
             .filter_messages(cfg.filters.clone())
             .order_rows(cfg.max_sort_group);
-        return Ok(write_messages(messages, output, cfg.error_mode, write_opts));
+        return Ok(write_messages(
+            messages,
+            output,
+            cfg.error_mode,
+            write_opts,
+            threads,
+        ));
     }
 
     match crate::merge::MergedRecordIter::new(
@@ -1797,6 +1828,7 @@ fn execute_decode_or_merge(
                 output,
                 cfg.error_mode,
                 write_opts,
+                threads,
             );
             let n = collapsed.load(std::sync::atomic::Ordering::Relaxed);
             if n > 0 {
@@ -2024,6 +2056,7 @@ fn write_messages<I>(
     output: Option<&Path>,
     error_mode: ErrorMode,
     write_opts: WriteOptions,
+    threads: usize,
 ) -> crate::error::MieResult<crate::writer::WriteOutcome>
 where
     I: Iterator<Item = crate::error::MieResult<crate::models::MieMessage>>,
@@ -2039,19 +2072,21 @@ where
                 // ignores the path-safety fields on its stdout branch -- but
                 // rebuilding a default here silently dropped `time_render`, and
                 // would silently drop the next option added too.
-                write_csv(messages, None, write_opts)
+                write_csv_threaded(messages, None, write_opts, threads)
             }
-            Some(out) => write_csv_split(messages, out, write_opts).inspect(|outcome| {
-                log_info!(
-                    "wrote {} messages + {} errors to {}",
-                    outcome.normal_count,
-                    outcome.error_count,
-                    out.display()
-                );
-            }),
+            Some(out) => {
+                write_csv_split_threaded(messages, out, write_opts, threads).inspect(|outcome| {
+                    log_info!(
+                        "wrote {} messages + {} errors to {}",
+                        outcome.normal_count,
+                        outcome.error_count,
+                        out.display()
+                    );
+                })
+            }
         }
     } else {
-        write_csv(messages, output, write_opts)
+        write_csv_threaded(messages, output, write_opts, threads)
     }
 }
 
@@ -2923,6 +2958,7 @@ mod tests {
             ("--lookahead-records", "2"),
             ("--standard-tick-rate-hz", "1000000"),
             ("--max-sort-group", "64"),
+            ("--threads", "1"),
             ("--mux-delimiter", "_"),
             ("--mux-field", "0"),
             ("--delta-scope", "global"),

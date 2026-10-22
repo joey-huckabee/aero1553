@@ -2325,3 +2325,72 @@ fn non_utf8_non_path_values_are_usage_errors() {
     ]);
     assert_eq!(exit_code(&out), 1);
 }
+
+/// `--threads` changes how many threads render rows, never the rows: a
+/// recording several batches long decodes to byte-identical output at every
+/// count, inline to stdout and split into two files alike.
+/// Requirements: L2-WRT-027
+#[test]
+fn threads_never_change_the_output() {
+    let tmp = TempDir::new();
+    let mut bytes = Vec::new();
+    for i in 0..9_000u16 {
+        if i % 50 == 7 {
+            bytes.extend_from_slice(&errored_record());
+        }
+        let mut r = one_valid_record();
+        r[10..12].copy_from_slice(&i.to_le_bytes());
+        bytes.extend_from_slice(&r);
+    }
+    let input = tmp.write("big.mie", &bytes);
+
+    let mut inline = Vec::new();
+    let mut split = Vec::new();
+    for threads in ["0", "1", "3", "16"] {
+        let out = run([
+            std::ffi::OsStr::new("decode"),
+            input.as_os_str(),
+            std::ffi::OsStr::new("--threads"),
+            std::ffi::OsStr::new(threads),
+        ]);
+        assert_eq!(exit_code(&out), 0, "inline --threads {threads}");
+        inline.push(out.stdout);
+
+        let dest = tmp.path().join(format!("t{threads}.csv"));
+        let out = run([
+            std::ffi::OsStr::new("decode"),
+            input.as_os_str(),
+            std::ffi::OsStr::new("--separate-errors"),
+            std::ffi::OsStr::new("--threads"),
+            std::ffi::OsStr::new(threads),
+            std::ffi::OsStr::new("-o"),
+            dest.as_os_str(),
+        ]);
+        assert_eq!(exit_code(&out), 0, "split --threads {threads}");
+        let errors = tmp.path().join(format!("t{threads}_errors.csv"));
+        split.push((
+            std::fs::read(&dest).unwrap(),
+            std::fs::read(&errors).unwrap(),
+        ));
+    }
+    assert_eq!(data_row_count(&String::from_utf8_lossy(&inline[0])), 9_180);
+    assert!(inline.iter().all(|o| *o == inline[0]));
+    assert!(split.iter().all(|s| *s == split[0]));
+    assert_ne!(split[0].1, Vec::<u8>::new());
+}
+
+/// An out-of-range `--threads` is a usage error, not a clamp.
+/// Requirements: L2-WRT-027, L2-CLI-015
+#[test]
+fn threads_out_of_range_is_a_usage_error() {
+    let tmp = TempDir::new();
+    let input = tmp.write("one.mie", &one_valid_record());
+    let out = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--threads"),
+        std::ffi::OsStr::new("17"),
+    ]);
+    assert_eq!(exit_code(&out), 4);
+    assert!(String::from_utf8_lossy(&out.stderr).contains("invalid --threads: 17"));
+}

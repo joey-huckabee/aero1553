@@ -726,6 +726,8 @@ Both implementations produce byte-identical CSV, decode at broadly similar speed
 
 **Rule of thumb:** either CLI handles multi-GB recordings and **10M+ record** files without memory becoming a concern — the output is identical. Choose by ecosystem: the Rust CLI for a single self-contained binary, the Python CLI to stay inside a Python pipeline.
 
+**Threads.** `decode` renders CSV rows on worker threads — 2 by default (1 on a two-core machine, none on a single core) — while reading, ordering and writing stay on one thread, so **the output is byte-identical whatever the count**. That makes a large decode about 1.3x–1.5x faster than rendering on one thread. `--threads N` (or `[output] threads`, `0`–`16`) changes it: `0` turns the threads off, for instance on a shared host, and more than about 4 gains nothing. See [`CLI-REFERENCE.md`](CLI-REFERENCE.md) and [`CONFIG-REFERENCE.md`](CONFIG-REFERENCE.md#threads).
+
 The constant-memory guarantee is tracked as `L3-PY-012` (Python) / `L3-RS-012` (Rust) and is load-bearing: a change that buffers rows would regress it. See [`ARCHITECTURE.md`](ARCHITECTURE.md) §12 (memory profile) and §14 (operational limits) for the underlying detail.
 
 ---

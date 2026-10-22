@@ -22,6 +22,8 @@ use crate::models::{
     CalendarError, IrigTimestamp, MAX_DATA_WORDS, MieMessage, OutputTimeFormat, TimeRender,
     Timestamp,
 };
+use crate::parallel::render_all;
+pub use crate::parallel::{THREADS_MAX, THREADS_MIN, default_threads};
 use crate::{log_info, log_warn};
 
 // ── Path identity (L2-WRT-014) ────────────────────────────────────────
@@ -497,27 +499,8 @@ impl<W: Write> CsvWriter<W> {
     /// downstream pipe arrives here with its kind preserved, so the CLI can
     /// treat it as a clean exit (L2-WRT-018).
     pub fn write_message(&mut self, msg: &MieMessage) -> MieResult<()> {
-        // L2-WRT-025: the timestamp is rendered BEFORE any byte of the row is
-        // written, because a calendar rendering can fail where `doy` cannot --
-        // a day-of-year the configured year does not have (L2-WRT-026 clause
-        // 3). Resolving it first keeps that refusal from leaving a half-written
-        // line in the output.
         self.row.clear();
-        match msg.timestamp {
-            // The default rendering, written without an intermediate String.
-            Timestamp::Irig(t) if self.time_render.format == OutputTimeFormat::Doy => {
-                push_irig_doy(&mut self.row, &t);
-            }
-            _ => {
-                let timestamp = msg.timestamp.format_with(self.time_render).map_err(|e| {
-                    MieError::CalendarUnavailable {
-                        detail: describe_calendar_error(e, msg.file_offset),
-                    }
-                })?;
-                self.row.extend_from_slice(timestamp.as_bytes());
-            }
-        }
-        render_fields(&mut self.row, msg);
+        render_message(&mut self.row, msg, self.time_render)?;
         self.out
             .write_all(&self.row)
             .map_err(|source| MieError::WriterError {
@@ -525,6 +508,18 @@ impl<W: Write> CsvWriter<W> {
                 source,
             })?;
         self.rows_written += 1;
+        Ok(())
+    }
+
+    /// Write `rows` rows already rendered by [`render_message`] as one block.
+    fn write_rendered(&mut self, bytes: &[u8], rows: u64) -> MieResult<()> {
+        self.out
+            .write_all(bytes)
+            .map_err(|source| MieError::WriterError {
+                destination: self.destination.clone(),
+                source,
+            })?;
+        self.rows_written += rows;
         Ok(())
     }
 
@@ -543,6 +538,15 @@ impl<W: Write> CsvWriter<W> {
 
     pub fn rows_written(&self) -> u64 {
         self.rows_written
+    }
+
+    /// [`CsvWriter::finish`], returning the row count and the destination.
+    fn finish_into_inner(mut self) -> MieResult<(u64, W)> {
+        self.out.flush().map_err(|source| MieError::WriterError {
+            destination: self.destination.clone(),
+            source,
+        })?;
+        Ok((self.rows_written, self.out))
     }
 
     fn write_str(&mut self, s: &str) -> MieResult<()> {
@@ -627,6 +631,37 @@ fn push_u8(row: &mut Vec<u8>, n: u8) {
         row.push(b'0' + n / 10 % 10);
     }
     row.push(b'0' + n % 10);
+}
+
+/// Append one complete CSV row for `msg` to `row`.
+///
+/// L2-WRT-025: the timestamp is rendered BEFORE any byte of the row is
+/// appended, because a calendar rendering can fail where `doy` cannot -- a
+/// day-of-year the configured year does not have (L2-WRT-026 clause 3).
+/// Resolving it first keeps that refusal from leaving a half-written line in
+/// the output: on `Err`, `row` is exactly as it was.
+pub(crate) fn render_message(
+    row: &mut Vec<u8>,
+    msg: &MieMessage,
+    render: TimeRender,
+) -> MieResult<()> {
+    match msg.timestamp {
+        // The default rendering, written without an intermediate String.
+        Timestamp::Irig(t) if render.format == OutputTimeFormat::Doy => {
+            push_irig_doy(row, &t);
+        }
+        _ => {
+            let timestamp =
+                msg.timestamp
+                    .format_with(render)
+                    .map_err(|e| MieError::CalendarUnavailable {
+                        detail: describe_calendar_error(e, msg.file_offset),
+                    })?;
+            row.extend_from_slice(timestamp.as_bytes());
+        }
+    }
+    render_fields(row, msg);
+    Ok(())
 }
 
 /// Render one CSV row into `row` (appended; the caller clears it).
@@ -886,10 +921,28 @@ fn preflight_output(output: &Path, split_errors: bool, opts: &WriteOptions) -> M
 /// Under `allow_partial` an [`MieError::UnrecoverableSyncLoss`] from the stream
 /// is **not** returned: the rows decoded so far are committed as
 /// `<destination>.partial` and the call succeeds (L2-WRT-016).
+///
+/// Rows are rendered on [`default_threads`] worker threads (L2-WRT-027); the
+/// output is byte-identical whatever the count.
 pub fn write_csv<I>(
     messages: I,
     output: Option<&Path>,
     opts: WriteOptions,
+) -> MieResult<WriteOutcome>
+where
+    I: IntoIterator<Item = MieResult<MieMessage>>,
+{
+    write_csv_threaded(messages, output, opts, default_threads())
+}
+
+/// [`write_csv`] with an explicit rendering-thread count, which the CLI takes
+/// from `--threads` / `output.threads`. Crate-internal so the public signature
+/// and [`WriteOptions`]'s field set stay unchanged.
+pub(crate) fn write_csv_threaded<I>(
+    messages: I,
+    output: Option<&Path>,
+    opts: WriteOptions,
+    threads: usize,
 ) -> MieResult<WriteOutcome>
 where
     I: IntoIterator<Item = MieResult<MieMessage>>,
@@ -902,19 +955,16 @@ where
             let (count, partial_info) = {
                 let mut writer = CsvWriter::new(&mut atomic, path.display().to_string())?
                     .with_time_render(opts.time_render);
-                let mut partial_info: Option<PartialStop> = None;
-                for item in messages {
-                    match item {
-                        Ok(msg) => writer.write_message(&msg)?,
-                        Err(e) => match PartialStop::of(&e) {
-                            Some(stop) if opts.allow_partial => {
-                                partial_info = Some(stop);
-                                break;
-                            }
-                            _ => return Err(e),
-                        },
-                    }
-                }
+                let streamed = render_all(messages, opts.time_render, false, threads, |block| {
+                    writer.write_rendered(&block.main, block.main_rows)
+                });
+                let partial_info = match streamed {
+                    Ok(()) => None,
+                    Err(e) => match PartialStop::of(&e) {
+                        Some(stop) if opts.allow_partial => Some(stop),
+                        _ => return Err(e),
+                    },
+                };
                 let n = writer.finish()?;
                 (n, partial_info)
             };
@@ -960,7 +1010,9 @@ where
             let buf = BufWriter::with_capacity(OUTPUT_BUFFER, stdout.lock());
             let mut writer =
                 CsvWriter::new(buf, "stdout".to_string())?.with_time_render(opts.time_render);
-            stream_into(&mut writer, messages)?;
+            render_all(messages, opts.time_render, false, threads, |block| {
+                writer.write_rendered(&block.main, block.main_rows)
+            })?;
             let n = writer.finish()?;
             log_info!("wrote {} rows to stdout", n);
             Ok(WriteOutcome {
@@ -991,6 +1043,20 @@ pub fn write_csv_split<I>(messages: I, output: &Path, opts: WriteOptions) -> Mie
 where
     I: IntoIterator<Item = MieResult<MieMessage>>,
 {
+    write_csv_split_threaded(messages, output, opts, default_threads())
+}
+
+/// [`write_csv_split`] with an explicit rendering-thread count; see
+/// [`write_csv_threaded`].
+pub(crate) fn write_csv_split_threaded<I>(
+    messages: I,
+    output: &Path,
+    opts: WriteOptions,
+    threads: usize,
+) -> MieResult<WriteOutcome>
+where
+    I: IntoIterator<Item = MieResult<MieMessage>>,
+{
     preflight_output(output, true, &opts)?;
 
     // Both the errors destination and every `.partial` variant were pre-flighted
@@ -1003,69 +1069,52 @@ where
     let error_path = error_path_for(output);
 
     let mut main_atomic = AtomicCsvFile::create(output.to_path_buf())?.no_clobber(opts.no_clobber);
-    let mut errors_atomic: Option<AtomicCsvFile> = None;
 
-    let (normal_count, error_count, partial_info) = {
+    let (normal_count, error_count, partial_info, errors_atomic) = {
         let mut main = CsvWriter::new(&mut main_atomic, output.display().to_string())?
             .with_time_render(opts.time_render);
         // The error writer is created lazily on first error row so a
-        // clean file doesn't leave an empty errors CSV behind.
-        let mut error_writer: Option<CsvWriter<&mut AtomicCsvFile>> = None;
-        let mut partial_info: Option<PartialStop> = None;
+        // clean file doesn't leave an empty errors CSV behind. It owns its
+        // file, which `finish_into_inner` hands back for the commit.
+        let mut error_writer: Option<CsvWriter<AtomicCsvFile>> = None;
 
-        for item in messages {
-            let msg = match item {
-                Ok(m) => m,
-                Err(e) => match PartialStop::of(&e) {
-                    Some(stop) if opts.allow_partial => {
-                        partial_info = Some(stop);
-                        break;
-                    }
-                    _ => return Err(e),
-                },
-            };
-            if msg.error_label().is_empty() {
-                main.write_message(&msg)?;
-            } else {
-                if error_writer.is_none() {
-                    errors_atomic = Some(
-                        AtomicCsvFile::create(error_path.clone())?.no_clobber(opts.no_clobber),
-                    );
-                    let Some(inner) = errors_atomic.as_mut() else {
-                        return Err(MieError::WriterError {
-                            destination: error_path.display().to_string(),
-                            source: io::Error::other("error output writer was not initialized"),
-                        });
-                    };
-                    error_writer = Some(
-                        CsvWriter::new(inner, error_path.display().to_string())?
-                            .with_time_render(opts.time_render),
-                    );
-                }
-                let Some(writer) = error_writer.as_mut() else {
-                    return Err(MieError::WriterError {
-                        destination: error_path.display().to_string(),
-                        source: io::Error::other("error CSV writer was not initialized"),
-                    });
+        let streamed = render_all(messages, opts.time_render, true, threads, |block| {
+            main.write_rendered(&block.main, block.main_rows)?;
+            if block.error_rows > 0 {
+                let writer = match &mut error_writer {
+                    Some(w) => w,
+                    None => error_writer.insert(
+                        CsvWriter::new(
+                            AtomicCsvFile::create(error_path.clone())?.no_clobber(opts.no_clobber),
+                            error_path.display().to_string(),
+                        )?
+                        .with_time_render(opts.time_render),
+                    ),
                 };
-                writer.write_message(&msg)?;
+                writer.write_rendered(&block.errors, block.error_rows)?;
             }
-        }
-
-        let n_errors = match error_writer.as_ref() {
-            Some(w) => w.rows_written(),
-            None => 0,
+            Ok(())
+        });
+        let partial_info = match streamed {
+            Ok(()) => None,
+            Err(e) => match PartialStop::of(&e) {
+                Some(stop) if opts.allow_partial => Some(stop),
+                _ => return Err(e),
+            },
         };
-        let n_main = main.rows_written();
 
-        // Flush both CsvWriters before commit (drops them, which
-        // releases the borrows on the AtomicCsvFiles).
-        if let Some(w) = error_writer {
-            w.finish()?;
-        }
-        main.finish()?;
+        // Flush both CsvWriters before commit; dropping `main` releases its
+        // borrow of `main_atomic`.
+        let (n_errors, errors_atomic) = match error_writer {
+            Some(w) => {
+                let (n, file) = w.finish_into_inner()?;
+                (n, Some(file))
+            }
+            None => (0, None),
+        };
+        let n_main = main.finish()?;
 
-        (n_main, n_errors, partial_info)
+        (n_main, n_errors, partial_info, errors_atomic)
     };
 
     commit_split_outputs(
@@ -1209,18 +1258,6 @@ fn commit_split_outputs(
             sync_losses: stop.sync_losses,
         }),
     })
-}
-
-fn stream_into<W, I>(writer: &mut CsvWriter<W>, messages: I) -> MieResult<()>
-where
-    W: Write,
-    I: IntoIterator<Item = MieResult<MieMessage>>,
-{
-    for item in messages {
-        let msg = item?;
-        writer.write_message(&msg)?;
-    }
-    Ok(())
 }
 
 /// `<destination>.partial` — where an `--allow-partial` run commits the rows

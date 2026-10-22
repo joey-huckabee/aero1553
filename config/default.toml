@@ -407,6 +407,27 @@ utc_offset = "+00:00"
 # ──────────────────────────────────────────────────────────────────────────
 max_sort_group = 65536
 
+# ──────────────────────────────────────────────────────────────────────────
+# Row-rendering threads (L2-WRT-027).
+#
+# CSV rows are rendered to text on this many worker threads. Reading,
+# ordering, DELTA, logging and writing all stay on the decoding thread, and
+# the output is byte-identical at every value, so this only changes speed.
+#
+#   0        -- render on the decoding thread; no threads are started.
+#   unset    -- the default: min(cores - 1, 2), i.e. 2 on most machines,
+#               1 on a two-core machine, 0 on a single core.
+#   16       -- the maximum. Beyond about 4 there is no further gain: the
+#               decoding thread is the bottleneck.
+#
+# A recording shorter than 2048 records starts no threads at all.
+#
+# Overridden by --threads.
+#
+# Default: unset (min(cores - 1, 2))
+# ──────────────────────────────────────────────────────────────────────────
+# threads = 2
+
 
 [mux]
 # ──────────────────────────────────────────────────────────────────────────

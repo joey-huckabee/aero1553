@@ -32,6 +32,9 @@ use crate::models::{
 use crate::order::{DEFAULT_MAX_SORT_GROUP, MAX_SORT_GROUP_MAX, MAX_SORT_GROUP_MIN};
 use crate::sync::DEFAULT_LOOKAHEAD_RECORDS;
 use crate::text::{escape_bytes, quote, trim_ascii_blank};
+#[cfg(doc)]
+use crate::writer::default_threads;
+use crate::writer::{THREADS_MAX, THREADS_MIN};
 
 /// L2-DEC-015 valid range for `decode.detect_records`. Values outside
 /// this range are rejected at config-load time with a clear error.
@@ -150,6 +153,12 @@ pub struct DecoderConfig {
     /// The collapse window bounds retention in time; this bounds it in count, so
     /// input whose timestamps all decode alike cannot grow the set without limit.
     pub max_collapse_survivors: usize,
+    /// L2-WRT-027: worker threads that render CSV rows. `None` -- the default --
+    /// means [`default_threads`] (`min(cores - 1, 2)`); `Some(0)` renders on the
+    /// decoding thread. The output is byte-identical whatever the count. Set
+    /// via `output.threads = N` in TOML or `--threads N` on the CLI, validated
+    /// against `[THREADS_MIN, THREADS_MAX]` at load time.
+    pub threads: Option<usize>,
 }
 
 impl Default for DecoderConfig {
@@ -178,6 +187,7 @@ impl Default for DecoderConfig {
             delta_scope: DeltaScope::PerFile,
             max_sort_group: DEFAULT_MAX_SORT_GROUP,
             max_collapse_survivors: DEFAULT_MAX_COLLAPSE_SURVIVORS,
+            threads: None,
         }
     }
 }
@@ -211,6 +221,7 @@ pub struct ConfigOverrides {
     pub delta_scope: Option<DeltaScope>,
     pub max_sort_group: Option<usize>,
     pub max_collapse_survivors: Option<usize>,
+    pub threads: Option<usize>,
 
     pub exclude_types: Vec<u8>,
     pub exclude_rts: Vec<u8>,
@@ -279,6 +290,10 @@ impl DecoderConfig {
         // `None` (L2-WRT-026 clause 1).
         if let Some(v) = ov.year {
             self.year = Some(v);
+        }
+        // `Option<usize>` too: an absent `--threads` keeps the configured count.
+        if let Some(v) = ov.threads {
+            self.threads = Some(v);
         }
         if let Some(v) = ov.collapse_window_us {
             // CLI / config-load validation already rejects negatives; the
@@ -510,8 +525,8 @@ fn require_positive_finite(hz: f64, written: &str, key: &str) -> Result<f64, Con
     Ok(hz)
 }
 
-/// `[output]`: output format (only `csv` today, L2-CFG-010), no-clobber, and the
-/// canonical-order run cap (L2-WRT-022).
+/// `[output]`: output format (only `csv` today, L2-CFG-010), no-clobber, the
+/// canonical-order run cap (L2-WRT-022) and the rendering threads (L2-WRT-027).
 fn apply_output_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), ConfigError> {
     if let Some(fmt) = toml.get_string("output", "format")? {
         if fmt != "csv" {
@@ -556,6 +571,18 @@ fn apply_output_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), C
             _ => {
                 return Err(ConfigError(format!(
                     "Invalid output.max_sort_group: {n}. Valid range: [{MAX_SORT_GROUP_MIN}, {MAX_SORT_GROUP_MAX}]"
+                )));
+            }
+        }
+    }
+    // L2-WRT-027: rendering threads. Range-checked at load time like every
+    // other count; `0` is valid and means "render on the decoding thread".
+    if let Some(n) = toml.get_int("output", "threads")? {
+        match usize::try_from(n) {
+            Ok(v) if (THREADS_MIN..=THREADS_MAX).contains(&v) => cfg.threads = Some(v),
+            _ => {
+                return Err(ConfigError(format!(
+                    "Invalid output.threads: {n}. Valid range: [{THREADS_MIN}, {THREADS_MAX}]"
                 )));
             }
         }
@@ -724,6 +751,7 @@ fn is_known_shared_key(section: &str, key: &str) -> bool {
             | ("output", "year")
             | ("output", "utc_offset")
             | ("output", "max_sort_group")
+            | ("output", "threads")
             | ("mux", "enabled")
             | ("mux", "delimiter")
             | ("mux", "field")
@@ -2014,6 +2042,46 @@ exclude_types = ["UNICORN"]
         ))
         .unwrap();
         assert_eq!(cfg.max_sort_group, MAX_SORT_GROUP_MAX);
+    }
+
+    /// `[output] threads` sets the rendering-thread count, both ends of the
+    /// range included, and is a recognized key; unset leaves the default.
+    /// Requirements: L2-WRT-027, L2-CFG-001
+    #[test]
+    fn parses_threads_across_its_range() {
+        for n in [THREADS_MIN, 2, THREADS_MAX] {
+            let cfg = parse_into_config(&format!("[output]\nthreads = {n}\n")).unwrap();
+            assert_eq!(cfg.threads, Some(n));
+        }
+        assert!(is_known_shared_key("output", "threads"));
+        let unset = parse_into_config("[output]\nno_clobber = true\n").unwrap();
+        assert_eq!(unset.threads, None);
+    }
+
+    /// Out of range, negative or not an integer is a load-time error naming
+    /// the key, never a clamp.
+    /// Requirements: L2-WRT-027, L2-CFG-010
+    #[test]
+    fn threads_rejects_out_of_range_and_non_integer() {
+        for bad in ["17", "-1", "true", "\"2\"", "1.5"] {
+            let err = parse_into_config(&format!("[output]\nthreads = {bad}\n")).unwrap_err();
+            assert!(err.0.contains("threads"), "{bad}: got {:?}", err.0);
+        }
+    }
+
+    /// A `--threads` override replaces the configured count; an absent one
+    /// keeps it.
+    /// Requirements: L2-WRT-027
+    #[test]
+    fn threads_override_replaces_and_absent_override_keeps() {
+        let cfg = parse_into_config("[output]\nthreads = 4\n").unwrap();
+        let kept = cfg.clone().with_overrides(ConfigOverrides::default());
+        assert_eq!(kept.threads, Some(4));
+        let replaced = cfg.with_overrides(ConfigOverrides {
+            threads: Some(0),
+            ..ConfigOverrides::default()
+        });
+        assert_eq!(replaced.threads, Some(0));
     }
 
     /// A `[merge]` section in a config file must drive the collapse settings,

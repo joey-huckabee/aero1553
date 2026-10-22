@@ -77,6 +77,15 @@ CORPUS: list[tuple[str, str | bytes, str]] = [
     ("max-sort-group-negative", "[output]\nmax_sort_group = -1\n", "reject"),
     ("max-sort-group-bool", "[output]\nmax_sort_group = true\n", "reject"),
     ("max-sort-group-string", '[output]\nmax_sort_group = "64"\n', "reject"),
+    # L2-WRT-027: the rendering-thread count. 0 is valid ("render on the
+    # decoding thread"), so the low edge is an accept here, not a reject.
+    ("threads-valid", "[output]\nthreads = 2\n", "accept"),
+    ("threads-zero", "[output]\nthreads = 0\n", "accept"),
+    ("threads-max", "[output]\nthreads = 16\n", "accept"),
+    ("threads-over", "[output]\nthreads = 17\n", "reject"),
+    ("threads-negative", "[output]\nthreads = -1\n", "reject"),
+    ("threads-bool", "[output]\nthreads = true\n", "reject"),
+    ("threads-string", '[output]\nthreads = "2"\n', "reject"),
     # L2-MRG-008. The same probes its sibling cap gets: a range validated
     # in two implementations and clamped in the third is a divergence that
     # only shows up on the value nobody tries by hand.
