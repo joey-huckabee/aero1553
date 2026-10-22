@@ -98,6 +98,22 @@ shared behavior) holds at any compatible version pair. See
   word_count, error)`, which returns `None` for a field wider than its bits
   and leaves bit 15 clear. 2 bytes instead of 8, which brings the record to
   **128 bytes** (fields 125) from 152 in 5.3.0.
+  - **This is the step the layout work was for: decoding is 4-12% faster.**
+    At 128 bytes or less a record is copied between pipeline stages with a
+    few inline instructions; above it, each copy was a call to `memmove`. In
+    a profile of the decoding thread, the time in `memmove` fell from 12.2%
+    to 1.6%. Measured with `perf/baseline.py` in WSL, 256 MiB inputs, output
+    identical in every case:
+
+    | Case | against the previous `main` (144 bytes) | against 5.3.0 |
+    |---|---|---|
+    | decode | 0.892 | 0.704 |
+    | eight-file merge | 0.876 | 0.729 |
+    | corrupt, `--separate-errors` | 0.929 | 0.799 |
+    | MUX on every row | 0.963 (faster in 30 of 31 rounds; A/A 1.012) | -- |
+
+    The "against 5.3.0" column includes the filter and ordering changes
+    above. The MUX case gains least; why is not yet measured.
 - **Python: `TypeWord(...)` rejects fields that disagree with `raw`.** The
   signature and attributes are unchanged, but the four fields must be the
   bits `raw` encodes (bits 0-6, 7, 8-13 and 14); a mismatch raises
