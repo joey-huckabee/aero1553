@@ -632,7 +632,12 @@ uv --directory python build   # sdist + one abi3 wheel, via maturin
 
 This produces `python/dist/aero1553-<version>.tar.gz` and one `aero1553-<version>-cp310-abi3-<platform>.whl`: a single wheel per platform that serves every CPython from 3.10 up. The sdist is self-contained -- it bundles the core crate from `rust/` -- so it builds anywhere a Rust toolchain is available. A local Linux build is tagged `linux_x86_64`, which pip installs locally but PyPI refuses; publishable `manylinux` wheels come from CI.
 
-No release attaches prebuilt binaries, for any implementation; whether to start doing so is the open Phase 3 question in `ROADMAP.md`. (The C++ implementation, which shipped as source in the joint cut from v2.13.0, was removed in 5.0.0.)
+Since 5.0.0 each release attaches one prebuilt binary, `aero1553-x86_64-linux-glibc2.22`, for SLES 12 SP5 and any newer glibc. Attaching it is manual:
+1. Download the artifact of that name from the tag's CI run (the `rust-glibc-2-22` job).
+2. Check that `--version` prints the new version and that `objdump -T` shows no `GLIBC_` symbol newer than 2.22.
+3. Upload it to the release and add its SHA-256 to the release notes.
+
+Automating this, a Windows binary and a check on a real SLES 12 SP5 host are open items under "Release artifacts and process" in `ROADMAP.md`. (The C++ implementation, which shipped as source in the joint cut from v2.13.0, was removed in 5.0.0.)
 
 ### Version coordination
 
