@@ -358,6 +358,11 @@
       "expected_exit": 2
     },
     {
+      "name": "periodic-identical-payload",
+      "input": "inputs/periodic-identical-payload.hex",
+      "expected": "expected/periodic-identical-payload.csv"
+    },
+    {
       "name": "count-one",
       "mode": "count",
       "input": "inputs/count-one.hex",

@@ -1,0 +1,37 @@
+# L2-SYN-018: four polls of one message with an unchanging payload, 100 us
+# apart. Every byte matches between the four records except the IRIG
+# timestamp's lower word (21F6, 85F6, E9F6, 4DF7). This is an ordinary
+# periodic transaction, so it SHALL decode -- through 5.2.0 the
+# homogeneous-payload check ignored the timestamp and rejected the file as
+# padding (exit 2). The `homogeneous-payload` case keeps the rejection for
+# real fill, whose timestamp bytes repeat along with everything else.
+#
+# Each record is the 72-byte RT15 SA11 Receive of `count-one.hex`.
+02240F1826DB21F6
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 71C7
+0078
+02240F1826DB85F6
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 71C7
+0078
+02240F1826DBE9F6
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 71C7
+0078
+02240F1826DB4DF7
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 71C7
+0078

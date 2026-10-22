@@ -39,7 +39,7 @@ If no valid record is found within the first 64 KB, the decoder surfaces one of 
 - `MieError::NoValidRecords` / `MieNoValidRecordsError` — no Type Word that looks valid was found at all. Typical: wrong file type.
 - `MieError::FirstRecordTruncated` / `MieFirstRecordTruncatedError` — a structurally-valid Type Word was found, but its declared extent runs past EOF. Typical: recording aborted mid-write.
 
-A defense against pathological inputs (`L2-SYN-018`): after a candidate is accepted, the decoder compares the first 4 consecutive candidate-sized chunks for byte identity in non-timestamp positions. If they match, the file is rejected as `HomogeneousPayload` (e.g., a 0x20-padded file that happens to parse as a stream of `SPURIOUS_DATA` records).
+A defense against pathological inputs (`L2-SYN-018`): after a candidate is accepted, the decoder compares the first 4 consecutive candidate-sized chunks for byte identity, timestamps included: a pad repeats its timestamp bytes, a recording's timestamps advance. If they match, the file is rejected as `HomogeneousPayload` (e.g., a 0x20-padded file that happens to parse as a stream of `SPURIOUS_DATA` records).
 
 ### 2.2 The record stream
 

@@ -400,8 +400,8 @@ class MieHomogeneousPayloadError(MieFileError):
         super().__init__(
             f"Pathological homogeneous-payload input rejected ({path}): "
             f"the first {sample_records} candidate records starting at "
-            f"offset 0x{offset:X} are byte-identical in non-timestamp "
-            f"positions. The file is most likely a single-byte pad "
+            f"offset 0x{offset:X} are byte-identical, timestamps "
+            f"included. The file is most likely a single-byte pad "
             f"(e.g. 0x20-fill), not an MIE recording."
         )
 

@@ -35,6 +35,6 @@
 #
 # Byte 12 (record 1) and byte 28 (record 2) differ so the L2-SYN-018
 # homogeneous-payload defense doesn't fire (consecutive records are
-# not byte-identical in non-timestamp positions).
+# not byte-identical).
 0208 1F00 FFFF 0000 0000 0000 0100 0000
 0208 1F00 FFFF 0000 0000 0000 0200 0000

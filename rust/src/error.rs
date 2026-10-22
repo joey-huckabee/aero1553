@@ -73,9 +73,8 @@ pub enum MieError {
     /// L2-SYN-018: the input file appears to be a pathological single-
     /// byte pad rather than an MIE recording. After header detection
     /// finds a candidate record, the reader compares the first N
-    /// consecutive candidate-sized chunks; if they are byte-identical
-    /// in every position except the timestamp triple, the file is
-    /// rejected. Defends against 0x20-fill (where `0x20 0x20` parses
+    /// consecutive candidate-sized chunks; if they are byte-identical,
+    /// timestamps included, the file is rejected. Defends against 0x20-fill (where `0x20 0x20` parses
     /// as a valid `SPURIOUS_DATA` Type Word and look-ahead alone admits
     /// the stream) and similar single-byte pads.
     HomogeneousPayload {
@@ -356,8 +355,8 @@ impl fmt::Display for MieError {
                 f,
                 "Pathological homogeneous-payload input rejected ({}): \
                  the first {sample_records} candidate records starting at \
-                 offset 0x{offset:X} are byte-identical in non-timestamp \
-                 positions. The file is most likely a single-byte pad \
+                 offset 0x{offset:X} are byte-identical, timestamps \
+                 included. The file is most likely a single-byte pad \
                  (e.g. 0x20-fill), not an MIE recording.",
                 path.display()
             ),
