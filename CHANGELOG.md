@@ -34,6 +34,15 @@ shared behavior) holds at any compatible version pair. See
   0.330 s to 0.179 s (x1.84), a 1 GiB recording 14.9 s to 8.4 s (x1.78), a
   16 x 32 MiB merge 9.6 s to 5.9 s (x1.62), and a 1 GiB corrupt recording
   with `--separate-errors` 18.7 s to 12.1 s (x1.55).
+- **`DELTA` tracking uses a fixed table instead of a hash map**, a further
+  6-16% faster decode. Each keyed record did a hash lookup and a hash
+  insert, though the key space is only 2,048 RT / subaddress / direction
+  combinations; a 2,048-slot table now holds each key's last timestamp.
+  Tracking `DELTA` for the 23.8 million records of a 1 GiB recording fell
+  from 0.69 s to 0.16 s. Measured on Windows against the ordering change
+  above, output byte-identical in every case: the golden recording x1.08,
+  1 GiB x1.11, a 16-file merge x1.16, and a 1 GiB corrupt recording with
+  `--separate-errors` x1.06.
 
 ### Fixed
 

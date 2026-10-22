@@ -29,8 +29,6 @@
 //! the once-per-key guarantee is worth having in one place rather than in each
 //! caller's own `HashSet`.
 
-use std::collections::{HashMap, HashSet};
-
 use crate::models::{CommandWord, Direction, Timestamp};
 
 /// Encode `(rt, subaddress, direction)` into one `u32`.
@@ -48,6 +46,19 @@ use crate::models::{CommandWord, Direction, Timestamp};
 #[must_use]
 pub fn delta_key(rt: u8, subaddress: u8, transmit: bool) -> u32 {
     (u32::from(rt) << 16) | (u32::from(subaddress) << 8) | u32::from(transmit)
+}
+
+/// Size of the tracker's table: one slot per RT (5 bits) x subaddress (5 bits)
+/// x direction (1 bit).
+const KEYS: usize = 1 << 11;
+
+/// The table slot for a key: the same tuple as [`delta_key`], packed densely.
+/// A Command Word's RT and subaddress fields are 5 bits wide; the mask keeps a
+/// hand-built `CommandWord` with a larger value inside the table, where it
+/// shares a slot with the value its low 5 bits name.
+#[inline]
+fn slot(rt: u8, subaddress: u8, transmit: bool) -> usize {
+    (usize::from(rt & 0x1F) << 6) | (usize::from(subaddress & 0x1F) << 1) | usize::from(transmit)
 }
 
 /// What one observation meant.
@@ -100,10 +111,14 @@ impl DeltaOutcome {
 /// (L2-MRG-005).
 #[derive(Debug)]
 pub struct DeltaTracker {
-    last_us: HashMap<u32, u64>,
+    /// Per key, the microseconds of its last record, or `None` before the
+    /// first. Indexed by [`slot`]: the key space is RT x subaddress x
+    /// direction, 32 x 32 x 2 = 2,048, so a fixed table replaces the hash map a
+    /// lookup and an insert per record used to cost.
+    last_us: Box<[Option<u64>]>,
     /// Keys that have already produced a backward-step report. Kept here rather
     /// than in the caller so the once-per-key promise has a single owner.
-    warned_keys: HashSet<u32>,
+    warned_keys: Box<[bool]>,
     /// L2-DEC-017 Standard-counter calibration. `None` keeps Standard records
     /// out of tracking entirely.
     tick_rate_hz: Option<f64>,
@@ -113,8 +128,8 @@ impl DeltaTracker {
     #[must_use]
     pub fn new(tick_rate_hz: Option<f64>) -> Self {
         Self {
-            last_us: HashMap::new(),
-            warned_keys: HashSet::new(),
+            last_us: vec![None; KEYS].into_boxed_slice(),
+            warned_keys: vec![false; KEYS].into_boxed_slice(),
             tick_rate_hz,
         }
     }
@@ -138,15 +153,16 @@ impl DeltaTracker {
             return DeltaOutcome::Uncalibrated;
         };
 
-        let key = delta_key(
+        let key = slot(
             cmd.rt,
             cmd.subaddress,
             matches!(cmd.direction, Direction::Transmit),
         );
 
-        let outcome = match self.last_us.get(&key) {
+        let last = &mut self.last_us[key];
+        let outcome = match *last {
             None => DeltaOutcome::First,
-            Some(&prev_us) if curr_us >= prev_us => {
+            Some(prev_us) if curr_us >= prev_us => {
                 // f64 loses precision above 2^53 microseconds, which is
                 // roughly 285 years of elapsed time between two records
                 // sharing one RT/MSG key. DELTA is a gap within a recording.
@@ -157,10 +173,10 @@ impl DeltaTracker {
                 let seconds = (curr_us - prev_us) as f64 / 1_000_000.0;
                 DeltaOutcome::Elapsed(seconds)
             }
-            Some(&prev_us) => DeltaOutcome::Backward {
+            Some(prev_us) => DeltaOutcome::Backward {
                 prev_us,
                 curr_us,
-                first_for_key: self.warned_keys.insert(key),
+                first_for_key: !std::mem::replace(&mut self.warned_keys[key], true),
             },
         };
 
@@ -168,7 +184,7 @@ impl DeltaTracker {
         // record for this key is measured from THIS one. Keeping the older,
         // larger value would report a gap that no pair of records in the file
         // actually has.
-        self.last_us.insert(key, curr_us);
+        *last = Some(curr_us);
         outcome
     }
 }
@@ -399,6 +415,28 @@ mod tests {
                 .value(),
             Some(1.0)
         );
+    }
+
+    /// The tracker's table slot partitions the key space exactly as the packed
+    /// key does: every RT x subaddress x direction a Command Word can carry
+    /// gets its own slot, inside the table. Two keys sharing a slot would
+    /// measure one message's DELTA from another's timestamp.
+    ///
+    /// Requirements: L2-RDR-009, L3-RDR-001
+    #[test]
+    fn every_key_has_its_own_table_slot() {
+        let mut seen = vec![false; KEYS];
+        for rt in 0..32u8 {
+            for sa in 0..32u8 {
+                for transmit in [false, true] {
+                    let s = slot(rt, sa, transmit);
+                    assert!(s < KEYS, "slot {s} for ({rt}, {sa}, {transmit})");
+                    assert!(!seen[s], "slot {s} reused by ({rt}, {sa}, {transmit})");
+                    seen[s] = true;
+                }
+            }
+        }
+        assert!(seen.iter().all(|&taken| taken));
     }
 
     /// The check that did not exist while the two representations lived in
