@@ -35,6 +35,7 @@ max_sort_group     = 65536       # 1..=1048576 (1 disables row reordering)
 output_time_format = "doy"       # doy | iso | dom (how TIME_STAMP is WRITTEN)
 # year             = 2026        # 1..=9999; required by iso/dom, ignored by doy
 utc_offset         = "+00:00"    # Z | +HH:MM | -HH:MM (iso zone designator)
+# threads          = 2           # 0..=16 row-rendering threads (unset = min(cores-1, 2))
 
 [mux]
 enabled   = true                 # populate MUX from the file name (--no-mux disables)
@@ -71,6 +72,7 @@ exclude_subaddresses = []        # array of integers in [0, 31]
 | `output.output_time_format` | string | `"doy"` | `--output-time-format` | L2-CFG-012, L2-WRT-025 |
 | `output.year` | int | unset | `--year` | L2-CFG-012, L2-WRT-026 |
 | `output.utc_offset` | string | `"+00:00"` | `--utc-offset` | L2-CFG-012, L2-WRT-025 |
+| `output.threads` | int | unset (`min(cores - 1, 2)`) | `--threads` | L2-WRT-027 |
 | `mux.enabled` | bool | `true` | `--no-mux` (sets `false`) | L2-WRT-020 |
 | `mux.delimiter` | string | `"."` | `--mux-delimiter` | L2-WRT-020 |
 | `mux.field` | int | `4` | `--mux-field` | L2-WRT-020 |
@@ -385,6 +387,22 @@ The zone designator appended by the `iso` rendering (L2-WRT-025). Ignored by `do
 > **The default asserts UTC.** Most IRIG installations are UTC-disciplined, which is why that is the default — but a site running local time and leaving this unset gets an ISO stamp that is confidently wrong by a fixed offset on every row, with nothing in the CSV to say so. Set it explicitly if your site is not UTC.
 
 **Validation:** rejected at load time unless it is `Z` (case-insensitive) or a signed `+HH:MM` / `-HH:MM` with `HH` in `[0, 23]` and `MM` in `[0, 59]`. The shape is checked exactly: `+5:00`, `+0500` and a trailing-space variant are all rejected, because a zone that parsed loosely would silently shift every ISO timestamp in the file.
+
+### `threads`
+
+**Type:** int · **Default:** unset (`min(cores - 1, 2)`) · **Range:** `[0, 16]` · **CLI:** `--threads`
+
+How many worker threads render CSV rows (L2-WRT-027). Everything stateful — reading, sync, filtering, canonical ordering, the merge, `DELTA`, every log message and every byte written — stays on the decoding thread; the workers only turn records into text. **The output is byte-identical at every value**, so this is a speed setting and nothing else.
+
+| Value | Behavior |
+|-------|----------|
+| `0` | Render on the decoding thread; no threads are started. |
+| unset | Default: one fewer than the machine's cores, at most `2` — so `2` on most machines, `1` on a two-core machine and `0` on a single core. |
+| up to `16` | Measured on an 8-core machine, `4` was 2–8% faster than `2` and `8` no faster than `4`: from two workers on, decoding and writing on the main thread are the bottleneck. |
+
+At the default, a decode measured 1.27x–1.49x faster than without threads (a 21 MB recording, a 1 GiB recording, a 16-file merge, and a corrupt recording with `--separate-errors`). Memory stays constant: records go to the workers in batches of 2048 with at most two batches per worker in flight, and a recording shorter than one batch starts no threads at all.
+
+**Validation:** TOML integer only; out-of-range values are rejected at load time (exit `5`). An out-of-range `--threads` is a usage error (exit `4`), matching `--max-sort-group`.
 
 ---
 

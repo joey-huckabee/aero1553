@@ -262,6 +262,12 @@ class DecoderConfig:
     #: reordering, restoring raw DDC capture order.
     max_sort_group: int = DEFAULT_MAX_SORT_GROUP
 
+    #: L2-WRT-027: worker threads that render CSV rows, in [0, 16]. None (the
+    #: default) means min(cores - 1, 2); 0 renders on the decoding thread. The
+    #: output is byte-identical at every count. Set via ``output.threads`` or
+    #: ``--threads``.
+    threads: int | None = None
+
     def with_overrides(self, **kwargs: Any) -> DecoderConfig:
         """Return a new config with specified fields overridden.
 
@@ -297,6 +303,7 @@ class DecoderConfig:
             max_collapse_survivors=self._override_present(kwargs, "max_collapse_survivors"),
             max_sort_group=self._override_present(kwargs, "max_sort_group"),
             delta_scope=self._override_present(kwargs, "delta_scope"),
+            threads=self._override_present(kwargs, "threads"),
         )
 
     def _override_present(self, kwargs: dict[str, Any], name: str) -> Any:

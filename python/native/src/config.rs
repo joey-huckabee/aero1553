@@ -87,6 +87,7 @@ pub fn load_config(py: Python<'_>, path: PathBuf) -> PyResult<Bound<'_, PyDict>>
     d.set_item("max_collapse_survivors", c.max_collapse_survivors)?;
     d.set_item("delta_scope", c.delta_scope as u8)?;
     d.set_item("max_sort_group", c.max_sort_group)?;
+    d.set_item("threads", c.threads)?;
     Ok(d)
 }
 

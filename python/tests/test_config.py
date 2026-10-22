@@ -1249,6 +1249,45 @@ class TestMaxSortGroupKey:
         assert not any("max_sort_group" in rec.getMessage() for rec in caplog.records)
 
 
+class TestThreadsKey:
+    """`[output] threads` -- the L2-WRT-027 rendering-thread count. Loaded by the
+    same Rust loader the CLI uses, so a shared config file behaves identically."""
+
+    @pytest.mark.requirement("L2-WRT-027", "L2-CFG-001")
+    def test_parses_value(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "c.toml"
+        cfg_file.write_text("[output]\nthreads = 3\n")
+        assert load_config(cfg_file).threads == 3
+
+    @pytest.mark.requirement("L2-WRT-027")
+    def test_unset_means_the_default(self, tmp_path: Path) -> None:
+        cfg_file = tmp_path / "c.toml"
+        cfg_file.write_text("[output]\nno_clobber = true\n")
+        assert load_config(cfg_file).threads is None
+        assert DecoderConfig().threads is None
+
+    @pytest.mark.requirement("L2-WRT-027")
+    def test_accepts_both_ends_of_the_range(self, tmp_path: Path) -> None:
+        for value in (0, 16):
+            cfg_file = tmp_path / f"c{value}.toml"
+            cfg_file.write_text(f"[output]\nthreads = {value}\n")
+            assert load_config(cfg_file).threads == value
+
+    @pytest.mark.requirement("L2-WRT-027", "L2-CFG-010")
+    @pytest.mark.parametrize("bad", ["17", "-1", "true", '"2"', "1.5"])
+    def test_rejects_out_of_range_and_wrong_type(self, tmp_path: Path, bad: str) -> None:
+        cfg_file = tmp_path / "c.toml"
+        cfg_file.write_text(f"[output]\nthreads = {bad}\n")
+        with pytest.raises(ValueError, match="threads"):
+            load_config(cfg_file)
+
+    @pytest.mark.requirement("L2-WRT-027")
+    def test_override_replaces_and_absent_override_keeps(self) -> None:
+        cfg = DecoderConfig(threads=4)
+        assert cfg.with_overrides(threads=0).threads == 0
+        assert cfg.with_overrides(threads=None).threads == 4
+
+
 class TestDeltaScopeKey:
     """`[merge] delta_scope` (L2-MRG-005). Same names, default, and rejection
     behavior as the Rust loader (L3-WRT-004)."""

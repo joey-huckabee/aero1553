@@ -35,6 +35,7 @@ pub mod log;
 pub mod merge;
 pub mod models;
 pub mod order;
+mod parallel;
 pub mod reader;
 mod source;
 pub mod sync;

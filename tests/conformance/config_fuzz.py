@@ -68,6 +68,7 @@ _KEYS = [
     "standard_tick_rate_hz",
     "no_clobber",
     "max_sort_group",
+    "threads",
     "max_collapse_survivors",
     "collapse_window_us",
     "delta_scope",

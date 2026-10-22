@@ -19,6 +19,35 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **`decode --threads N` and `[output] threads` set how many worker
+  threads render CSV rows** (L2-WRT-027, L3-RS-019). The range is `0` to
+  `16`; `0` renders on the decoding thread, and unset means
+  `min(cores - 1, 2)` -- 2 on most machines, 1 on two cores, 0 on one. An
+  out-of-range flag is a usage error (exit 4) and an out-of-range key a
+  configuration error (exit 5). The Rust library exposes
+  `writer::default_threads`, `THREADS_MIN` and `THREADS_MAX`; the public
+  `write_csv` / `write_csv_split` signatures and `WriteOptions` are
+  unchanged and render with the default. Python's `DecoderConfig` gains
+  `threads: int | None = None`.
+
+### Changed
+
+- **Decoding to CSV is faster again: 1.27x-1.49x at the 2-thread default**,
+  with byte-identical output at every thread count. Rows are rendered on
+  worker threads while the decoding thread keeps everything stateful --
+  reading, ordering, the merge, `DELTA`, every log message and every write
+  -- and writes the rendered batches in their original order. Measured on
+  Windows against 5.1.0: the 21 MB golden recording 1.30x, a 1 GiB
+  recording 1.49x (25.2 s to about 16.9 s), a 16 x 32 MiB merge 1.27x, and
+  a 1 GiB corrupt recording with `--separate-errors` 1.40x. Four threads
+  add only a few percent and eight nothing more, because the decoding
+  thread is then the bottleneck. Memory stays constant (at most two
+  2048-record batches per worker in flight), a recording under 2048
+  records starts no threads, and the crate still has no dependencies
+  (`std::thread::scope` and `mpsc`).
+
 ## [5.1.0] — 2026-10-21
 
 ### Changed

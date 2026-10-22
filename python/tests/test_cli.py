@@ -407,6 +407,7 @@ class TestFlagValueSyntax:
         ("--lookahead-records", "2"),
         ("--standard-tick-rate-hz", "1000000"),
         ("--max-sort-group", "64"),
+        ("--threads", "1"),
         ("--mux-delimiter", "_"),
         ("--mux-field", "0"),
         ("--delta-scope", "global"),

@@ -766,6 +766,19 @@ All three SHALL emit exactly six microsecond digits; L2-DEC-014 applies unchange
 **Rationale**: Each clause closes a way to produce a well-formed, authoritative-looking, wrong date. Clause 1 refuses to guess: a system-clock fallback dates a 2019 archive with the year it was decoded in, and a file-mtime fallback is destroyed by any copy, rsync or checkout — both fail silently and both fail *later*, in whatever consumed the CSV. Clause 3 fails the whole run rather than the row because day 366 against a common year does not indicate one bad record; it indicates the configured year is wrong, which makes every date in the file suspect. Clause 4 declines to auto-increment because a backward day step is produced by corruption as readily as by a genuine New Year crossing, and the decoder cannot distinguish them — advancing the year on corruption would date a damaged record a year into the future, which is worse than the off-by-one-year it would have fixed. Clause 5 follows `standard_tick_rate_hz`, which is likewise inert outside the format it calibrates (L2-DEC-017): an inert key is not an operator error, and rejecting one would make a single site config unusable across mixed recordings.
 **Verification Method**: Test (T)
 
+#### L2-WRT-027
+
+**Parent**: L1-OUT-001
+**Statement**: The CSV writer MAY render rows on worker threads. The number of rendering threads SHALL be set by the configuration key `[output] threads` (CLI `decode --threads`), an integer validated at load time against the range `[THREADS_MIN, THREADS_MAX]` = `[0, 16]`, resolved per L2-CFG-003, and defaulting when unset to `min(cores - 1, 2)`; `0` SHALL render on the decoding thread. An out-of-range `--threads` SHALL be a usage error (exit `4`) and an out-of-range key a configuration error (exit `5`). Whatever the count:
+
+1. The output SHALL be byte-identical to a serial render — the same rows, in the same order, in the same files.
+2. The memory held for rendering SHALL be bounded by a constant independent of the recording's length: records are handed out in fixed-size batches, and at most a fixed number of batches per worker are in flight.
+3. Everything stateful SHALL stay on the calling thread: pulling records from the decode pipeline (reader, filter, canonical order, merge, `DELTA`), emitting every log message, and writing every byte. Workers SHALL only turn records into bytes.
+4. An error from the record stream, a rendering failure (L2-WRT-026), or a write failure SHALL be reported only after every row that precedes it has been written, so the `--allow-partial` `.partial` and the error's position in the output are those of a serial render; no record SHALL be pulled from the stream after it yields an error.
+
+**Rationale**: Rendering a row — formatting the timestamp, the hex words, `DELTA` — is pure per-record work and a large share of a decode's cost, so it parallelises without changing what is decoded. Byte identity is the whole contract: L1-OUT-001's vendor compatibility and the conformance oracles are defined over bytes, so a thread count that could reorder or alter a row would make every downstream diff depend on the machine it ran on. Batches are dealt round-robin and collected back from each worker in the order they were dealt, which reproduces the serial order without a sequence number or a reorder buffer. Keeping the iterator, the logger and the output on one thread is what makes this safe to add: `DELTA`, the canonical-order stage and the merge are stateful and order-dependent, and log messages interleaved by worker scheduling would differ between runs. The error clause preserves the `.partial` semantics of L1-EXIT-004 — the rows before a failure are exactly the rows a serial decode would have committed — and not pulling past an iterator error keeps a strict-mode failure from decoding further than it would serially. The default is measured, not guessed: on an 8-core machine two workers gave 1.27x–1.49x across a 21 MB recording, a 1 GiB recording, a 16-file merge and a corrupt recording with `--separate-errors`, which is 90–95% of what four gave at half the threads and half the in-flight memory, and eight gave nothing over four — from two workers on, the calling thread's decode and write are the bottleneck. Capping at `cores - 1` leaves the decoding thread a core of its own, so a two-core machine gets one worker and a single core renders serially.
+**Verification Method**: Test (T)
+
 ---
 
 ## L2-CFG: Configuration
@@ -879,6 +892,7 @@ The table below pins the accepted TOML keys, their types, valid ranges, and unkn
 | `output.output_time_format` | string | one of `doy`/`iso`/`dom` (see L2-WRT-025); default `doy` | reject at load time |
 | `output.year` | int | `[1, 9999]` (see L2-WRT-026); unset = no year | reject out-of-range at load time |
 | `output.utc_offset` | string | `Z`, or `+HH:MM` / `-HH:MM` with `HH` in `[0, 23]` and `MM` in `[0, 59]` (see L2-WRT-025); default `+00:00` | reject at load time |
+| `output.threads` | int | `[0, 16]` (see L2-WRT-027); unset = `min(cores - 1, 2)`; `0` = render on the decoding thread | reject out-of-range at load time |
 | `filter.exclude_types` | array of string\|int | per-element validated against `L2-CFG-007` | reject at load time |
 | `filter.exclude_rts` | array of int | each in `[0, 31]` (1553 RT range) | reject out-of-range at load time |
 | `filter.exclude_buses` | array of string | each in `{A, B}` | reject at load time |
