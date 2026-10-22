@@ -69,7 +69,8 @@ aero1553/
 │   └── diagrams/           hand-written SVG diagrams (the source of truth)
 ├── config/default.toml     fully-commented reference TOML schema
 └── .github/workflows/      ci.yml, differential.yml, fuzz.yml,
-                            perf.yml, codeql.yml, sonarcloud.yml
+                            perf.yml, perf-baseline.yml, codeql.yml,
+                            sonarcloud.yml
 ```
 
 ---
@@ -525,6 +526,17 @@ and the JSON report to an artifact. Run it locally with
 `uv --directory python run python ../perf/run.py`; `perf/README.md` explains
 the cases, the report and how to calibrate a gate.
 
+**Performance baseline** (`.github/workflows/perf-baseline.yml`, release pull
+requests -- head branch `release/*` -- any pull request labelled
+`perf-baseline`, and `workflow_dispatch`, Linux) builds the latest `v*` tag
+beside the candidate and runs `perf/baseline.py`: both CLIs on three 256 MiB
+recordings tiled from the golden one by `rust/examples/synth_large.rs`. It
+fails when their outputs differ or when a case's candidate/baseline time ratio
+exceeds 1.15 -- the gate the same-build ratios above cannot provide, since a
+slowdown in the shared Rust core moves both sides of them. The 15% margin is
+twice the worst noise measured comparing a build with itself on CI
+(`perf/README.md`).
+
 A separate scheduled workflow, `.github/workflows/fuzz.yml`, runs a deeper L1-ROB-001 fuzz burn-in daily (and on manual `workflow_dispatch`), across **both** implementations and on **both** Linux and Windows. The normal `rust` / `python` suites run the fixed 256-iteration default; the burn-in sets `MIE_FUZZ_ITERATIONS` (default 25 000) so the deterministic harness sweeps a much larger input space. `docs/FUZZING.md` is the full map of what is fuzzed and what is not; this section covers the CI wiring.
 
 | Workflow / job | Covers | Notes |
@@ -678,6 +690,11 @@ The version bump itself rolls up the accumulated `[Unreleased]` entries into a d
    > assertions after the checklist missed them. `repo-hygiene.sh` fails when the version
    > sources disagree, so the checklist and the gate say the same thing.
 4. Updates any per-version doc references (e.g. "X-test suite (as of vN.M.0)" in MAINTAINER-GUIDE.md §10).
+
+Open the bump from a `release/<version>` branch: that name is what runs the
+**Performance baseline** check against the previous release (§9). Merge only
+when it passes, or when the release changes output on purpose and its pull
+request says so (`perf/README.md`).
 
 > **Watch the footer (step 2).** This step was silently skipped on the `1.4.0` and `1.4.1` cuts: the body sections were dated correctly but the footer's `[Unreleased]` link was left pointing at `v1.3.0...HEAD` and no `[1.4.0]`/`[1.4.1]` entries were added. It was repaired during the `1.5.0` cut. The body roll-up (step 1) is visible in the rendered changelog so it's hard to forget; the footer is easy to miss because nothing breaks without it. When cutting, after editing, confirm the footer's `[Unreleased]` line points at the *new* version (`compare/v<new>...HEAD`) and that every released version since the last footer update has its own `compare/<prev>...<this>` line — `git tag --sort=-creatordate` is the cross-check.
 
