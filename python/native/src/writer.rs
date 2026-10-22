@@ -293,13 +293,11 @@ fn to_stream(
 ) -> Result<u64, MieError> {
     let sink = PyTextSink::new(sink_stream, slot.clone(), false);
     let mut writer = CsvWriter::new(sink, destination)?.with_time_render(render);
-    let mut failure: Option<MieError> = None;
-    for item in source {
-        if let Err(err) = item.and_then(|msg| writer.write_message(&msg)) {
-            failure = Some(err);
-            break;
-        }
-    }
+    // The same threaded renderer a path destination gets (L2-WRT-027): rows are
+    // rendered on worker threads and written here, in order, so the stream sees
+    // exactly what a row-at-a-time loop gave it -- and only this thread ever
+    // calls into Python.
+    let failure = writer.write_messages(source, core::default_threads()).err();
     let rows = writer.rows_written();
     let finished = match failure {
         // The consumer of a stream has seen every row written before the
