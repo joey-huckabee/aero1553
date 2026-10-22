@@ -931,6 +931,79 @@ impl fmt::Debug for DataWords {
     }
 }
 
+// ── DeltaSeconds ──────────────────────────────────────────────────────
+
+/// A record's `DELTA`: seconds since the prior message with the same RT/MSG,
+/// or no value.
+///
+/// Behaves as an `Option<f64>` -- build one with `Some(s).into()` or
+/// [`DeltaSeconds::NONE`], read it with [`DeltaSeconds::get`] -- but takes 8
+/// bytes instead of 16. An `f64` has no spare bit pattern, so `Option<f64>`
+/// adds a tag that alignment pads to a whole 8 bytes, on a struct that is
+/// copied several times per record between pipeline stages. Here "no value" is
+/// stored as NaN, which no real `DELTA` can be: the trackers compute it from
+/// whole microseconds as a finite, non-negative quotient. The NaN stays inside
+/// this type, so no caller can confuse it with a number, and two "no value"
+/// deltas compare equal (a bare NaN would make a message unequal to itself).
+///
+/// The one input with no counterpart in an `Option<f64>` is `Some(NaN)`; it
+/// is stored, and read back, as no value.
+#[derive(Clone, Copy)]
+pub struct DeltaSeconds(f64);
+
+impl DeltaSeconds {
+    /// No `DELTA`: an empty CSV cell.
+    pub const NONE: Self = Self(f64::NAN);
+
+    /// `seconds`, or [`DeltaSeconds::NONE`] if it is NaN.
+    #[must_use]
+    pub const fn new(seconds: f64) -> Self {
+        Self(seconds)
+    }
+
+    /// The seconds, or `None` for no value.
+    #[must_use]
+    pub fn get(self) -> Option<f64> {
+        if self.0.is_nan() { None } else { Some(self.0) }
+    }
+
+    #[must_use]
+    pub fn is_none(self) -> bool {
+        self.0.is_nan()
+    }
+}
+
+impl Default for DeltaSeconds {
+    fn default() -> Self {
+        Self::NONE
+    }
+}
+
+impl From<Option<f64>> for DeltaSeconds {
+    fn from(value: Option<f64>) -> Self {
+        value.map_or(Self::NONE, Self)
+    }
+}
+
+impl From<DeltaSeconds> for Option<f64> {
+    fn from(value: DeltaSeconds) -> Self {
+        value.get()
+    }
+}
+
+impl PartialEq for DeltaSeconds {
+    fn eq(&self, other: &Self) -> bool {
+        self.get() == other.get()
+    }
+}
+
+/// Formats as the `Option<f64>` it stands for (`Some(0.5)` / `None`).
+impl fmt::Debug for DeltaSeconds {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        fmt::Debug::fmt(&self.get(), f)
+    }
+}
+
 // ── MieMessage ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
@@ -944,13 +1017,14 @@ pub struct MieMessage {
     pub status_word_2: Option<u16>,
     pub data_words: DataWords,
     pub error_word: Option<u16>,
-    /// Seconds since prior message with the same RT+MSG.
+    /// Seconds since prior message with the same RT+MSG; read it with
+    /// [`DeltaSeconds::get`].
     ///
     /// `Some(0.0)` on first occurrence of an RT/MSG key with a calibrated
     /// timestamp. `Some(s)` for a non-negative gap. `None` when no DELTA
     /// is meaningful: `SPURIOUS_DATA` (no RT/MSG key), uncalibrated Standard
     /// timestamps (no known tick rate), and non-monotonic timestamps.
-    pub delta: Option<f64>,
+    pub delta: DeltaSeconds,
     pub file_offset: u64,
     /// MUX column value derived from the source file name (L2-WRT-020), shared
     /// (one `Arc<str>` per input file) so per-record carry stays O(1) in resident
@@ -1342,7 +1416,7 @@ mod tests {
             status_word_2: None,
             data_words: DataWords::new(),
             error_word: None,
-            delta: Some(0.0),
+            delta: DeltaSeconds::new(0.0),
             file_offset: 0,
             mux: None,
         }
@@ -1758,5 +1832,30 @@ mod tests {
         assert!(!OutputTimeFormat::Doy.needs_calendar());
         assert!(OutputTimeFormat::Iso.needs_calendar());
         assert!(OutputTimeFormat::Dom.needs_calendar());
+    }
+
+    /// Requirements: L2-RDR-017, L2-RDR-018
+    #[test]
+    fn delta_seconds_round_trips_as_an_option_in_eight_bytes() {
+        for value in [None, Some(0.0), Some(0.000_001), Some(86_400.5)] {
+            let delta = DeltaSeconds::from(value);
+            assert_eq!(delta.get(), value);
+            assert_eq!(Option::<f64>::from(delta), value);
+            assert_eq!(delta.is_none(), value.is_none());
+            assert_eq!(format!("{delta:?}"), format!("{value:?}"));
+        }
+        // "No value" equals itself, so a message without a DELTA does too.
+        assert_eq!(DeltaSeconds::NONE, DeltaSeconds::default());
+        assert_ne!(DeltaSeconds::NONE, DeltaSeconds::new(0.0));
+        let mut m = make_msg(1, Direction::Receive, 2);
+        m.delta = DeltaSeconds::NONE;
+        assert_eq!(m, m.clone());
+        // The one value with no Option counterpart reads back as no value.
+        assert_eq!(DeltaSeconds::from(Some(f64::NAN)).get(), None);
+        // The point of the type: half the size of the Option it replaces.
+        assert_eq!(std::mem::size_of::<DeltaSeconds>(), 8);
+        assert_eq!(std::mem::size_of::<Option<f64>>(), 16);
+        // 152 bytes with an Option<f64>; every byte is copied between stages.
+        assert!(std::mem::size_of::<MieMessage>() <= 144);
     }
 }

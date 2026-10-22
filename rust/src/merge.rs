@@ -697,7 +697,8 @@ impl<'a> MergedRecordIter<'a> {
         msg.delta = self
             .delta_tracker
             .observe(msg.command_word.as_ref(), &msg.timestamp)
-            .value();
+            .value()
+            .into();
         msg
     }
 
@@ -1050,7 +1051,7 @@ mod tests {
             status_word_2: None,
             data_words: crate::models::DataWords::new(),
             error_word: Some((seq & 0xFFFF) as u16),
-            delta: None,
+            delta: crate::models::DeltaSeconds::NONE,
             file_offset: 0,
             mux: None,
         }

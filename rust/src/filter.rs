@@ -337,7 +337,7 @@ mod tests {
             status_word_2: None,
             data_words: DataWords::new(),
             error_word: None,
-            delta: Some(0.0),
+            delta: DeltaSeconds::new(0.0),
             file_offset: 0,
             mux: None,
         }
@@ -436,7 +436,7 @@ mod tests {
             message_format: MessageFormat::SpuriousData,
             command_word: None,
             error_word: Some(code),
-            delta: None,
+            delta: DeltaSeconds::NONE,
             ..msg(0, 0, Bus::A, 0)
         }
     }

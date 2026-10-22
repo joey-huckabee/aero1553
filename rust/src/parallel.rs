@@ -274,8 +274,8 @@ fn worker_lost() -> MieError {
 mod tests {
     use super::*;
     use crate::models::{
-        Bus, CommandWord, DataWords, Direction, IrigTimestamp, MessageFormat, OutputTimeFormat,
-        Timestamp, TypeWord,
+        Bus, CommandWord, DataWords, DeltaSeconds, Direction, IrigTimestamp, MessageFormat,
+        OutputTimeFormat, Timestamp, TypeWord,
     };
     use std::cell::Cell;
 
@@ -312,7 +312,7 @@ mod tests {
             status_word_2: None,
             data_words: DataWords::from_slice(&[(i & 0xFFFF) as u16, (i >> 16) as u16]),
             error_word: None,
-            delta: Some(f64::from(i) / 1_000_000.0),
+            delta: DeltaSeconds::new(f64::from(i) / 1_000_000.0),
             file_offset: u64::from(i),
             mux: None,
         }

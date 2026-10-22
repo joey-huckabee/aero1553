@@ -40,6 +40,24 @@ shared behavior) holds at any compatible version pair. See
   | eight-file merge | 0.971 | 0.941 |
   | corrupt, `--separate-errors` | 0.932 | 0.951 |
 
+- **Rust API: `MieMessage::delta` is a `DeltaSeconds`, not an
+  `Option<f64>`.** It holds the same thing -- seconds, or no value -- in 8
+  bytes instead of 16, which takes the record from 152 bytes to 144. An `f64`
+  has no spare bit pattern, so an `Option<f64>` adds a tag that alignment pads
+  to 8 bytes; `DeltaSeconds` stores "no value" as NaN, which no real `DELTA`
+  can be, and keeps it private. Read it with `msg.delta.get()` (an
+  `Option<f64>`); build one with `Some(s).into()`, `DeltaSeconds::new(s)` or
+  `DeltaSeconds::NONE`. Two "no value" deltas compare equal, and `Debug`
+  prints `Some(..)` / `None` as before.
+  - CSV output is unchanged: `perf/baseline.py` against the previous `main`
+    found it identical in all three cases, and timing within noise (0.97 for
+    each, 15 rounds).
+  - Python is unchanged -- `MieMessage.delta` is still `float | None` -- except
+    that a NaN passed to the constructor or `with_delta` now reads back as
+    `None`, the value it now is.
+  - First step toward a record of 128 bytes or less, the size below which a
+    copy between pipeline stages is inlined rather than a call to `memmove`.
+
 ## [5.3.0] — 2026-10-22
 
 ### Added
