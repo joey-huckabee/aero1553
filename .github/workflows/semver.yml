@@ -1,0 +1,104 @@
+name: SemVer
+
+# The crate's public API in a pull request against the commit it merges into
+# (cargo-semver-checks). A break fails the check unless the pull request
+# carries the `semver-break-accepted` label; the report prints either way.
+#
+# Breaks are allowed in a minor release while the crate has no outside users,
+# and they are recorded in CHANGELOG.md. The label is how a pull request says a
+# break is deliberate, so an unlabelled break is still caught. Each pull request
+# answers only for its own changes: comparing against the latest release tag
+# instead would fail every later pull request, and the release one, on a break
+# already accepted.
+#
+# It lives apart from ci.yml so that adding or removing the label re-runs this
+# check alone, not the whole of CI.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, labeled, unlabeled]
+  workflow_dispatch:
+    inputs:
+      baseline:
+        description: "Tag or commit to compare against (default: the latest release tag)"
+        required: false
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: semver-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-semver-checks:
+    name: Rust SemVer (cargo-semver-checks)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0  # full history + tags so the baseline resolves
+
+      - name: Determine baseline
+        id: baseline
+        shell: bash
+        # A pull request is checked out as its merge into the base branch, so
+        # the base commit is exactly what this change adds to.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          INPUT_BASELINE: ${{ inputs.baseline }}
+        run: |
+          if [ -n "$BASE_SHA" ]; then
+            rev="$BASE_SHA"
+          elif [ -n "$INPUT_BASELINE" ]; then
+            rev="$INPUT_BASELINE"
+          else
+            rev="$(git describe --tags --abbrev=0 --match 'v[0-9]*')"
+          fi
+          echo "rev=$rev" >> "$GITHUB_OUTPUT"
+          echo "baseline: $rev" >&2
+
+      - name: Determine release type from the version bump
+        id: release_type
+        shell: bash
+        # `major` once Cargo.toml declares a new major version against the
+        # baseline, `minor` otherwise -- a declared major bump still lets a
+        # break through without the label.
+        env:
+          BASE_REV: ${{ steps.baseline.outputs.rev }}
+        run: |
+          version() { grep -m1 '^version = ' | cut -d'"' -f2; }
+          declared="$(version < rust/Cargo.toml)"
+          baseline="$(git show "$BASE_REV:rust/Cargo.toml" | version)"
+          if [ "${declared%%.*}" != "${baseline%%.*}" ]; then
+            echo "type=major" >> "$GITHUB_OUTPUT"
+          else
+            echo "type=minor" >> "$GITHUB_OUTPUT"
+          fi
+          echo "declared=$declared baseline=$baseline" >&2
+
+      - name: Run cargo-semver-checks
+        id: check
+        # With the label, a break is reported but does not fail the job.
+        continue-on-error: ${{ contains(github.event.pull_request.labels.*.name, 'semver-break-accepted') }}
+        uses: obi1kenobi/cargo-semver-checks-action@v2
+        with:
+          manifest-path: rust/Cargo.toml
+          baseline-rev: ${{ steps.baseline.outputs.rev }}
+          release-type: ${{ steps.release_type.outputs.type }}
+
+      - name: Record an accepted break
+        if: steps.check.outcome == 'failure'
+        shell: bash
+        run: |
+          {
+            echo "### Public-API break accepted"
+            echo
+            echo "cargo-semver-checks found a breaking change; this pull request carries"
+            echo "the \`semver-break-accepted\` label, so it does not fail. Record the break"
+            echo "in CHANGELOG.md. The report is in the step above."
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::warning title=Public-API break accepted::cargo-semver-checks found a break; accepted by the semver-break-accepted label"
