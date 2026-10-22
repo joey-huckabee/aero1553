@@ -511,6 +511,31 @@ impl<W: Write> CsvWriter<W> {
         Ok(())
     }
 
+    /// Write every message of `messages`, rendering rows on `threads` worker
+    /// threads (L2-WRT-027; `0` renders on this thread). The output is
+    /// byte-identical to calling [`CsvWriter::write_message`] for each message
+    /// in turn, and so is the failure behaviour: the first error -- from the
+    /// stream, from rendering, or from the destination -- is returned after
+    /// every row before it has been written, and nothing after it is pulled.
+    ///
+    /// This is how a caller with its own destination (the Python binding's
+    /// text-stream output) reaches the same threaded renderer as
+    /// [`write_csv`] does for a path.
+    ///
+    /// # Errors
+    ///
+    /// The first error from `messages`, a [`MieError::CalendarUnavailable`]
+    /// from rendering, or a [`MieError::WriterError`] from the destination.
+    pub fn write_messages<I>(&mut self, messages: I, threads: usize) -> MieResult<()>
+    where
+        I: IntoIterator<Item = MieResult<MieMessage>>,
+    {
+        let render = self.time_render;
+        render_all(messages, render, false, threads, |block| {
+            self.write_rendered(&block.main, block.main_rows)
+        })
+    }
+
     /// Write `rows` rows already rendered by [`render_message`] as one block.
     fn write_rendered(&mut self, bytes: &[u8], rows: u64) -> MieResult<()> {
         self.out
@@ -1521,6 +1546,45 @@ mod tests {
         m.type_word.raw |= 1 << 14;
         m.error_word = None;
         m
+    }
+
+    /// `write_messages` -- the threaded path a caller with its own destination
+    /// uses -- writes exactly what a `write_message` loop does, at any thread
+    /// count, on a stream several rendering batches long with errored rows
+    /// mixed in.
+    /// Requirements: L2-WRT-027
+    #[test]
+    fn write_messages_matches_a_write_message_loop() {
+        let msgs: Vec<MieMessage> = (0..10_000u32)
+            .map(|i| {
+                let mut m = if i % 9 == 4 {
+                    error_msg()
+                } else {
+                    sample_msg()
+                };
+                if let Timestamp::Irig(t) = &mut m.timestamp {
+                    t.microsecond = i % 1_000_000;
+                }
+                m.delta = Some(f64::from(i % 1000) / 1_000_000.0);
+                m
+            })
+            .collect();
+
+        let mut expected = Vec::new();
+        let mut serial = CsvWriter::new(&mut expected, "memory").unwrap();
+        for m in &msgs {
+            serial.write_message(m).unwrap();
+        }
+        assert_eq!(serial.finish().unwrap(), 10_000);
+
+        for threads in [0, 3] {
+            let mut got = Vec::new();
+            let mut w = CsvWriter::new(&mut got, "memory").unwrap();
+            w.write_messages(msgs.iter().cloned().map(Ok), threads)
+                .unwrap();
+            assert_eq!(w.finish().unwrap(), 10_000, "threads={threads}");
+            assert!(got == expected, "threads={threads}: output differs");
+        }
     }
 
     /// Requirements: L2-WRT-001

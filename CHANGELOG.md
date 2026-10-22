@@ -19,7 +19,20 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **`CsvWriter::write_messages(messages, threads)`** writes a whole message
+  stream through the threaded renderer (L2-WRT-027) for a caller with a
+  destination of its own; the output and failure behaviour are those of a
+  `write_message` loop.
+
 ### Changed
+
+- **Python `write_csv` to a file object renders rows on worker threads, as
+  output to a path already did** -- 1.25x-1.37x faster on a 256 MiB
+  recording (WSL, interleaved against 5.2.0's stream path, output
+  identical; median 9.7 s to 7.1 s, best 7.3 s to 5.8 s). The stream sees
+  exactly the bytes it did, and only the calling thread calls into Python.
 
 - **Decoding is 1.5x-1.8x faster: canonical row ordering no longer
   allocates per timestamp** (L2-WRT-021). Every timestamp, even one holding
