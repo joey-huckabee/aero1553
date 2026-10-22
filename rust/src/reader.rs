@@ -25,7 +25,7 @@ use crate::delta::{DeltaOutcome, DeltaTracker};
 use crate::error::{MieError, MieResult};
 use crate::models::{
     CommandWord, DataWords, DeltaSeconds, ERROR_SPURIOUS_CONTINUATION, ERROR_SPURIOUS_STANDALONE,
-    MessageFormat, MessageType, MieMessage, Timestamp, TimestampFormat, TypeWord,
+    MessageFormat, MessageType, MieMessage, OptionalWords, Timestamp, TimestampFormat, TypeWord,
     ddc_error_description_or_unknown, is_known_ddc_error_code, timestamp_word_count,
 };
 use crate::source::{DEFAULT_CHUNK, Window, open_input};
@@ -1199,10 +1199,8 @@ impl RecordIter<'_> {
             message_format: MessageFormat::SpuriousData,
             command_word: None,
             command_word_2: None,
-            status_word: None,
-            status_word_2: None,
+            optional_words: OptionalWords::new(None, None, Some(error_code)),
             data_words,
-            error_word: Some(error_code),
             delta: DeltaSeconds::NONE,
             file_offset: self.offset as u64,
             mux: self.mux.clone(),
@@ -1307,10 +1305,8 @@ impl RecordIter<'_> {
             message_format: msg_fmt,
             command_word: Some(cmd),
             command_word_2: cmd2,
-            status_word: status,
-            status_word_2: status2,
+            optional_words: OptionalWords::new(status, status2, None),
             data_words,
-            error_word: None,
             delta: delta.into(),
             file_offset: self.offset as u64,
             mux: self.mux.clone(),
@@ -1445,10 +1441,8 @@ impl RecordIter<'_> {
             message_format: msg_fmt,
             command_word: Some(cmd),
             command_word_2: None,
-            status_word: None,
-            status_word_2: None,
+            optional_words: OptionalWords::new(None, None, Some(error_code)),
             data_words,
-            error_word: Some(error_code),
             delta: delta.into(),
             file_offset: self.offset as u64,
             mux: self.mux.clone(),
@@ -1676,7 +1670,7 @@ mod tests {
         assert_eq!(m.command_word.unwrap().subaddress, 11);
         assert_eq!(m.message_format, MessageFormat::Receive);
         assert_eq!(m.data_words.len(), 30);
-        assert_eq!(m.status_word, Some(0x7800));
+        assert_eq!(m.status_word(), Some(0x7800));
         assert_eq!(m.file_offset, 0);
     }
 
@@ -2129,7 +2123,7 @@ mod tests {
             .collect::<Result<_, _>>()
             .expect("lenient mode must not abort on an unknown error code");
         assert_eq!(msgs.len(), 2);
-        assert_eq!(msgs[0].error_word, Some(0x0199));
+        assert_eq!(msgs[0].error_word(), Some(0x0199));
     }
 
     /// An errored record with exactly `word_count` words, between two clean
@@ -2223,7 +2217,8 @@ mod tests {
                     .expect("lenient mode must not abort");
             assert_eq!(msgs.len(), 2, "{fmt:?}: both clean records, nothing else");
             assert!(
-                msgs.iter().all(|m| !m.is_error() && m.error_word.is_none()),
+                msgs.iter()
+                    .all(|m| !m.is_error() && m.error_word().is_none()),
                 "{fmt:?}: {msgs:?}"
             );
         }
@@ -2251,7 +2246,7 @@ mod tests {
             .into_iter()
             .collect::<Result<_, _>>()
             .expect("lenient mode must not abort");
-        let codes: Vec<_> = msgs.iter().map(|m| m.error_word).collect();
+        let codes: Vec<_> = msgs.iter().map(MieMessage::error_word).collect();
         assert_eq!(
             codes,
             [
@@ -2276,7 +2271,11 @@ mod tests {
                 .expect("a record with its Error Word is well formed");
             assert_eq!(msgs.len(), 3, "{fmt:?}");
             assert!(msgs[1].is_error(), "{fmt:?}");
-            assert_eq!(msgs[1].error_word, Some(ERROR_MANCHESTER_PARITY), "{fmt:?}");
+            assert_eq!(
+                msgs[1].error_word(),
+                Some(ERROR_MANCHESTER_PARITY),
+                "{fmt:?}"
+            );
             assert!(msgs[1].data_words.is_empty(), "{fmt:?}");
         }
     }

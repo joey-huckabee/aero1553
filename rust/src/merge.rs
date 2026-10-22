@@ -29,7 +29,7 @@ use std::sync::atomic::{AtomicU64, Ordering as AtomicOrdering};
 use crate::delta::DeltaTracker;
 use crate::error::{MieError, MieResult};
 use crate::log_warn;
-use crate::models::{CommandWord, DeltaScope, MieMessage, Timestamp, TypeWord};
+use crate::models::{CommandWord, DeltaScope, MieMessage, OptionalWords, Timestamp, TypeWord};
 use crate::reader::{MieFileReader, RecordIter};
 
 /// Maximum number of input files a single merge invocation may process.
@@ -267,9 +267,7 @@ struct DedupKey {
     type_word: TypeWord,
     command_word: Option<CommandWord>,
     command_word_2: Option<CommandWord>,
-    status_word: Option<u16>,
-    status_word_2: Option<u16>,
-    error_word: Option<u16>,
+    optional_words: OptionalWords,
     data_words: Vec<u16>,
 }
 
@@ -279,9 +277,7 @@ impl DedupKey {
             type_word: msg.type_word,
             command_word: msg.command_word,
             command_word_2: msg.command_word_2,
-            status_word: msg.status_word,
-            status_word_2: msg.status_word_2,
-            error_word: msg.error_word,
+            optional_words: msg.optional_words,
             data_words: msg.data_words.as_slice().to_vec(),
         }
     }
@@ -1047,10 +1043,8 @@ mod tests {
             message_format: crate::models::MessageFormat::RtToRt,
             command_word: None,
             command_word_2: None,
-            status_word: None,
-            status_word_2: None,
+            optional_words: OptionalWords::new(None, None, Some((seq & 0xFFFF) as u16)),
             data_words: crate::models::DataWords::new(),
-            error_word: Some((seq & 0xFFFF) as u16),
             delta: crate::models::DeltaSeconds::NONE,
             file_offset: 0,
             mux: None,

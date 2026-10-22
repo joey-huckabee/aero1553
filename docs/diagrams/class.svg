@@ -161,7 +161,7 @@
     </g>
     <!-- MieMessage -->
     <g id="MieMessage">
-      <rect class="box" x="470" y="130" width="260" height="350" rx="3"/>
+      <rect class="box" x="470" y="130" width="260" height="370" rx="3"/>
       <text class="name" x="600" y="148" text-anchor="middle">MieMessage</text>
       <line class="sep" x1="470" y1="158" x2="730" y2="158"/>
       <text class="mono" x="478" y="173" xml:space="preserve">
@@ -170,17 +170,18 @@
         <tspan x="478" dy="15">message_format: MessageFormat</tspan>
         <tspan x="478" dy="15">command_word: Option&lt;CommandWord&gt;</tspan>
         <tspan x="478" dy="15">command_word_2: Option&lt;CommandWord&gt;</tspan>
-        <tspan x="478" dy="15">status_word: Option&lt;u16&gt;</tspan>
-        <tspan x="478" dy="15">status_word_2: Option&lt;u16&gt;</tspan>
+        <tspan x="478" dy="15">optional_words: OptionalWords</tspan>
         <tspan x="478" dy="15">data_words: DataWords</tspan>
-        <tspan x="478" dy="15">error_word: Option&lt;u16&gt;</tspan>
-        <tspan x="478" dy="15">delta: Option&lt;f64&gt;</tspan>
+        <tspan x="478" dy="15">delta: DeltaSeconds</tspan>
         <tspan x="478" dy="15">file_offset: u64</tspan>
         <tspan x="478" dy="15">mux: Option&lt;Arc&lt;str&gt;&gt;</tspan>
       </text>
-      <line class="sep" x1="470" y1="348" x2="730" y2="348"/>
-      <text class="mono" x="478" y="363" xml:space="preserve">
-        <tspan x="478" dy="0">rt(): Option&lt;u8&gt;</tspan>
+      <line class="sep" x1="470" y1="318" x2="730" y2="318"/>
+      <text class="mono" x="478" y="333" xml:space="preserve">
+        <tspan x="478" dy="0">status_word(): Option&lt;u16&gt;</tspan>
+        <tspan x="478" dy="15">status_word_2(): Option&lt;u16&gt;</tspan>
+        <tspan x="478" dy="15">error_word(): Option&lt;u16&gt;</tspan>
+        <tspan x="478" dy="15">rt(): Option&lt;u8&gt;</tspan>
         <tspan x="478" dy="15">subaddress(): Option&lt;u8&gt;</tspan>
         <tspan x="478" dy="15">bus(): Bus</tspan>
         <tspan x="478" dy="15">msg_label(): String</tspan>
@@ -188,6 +189,17 @@
         <tspan x="478" dy="15">is_error(): bool</tspan>
         <tspan x="478" dy="15">is_spurious(): bool</tspan>
         <tspan x="478" dy="15">error_label(): &amp;str</tspan>
+      </text>
+    </g>
+    <!-- OptionalWords -->
+    <g id="OptionalWords">
+      <rect class="box" x="470" y="540" width="260" height="80" rx="3"/>
+      <text class="stereo" x="600" y="556" text-anchor="middle">&lt;&lt;three Option&lt;u16&gt; in 8 bytes&gt;&gt;</text>
+      <text class="name" x="600" y="572" text-anchor="middle">OptionalWords</text>
+      <line class="sep" x1="470" y1="582" x2="730" y2="582"/>
+      <text class="mono" x="478" y="597" xml:space="preserve">
+        <tspan x="478" dy="0">words: [u16; 3]</tspan>
+        <tspan x="478" dy="15">present: u8</tspan>
       </text>
     </g>
     <!-- TypeWord -->
@@ -321,6 +333,8 @@
     <text class="edgelabel" x="775" y="324" text-anchor="middle">0..2</text>
     <!-- MieMessage owns DataWords -->
     <path id="r-msg-data" class="edge" d="M730,470 L760,470 L760,530 L790,530" marker-start="url(#compose)"/>
+    <!-- MieMessage owns OptionalWords -->
+    <path id="r-msg-optwords" class="edge" d="M600,500 L600,540" marker-start="url(#compose)"/>
     <!-- MieMessage owns Timestamp (routed through the gap under TypeWord) -->
     <path id="r-msg-ts" class="edge" d="M730,270 L990,270 L990,190 L1010,190" marker-start="url(#compose)"/>
     <text class="edgelabel" x="950" y="264" text-anchor="middle">timestamp</text>

@@ -788,7 +788,7 @@ fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
     }
 
     // STAT
-    if let Some(s) = msg.status_word {
+    if let Some(s) = msg.status_word() {
         push_hex4(row, s);
     }
     row.push(b',');
@@ -828,7 +828,7 @@ fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
     row.extend_from_slice(msg.error_label().as_bytes());
     row.push(b',');
 
-    if let Some(c) = msg.error_word {
+    if let Some(c) = msg.error_word() {
         push_hex4(row, c);
     }
     row.push(b'\n');
@@ -1529,10 +1529,8 @@ mod tests {
                 raw: 0x797E,
             }),
             command_word_2: None,
-            status_word: Some(0x7800),
-            status_word_2: None,
+            optional_words: OptionalWords::new(Some(0x7800), None, None),
             data_words: DataWords::from_slice(&[0x0400, 0x0000, 0x0000, 0x002F]),
-            error_word: None,
             delta: DeltaSeconds::new(0.123456),
             file_offset: 0,
             mux: None,
@@ -1544,7 +1542,7 @@ mod tests {
         let mut m = sample_msg();
         m.type_word.error = true;
         m.type_word.raw |= 1 << 14;
-        m.error_word = None;
+        m.optional_words.set_error_word(None);
         m
     }
 

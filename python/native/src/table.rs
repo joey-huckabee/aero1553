@@ -432,9 +432,9 @@ fn put(
         F::MsgLabel => d.set_item(key, m.msg_label()),
         F::CommandWord => d.set_item(key, raw(m.command_word)),
         F::CommandWord2 => d.set_item(key, raw(m.command_word_2)),
-        F::StatusWord => d.set_item(key, m.status_word),
-        F::StatusWord2 => d.set_item(key, m.status_word_2),
-        F::ErrorWord => d.set_item(key, m.error_word),
+        F::StatusWord => d.set_item(key, m.status_word()),
+        F::StatusWord2 => d.set_item(key, m.status_word_2()),
+        F::ErrorWord => d.set_item(key, m.error_word()),
         F::DataWordCount => d.set_item(key, m.data_words.len()),
         F::DataWords => d.set_item(key, PyTuple::new(py, m.data_words.as_slice())?),
         F::Delta => d.set_item(key, m.delta.get()),
@@ -535,9 +535,11 @@ impl Column {
             (F::CommandWord2, Self::I32(v)) => {
                 v.extend(batch.iter().map(|m| word(raw(m.command_word_2))))
             }
-            (F::StatusWord, Self::I32(v)) => v.extend(batch.iter().map(|m| word(m.status_word))),
-            (F::StatusWord2, Self::I32(v)) => v.extend(batch.iter().map(|m| word(m.status_word_2))),
-            (F::ErrorWord, Self::I32(v)) => v.extend(batch.iter().map(|m| word(m.error_word))),
+            (F::StatusWord, Self::I32(v)) => v.extend(batch.iter().map(|m| word(m.status_word()))),
+            (F::StatusWord2, Self::I32(v)) => {
+                v.extend(batch.iter().map(|m| word(m.status_word_2())))
+            }
+            (F::ErrorWord, Self::I32(v)) => v.extend(batch.iter().map(|m| word(m.error_word()))),
             (F::DataWordCount, Self::U8(v)) => {
                 v.extend(batch.iter().map(|m| m.data_words.len() as u8))
             }

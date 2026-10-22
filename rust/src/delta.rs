@@ -192,7 +192,7 @@ impl DeltaTracker {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{DeltaSeconds, IrigTimestamp, StandardTimestamp};
+    use crate::models::{DeltaSeconds, IrigTimestamp, OptionalWords, StandardTimestamp};
 
     fn cmd(rt: u8, subaddress: u8, transmit: bool) -> CommandWord {
         CommandWord {
@@ -477,10 +477,8 @@ mod tests {
                         message_format: MessageFormat::Receive,
                         command_word: Some(command),
                         command_word_2: None,
-                        status_word: None,
-                        status_word_2: None,
+                        optional_words: OptionalWords::NONE,
                         data_words: DataWords::new(),
-                        error_word: None,
                         delta: DeltaSeconds::NONE,
                         file_offset: 0,
                         mux: None,
