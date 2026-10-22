@@ -19,6 +19,20 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Fixed
+
+- **A recording that opens with one message polled repeatedly is no longer
+  rejected as padding** (L2-SYN-018). The homogeneous-payload check compared
+  the first four records with their timestamps excluded, so four polls of
+  one message with an unchanging payload -- an ordinary periodic status
+  transaction -- were rejected with exit 2 ("most likely a single-byte
+  pad") although their timestamps advance. The check now compares the
+  timestamps too: the fill it exists for (`0x20`-fill) repeats one byte
+  value, timestamp bytes included, and is still rejected. The message now
+  reads "byte-identical, timestamps included" where it said
+  "byte-identical in non-timestamp positions". New conformance case
+  `periodic-identical-payload`.
+
 ## [5.2.0] — 2026-10-21
 
 ### Added

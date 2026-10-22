@@ -269,8 +269,8 @@ auto-generated [`TRACE-MATRIX.md`](TRACE-MATRIX.md), are the source of truth.)
 #### L2-SYN-018
 
 **Parent**: L1-SYN-001
-**Statement**: Header detection SHALL apply additional defenses against homogeneous-payload inputs. When the first N candidate records (with N >= 4) share identical bytes in payload positions (i.e., excluding positions where the timestamp word naturally varies), the implementation SHALL reject the input with a distinct error class.
-**Rationale**: A pathological file padded with a single byte value (such as 0x20-fill) parses with a plausible Type Word (`0x20 0x20` is a valid SPURIOUS_DATA Type Word) and passes the two-record look-ahead. The homogeneity check defends against this class of input where every other check would admit it.
+**Statement**: Header detection SHALL apply additional defenses against homogeneous-payload inputs. When the first N candidate records (with N >= 4) are byte-identical, **timestamps included**, the implementation SHALL reject the input with a distinct error class. Records whose timestamps differ SHALL NOT be rejected by this check, however alike their other bytes are.
+**Rationale**: A pathological file padded with a single byte value (such as 0x20-fill) parses with a plausible Type Word (`0x20 0x20` is a valid SPURIOUS_DATA Type Word) and passes the two-record look-ahead. The homogeneity check defends against this class of input where every other check would admit it. The timestamp is part of the comparison because it is what tells a pad from a recording: a fill repeats one byte value, so its "timestamps" repeat too, while a 1553 bus carries one transaction at a time, so real timestamps advance. Through 5.2.0 the timestamp was excluded, and four polls of one message with an unchanging payload -- an ordinary periodic status transaction -- were rejected as padding.
 **Verification Method**: Test (T)
 
 #### L2-SYN-019

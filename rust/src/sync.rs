@@ -349,12 +349,18 @@ pub const HOMOGENEITY_SAMPLE_RECORDS: usize = 4;
 ///
 /// After header detection finds a candidate record at `offset`, compare
 /// the next [`HOMOGENEITY_SAMPLE_RECORDS`] consecutive `record_bytes`-
-/// sized chunks. If they are byte-identical in every position except
-/// the timestamp triple (bytes 2..8 of each record), the input is
-/// pathological — most likely a single-byte pad (e.g. 0x20-fill, where
-/// `0x20 0x20` parses as a valid `SPURIOUS_DATA` Type Word and look-ahead
-/// validation alone admits the stream). Returns `true` iff the input
-/// SHALL be rejected.
+/// sized chunks. If they are byte-identical **timestamps included**, the
+/// input is pathological — most likely a single-byte pad (e.g. 0x20-fill,
+/// where `0x20 0x20` parses as a valid `SPURIOUS_DATA` Type Word and
+/// look-ahead validation alone admits the stream). Returns `true` iff the
+/// input SHALL be rejected.
+///
+/// The timestamp is compared too because it is what separates a pad from
+/// a recording. A fill repeats one byte value, so its "timestamps" repeat
+/// with it; a real bus carries one transaction at a time, so its
+/// timestamps advance even when one message with an unchanging payload is
+/// polled over and over. Comparing payload alone rejected exactly that
+/// recording.
 #[must_use]
 pub fn is_homogeneous_payload(data: &[u8], offset: usize, record_bytes: usize) -> bool {
     let total = HOMOGENEITY_SAMPLE_RECORDS.saturating_mul(record_bytes);
@@ -362,22 +368,10 @@ pub fn is_homogeneous_payload(data: &[u8], offset: usize, record_bytes: usize) -
         return false;
     }
     let first = &data[offset..offset + record_bytes];
-    for i in 1..HOMOGENEITY_SAMPLE_RECORDS {
+    (1..HOMOGENEITY_SAMPLE_RECORDS).all(|i| {
         let rec_start = offset + i * record_bytes;
-        let other = &data[rec_start..rec_start + record_bytes];
-        // Compare positions [0..2) (Type Word) and [8..record_bytes)
-        // (Cmd + payload). Skip bytes 2..8 (IRIG timestamp triple).
-        // For Standard-format records (4-byte timestamp), this skip
-        // is conservative — it ignores 2 extra bytes of Cmd, which
-        // only weakens the rejection slightly.
-        if first[..2] != other[..2] {
-            return false;
-        }
-        if record_bytes > 8 && first[8..] != other[8..] {
-            return false;
-        }
-    }
-    true
+        data[rec_start..rec_start + record_bytes] == *first
+    })
 }
 
 /// Diagnostic for L2-RDR-004: locate the first structurally-valid Type

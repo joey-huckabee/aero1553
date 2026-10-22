@@ -2309,6 +2309,39 @@ mod tests {
         assert!(it.next().is_none());
     }
 
+    /// L2-SYN-018: one message polled four times with an unchanging payload
+    /// is a recording, not padding -- its timestamps advance. Through 5.2.0
+    /// the check ignored the timestamp and rejected this file outright. The
+    /// same four records with one shared timestamp are still rejected.
+    /// Requirements: L2-SYN-018
+    #[test]
+    fn identical_payloads_with_advancing_timestamps_are_a_recording() {
+        let polls = |step_us: u16| {
+            let mut data = Vec::new();
+            for i in 0..4u16 {
+                let mut r = rt15_sa11_rcv();
+                let lower = u16::from_le_bytes([r[6], r[7]]).wrapping_add(i * step_us);
+                r[6..8].copy_from_slice(&lower.to_le_bytes());
+                data.extend_from_slice(&r);
+            }
+            data
+        };
+
+        let f = write_temp(&polls(1000));
+        let reader = MieFileReader::new(f.path()).unwrap();
+        let msgs: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
+        assert_eq!(msgs.len(), 4);
+        assert_eq!(msgs[0].data_words, msgs[3].data_words);
+        assert_ne!(msgs[0].timestamp, msgs[3].timestamp);
+
+        let f = write_temp(&polls(0));
+        let reader = MieFileReader::new(f.path()).unwrap();
+        match reader.iter().next() {
+            Some(Err(e)) => assert_eq!(e.kind(), crate::error::MieErrorKind::HomogeneousPayload),
+            other => panic!("expected HomogeneousPayload, got {other:?}"),
+        }
+    }
+
     /// L2-SYN-018: the defense SHALL NOT false-positive on legitimate
     /// recordings whose payload bytes vary between records. The
     /// canonical RT15-SA11 fixture replicated 4 times has identical
