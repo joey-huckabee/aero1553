@@ -504,6 +504,11 @@ print({key: row[key] for key in ("TIME_STAMP", "RT", "MSG", "WD01", "STAT", "BUS
 
 ### Reading the CSV back
 
+If the CSV is only a way into an analysis, skip it: [`columns()`](#8-tables-choosing-a-route)
+builds the same table in memory without writing text and parsing it back, and
+is several times faster. Read the CSV back when the file itself is what you
+want to check.
+
 Every CSV column is text, and several are legitimately empty, so read them as
 strings:
 
@@ -584,9 +589,10 @@ different amounts:
 
 | Route | Use it for | Speed (460,575 records, Linux) |
 |---|---|---|
+| `aero1553.columns(stream, fields=[...])`, numeric fields only | the columns an analysis actually uses | about 0.2 s to a DataFrame |
 | `aero1553.columns(stream)` | NumPy, pandas, any analysis of a whole recording | about 0.6 s to a DataFrame |
-| `message.to_dict()` | a few records, dataclasses, JSON | about 3.8 s to a DataFrame |
-| write CSV, then `pandas.read_csv` | when you want the CSV file anyway | about 3.0 s |
+| `message.to_dict()` | a few records, dataclasses, JSON | about 3.6 s to a DataFrame |
+| write CSV, then `pandas.read_csv` | when you want the CSV file anyway | about 1.8 s |
 
 `columns()` builds its table in Rust and hands NumPy and pandas each column
 without copying, so it creates no Python object per record. Per-record routes
@@ -1241,18 +1247,18 @@ level (a subprocess, or pytest's `capfd`) rather than by swapping `sys.stdout`.
 
 The repository's performance suite ([perf/README.md](../perf/README.md)) times
 the library against the Rust crate it wraps on every pull request. On a
-460,575-record recording (21 MB), on Linux:
+460,575-record recording (21 MB), on Linux, measured on `main` after 5.2.0 (October 2026):
 
 | Task | Time | Records/s |
 |---|---|---|
-| iterate every record in Python | 0.16 s | 2.8 million |
-| decode to CSV (`write_csv`) | 1.3 s | 350,000 -- the same as the Rust CLI |
-| `columns()` to NumPy | 0.48 s | 970,000 |
-| `columns()` to pandas, numeric fields only | 0.15 s | 3.1 million |
-| `columns()` to pandas, all fields | 0.56 s | 820,000 |
-| `to_dict()` per record, then pandas | 3.8 s | 120,000 |
-| CSV, then `pandas.read_csv` | 3.0 s | 156,000 |
-| `import pandas` (once per process) | 0.3 s | |
+| iterate every record in Python | 0.16 s | 2.9 million |
+| decode to CSV (`write_csv`) | 0.19 s | 2.4 million -- within 5% of the Rust library |
+| `columns()` to NumPy | 0.51 s | 900,000 |
+| `columns()` to pandas, numeric fields only | 0.18 s | 2.6 million |
+| `columns()` to pandas, all fields | 0.61 s | 760,000 |
+| `to_dict()` per record, then pandas | 3.6 s | 127,000 |
+| CSV, then `pandas.read_csv` | 1.8 s | 255,000 -- almost all of it `read_csv` |
+| `import pandas` (once per process) | 0.35 s | |
 
 What that means in practice:
 
