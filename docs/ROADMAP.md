@@ -26,16 +26,50 @@ checklist in `docs/MAINTAINER-GUIDE.md` section 11.
 
 | Version | Feature |
 |---------|---------|
-| 6.0 | Data word decoders, additional per-message-type CSVs. |
-| 7.0 | Apache Parquet output. |
+| 5.x (minor) | Data-word decoder: engineering values from a site-supplied message definition, plus additional per-message-type CSVs. See [Data-word decoder](#data-word-decoder-next-feature). |
+| Major, provisional | Apache Parquet output. |
+
+The data-word decoder was listed as 6.0 until 5.2.0. It is additive and opt-in
+-- a decode that does not ask for it produces exactly today's CSV -- so under
+SemVer it is a minor release, not a major one. Parquet keeps a provisional major
+slot until its design is settled: a Parquet writer without a dependency is a
+large piece of work, and taking one would end the crate's zero-dependency
+property (`L3-RS-002`), which is a decision in its own right.
 
 3.0 was taken by the timestamp-rendering split (`--input-time-format` /
 `--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), 4.0 by the rename to
 Aero1553 and the Python package becoming a binding over the Rust crate, and 5.0
 by removing the C++ implementation and replacing the `memmap2` reader with
-streamed positional reads (see `CHANGELOG.md`); each renumbered the two rows above. One breaking topic per major: the migration note for a flag rename
-and the one for a new output format have nothing to say to each other, and
-bundling them would have made both harder to read.
+streamed positional reads (see `CHANGELOG.md`). One breaking topic per major:
+the migration note for a flag rename and the one for a new output format have
+nothing to say to each other, and bundling them would have made both harder to
+read.
+
+## Data-word decoder (next feature)
+
+Today the CSV carries each message's data words as raw hex (`WD01`..`WD32`). The
+decoder would turn them into engineering values -- `airspeed_kts = 245.3`,
+`weight_on_wheels = true` -- using a message definition (an ICD) supplied by the
+site: for each RT / subaddress / direction, which words and bits hold which
+signal, with scaling, signedness, units and multi-word values.
+
+**Open questions, to settle with the maintainer before any code:**
+
+- **Definition format.** What do sites have today -- a spreadsheet, XML, a
+  vendor format? The loader would most naturally extend the hand-rolled TOML
+  schema, but a converter from what sites already maintain may matter more than
+  the native format.
+- **Output shape.** Extra columns appended after column 46 (the vendor block
+  must not move, `L1-OUT-001`), or a separate engineering-units CSV per run or
+  per message type (the "additional per-message-type CSVs" in the table above).
+- **Ownership.** Who writes and maintains the definitions, and how a definition
+  that disagrees with a recording (wrong word count, unknown RT/SA) is reported:
+  a WARN per message type, an error, or an empty cell.
+- **Python.** Decoded values should reach `MieMessage` / `to_dict()` /
+  `columns()` as well as the CSV.
+
+It must keep the existing guarantees: streaming in constant memory, byte-identical
+output for a decode that does not enable it, and no new dependency.
 
 ## Merge follow-ups
 
@@ -214,53 +248,91 @@ are per-rule and per-file by design. `docs/CONFIG-REFERENCE.md`'s "Trust boundar
 section carries the operator-facing statement of the same decision — keep the two
 in step.
 
-## Phase 3: release artifacts (needs direction)
-
-Carried over from the retired open-decisions register. Nothing here is built.
+## Release artifacts and process (partly done)
 
 `CLAUDE.md` anticipates impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`)
 while every release so far has been a joint cut from one tag, and
 `scripts/repo-hygiene.sh` fails the build when the implementations declare
 different versions. No impl-prefixed tag is needed unless they later diverge.
-No release so far attaches prebuilt binaries for any implementation.
 
-With the C++ implementation removed in 5.0.0, the binary that serves SLES 12 SP5
-is the Rust `aero1553` CLI. The intended artifacts:
+**Done.** The Linux x86-64 binary that serves SLES 12 SP5 is built on every push
+by the `rust-glibc-2-22` CI job with
+`cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22`, checked to
+reference no symbol newer than `GLIBC_2.22`, and run against the whole
+conformance suite (`L3-RS-018`). Releases 5.0.0 to 5.2.0 attach it as
+`aero1553-x86_64-linux-glibc2.22`, with its SHA-256 in the release notes.
 
-- **Linux x86-64**, built with
-  `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22`, so the
-  binary links against glibc 2.22 symbols at most -- the glibc SLES 12 SP5
-  ships -- and runs there and on any newer glibc.
-- **Windows x64**, built with the MSVC toolchain
-  (`x86_64-pc-windows-msvc`).
+**Still to do:**
 
-**Still needs deciding:**
+- **Test on a real SLES 12 SP5 host.** The glibc-2.22 link target proves which
+  symbols the binary asks for, not that it runs on the real host; no release
+  has been run on one yet. Decide who does that check, on what machine, and how
+  it is recorded for each release.
+- **Automate the release.** Attaching the binary is manual today: download the
+  artifact from the tag's CI run, check `--version` and the glibc floor, upload
+  it, and add its SHA-256 to the notes. A workflow triggered by a `v*` tag could
+  do all of it, and could create the release from the `CHANGELOG.md` section.
+- **Windows x64 binary**, built with the MSVC toolchain
+  (`x86_64-pc-windows-msvc`). Needs deciding: is a static CRT
+  (`-C target-feature=+crt-static`) wanted, so the binary does not depend on the
+  VC++ redistributable being present?
+- **Repository setting: delete head branches on merge.** Off today, so merged
+  branches stay on the remote until deleted by hand
+  (`gh api -X PATCH repos/joey-huckabee/aero1553 -f delete_branch_on_merge=true`).
 
-- Windows: is a static CRT (`-C target-feature=+crt-static`) wanted, so the
-  binary does not depend on the VC++ redistributable being present?
-- Real SLES 12 SP5 deployment verification is **manual and out of CI**: a
-  glibc-2.22 link target proves which symbols the binary asks for, not that it
-  runs on the real host. Who does that check, on what machine, and how is it
-  recorded for each release?
+## Performance
 
-## Performance refinements (deferred)
+5.0.0 to 5.2.0 made the reader stream, the row formatter about 3x faster and row
+rendering parallel (see `CHANGELOG.md`). Rendering is no longer the bottleneck:
+from two rendering threads on, a decode waits on the **calling thread** -- read,
+validate, decode, filter, order, merge, and write -- which is why eight threads
+measured no faster than four. Candidates, in the order they are expected to pay:
 
-Surfaced by a source review and **verified real but deliberately deferred** —
-these are per-record heap churn, not unbounded growth. Both implementations
-already stream in constant memory (the design guarantee that matters), so these
-would trade code churn in the hottest paths for a marginal, unprofiled gain.
-Recorded here so the option isn't lost; revisit only if profiling shows
-per-record allocation is a real bottleneck.
+- **Profile the calling thread, then fix the largest cost.** Measure before
+  choosing. Suspects: record validation with its look-ahead, the canonical-order
+  stage's buffer, the copy of each record into a rendering batch, and the merge
+  heap. Any change must keep the output byte-identical and the N-record
+  look-ahead (`L2-SYN-026`).
+- **Steadier performance gates.** `perf/gates.json` compares best-of-5 ratios on
+  the 21 MB golden recording (about 0.2 s a case). With rendering threads on a
+  shared CI runner that is noisy: two gates each failed once by a hair on the
+  5.2.0 change and passed on re-run. More runs per case, a larger input, or a
+  gate on the median of several ratios would keep real regressions visible
+  without random failures. Record the runner's core count in the report too:
+  the default thread count depends on it.
+- **A large-file benchmark in CI.** The 1 GiB / 4 GiB synthetic recordings and
+  the 16-file merge that justified 5.0.0 to 5.2.0 were run by hand (generator:
+  `rust/examples/synth_large.rs` on the unmerged `perf/io-backends` branch). A
+  scheduled job on a generated file would catch a regression the 21 MB golden
+  file is too small to show.
+- **PGO and fat LTO for the release binaries.** Typically 5-15% with no source
+  change; the work is in CI, including the glibc 2.22 zigbuild job. Best done
+  after the calling-thread work, since PGO tunes whatever the code is.
+- **Per-record `MUX` handle.** Every record holds a clone of one `Arc<str>` per
+  input file. 5.2.0 stopped worker threads from dropping records (which moved
+  the reference count between cores on every record); not cloning per record
+  at all -- the writer looking the value up once per input -- would remove the
+  remaining atomic increment and decrement.
+- **Rust per-row allocations in the merge.** The de-duplication key and any
+  remaining per-row `String` building on the merge path. Verify against the
+  current code first: the 5.1.0 formatter removed the writer's per-row
+  `format!` calls, and the `DELTA` key is already a packed integer
+  (`delta.rs`).
+- **Sequential-read hints** (`posix_fadvise(SEQUENTIAL)` on Linux). Probably
+  small -- cold-cache reads already matched the memory map -- and it needs a few
+  lines of `unsafe` FFI in a crate that has none. Recorded, not recommended.
 
-- **Rust per-row allocations.** The writer/merge path allocates a `String` DELTA
-  key and a `Vec<u16>` dedup key, and formats `format!`/`msg_label()` strings per
-  row. Candidate: borrow or intern the keys and reuse scratch buffers so a decode
-  makes O(1) allocations rather than O(rows).
-- **Python double-build on the error path.** The reader constructs a `MieMessage`
-  twice for an errored record. Candidate: build it once and reuse.
+None changes CSV output, so all are guarded by the byte-exact conformance
+oracle.
 
-Neither changes CSV output, so both are guarded by the existing byte-exact
-conformance oracle if attempted.
+## Input from stdin (not started)
+
+`aero1553 decode -` reading the recording from standard input would let a
+decode run straight from a pipe -- an SSH stream, a decompressor, a capture
+tool -- without a temporary file. The reader would need a forward-only mode,
+since it reads at file offsets today. Needs a design decision on what `dump`,
+the multi-file merge (probably refused) and the input/output collision check
+(`L2-WRT-014`) do with a stdin input.
 
 ## Config ergonomics (deferred)
 
@@ -375,6 +447,17 @@ error messages) is written as it comes.
   UTF-8 and `WriteConsoleW` for Windows consoles; Rust's standard library
   already writes to a console that way, but Windows pipes and non-UTF-8 server
   locales would still garble.
+
+## Housekeeping
+
+- **The `perf/io-backends` branch (local, unmerged).** It holds the three-backend
+  reader experiment behind 5.0.0's decision to stream (results in the 5.0.0
+  release notes), the large-file generator `rust/examples/synth_large.rs` and the
+  driver `perf/io_backends.py`. Decide whether to keep the generator (see the
+  large-file benchmark above) and delete the branch.
+- **Keep this file current.** Remove an entry when it ships -- the shipped
+  record lives in `CHANGELOG.md` and the requirements -- and add new candidates
+  here so they are not lost.
 
 ## Shared Commitments
 
