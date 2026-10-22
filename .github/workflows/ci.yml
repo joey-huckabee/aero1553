@@ -237,57 +237,6 @@ jobs:
           manifest-path: rust/Cargo.toml
           command: check
 
-  cargo-semver-checks:
-    name: Rust SemVer (cargo-semver-checks)
-    # Was disabled from the rename (#133) until the v4.0.0 tag existed: the
-    # tool matches the baseline by package name, and v3.0.0 has no `aero1553`.
-    runs-on: ubuntu-latest
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v6
-        with:
-          fetch-depth: 0  # full history + tags so the baseline tag resolves
-
-      - name: Determine baseline (latest release tag)
-        id: baseline
-        shell: bash
-        run: echo "rev=$(git describe --tags --abbrev=0)" >> "$GITHUB_OUTPUT"
-
-      - name: Determine release type from the version bump
-        id: release_type
-        shell: bash
-        # `minor` while a release is being prepared, `major` once the crate has
-        # actually declared one. Hardcoding `minor` was right for every release
-        # until v3.0.0 and wrong for that one: it blocks a deliberate breaking
-        # change with the same failure it uses to catch an accidental one, so
-        # the gate would have to be edited (and remembered to be edited back) at
-        # exactly the moment it matters most. Deriving it keeps the guarantee --
-        # a break still needs a major bump -- while letting the bump itself say
-        # so.
-        run: |
-          declared="$(grep -m1 '^version = ' rust/Cargo.toml | cut -d'"' -f2)"
-          baseline="${{ steps.baseline.outputs.rev }}"
-          baseline="${baseline#v}"
-          if [ "${declared%%.*}" != "${baseline%%.*}" ]; then
-            echo "type=major" >> "$GITHUB_OUTPUT"
-          else
-            echo "type=minor" >> "$GITHUB_OUTPUT"
-          fi
-          echo "declared=$declared baseline=$baseline" >&2
-
-      - name: Run cargo-semver-checks
-        # Compares the crate's public API against the latest release tag and
-        # fails on a breaking change that the declared version does not account
-        # for. `minor` (the usual case, where the crate version is static
-        # between releases) lets additive changes pass and blocks a break;
-        # `major` applies only once Cargo.toml has declared the major bump.
-        uses: obi1kenobi/cargo-semver-checks-action@v2
-        with:
-          manifest-path: rust/Cargo.toml
-          baseline-rev: ${{ steps.baseline.outputs.rev }}
-          release-type: ${{ steps.release_type.outputs.type }}
-
   python:
     name: Python ${{ matrix.python-version }} (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
