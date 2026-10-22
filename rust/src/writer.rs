@@ -1352,7 +1352,6 @@ mod tests {
     use super::*;
     use crate::models::*;
 
-    /// Requirements: L2-WRT-020
     /// The hand-written renderers are byte-identical to the `core::fmt`
     /// forms they replace, over ordinary and edge values alike.
     /// Requirements: L2-WRT-011
@@ -1417,6 +1416,7 @@ mod tests {
         }
     }
 
+    /// Requirements: L2-WRT-020
     #[test]
     fn mux_value_written_with_quoting() {
         use std::sync::Arc;
