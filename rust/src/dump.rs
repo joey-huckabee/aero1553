@@ -299,20 +299,21 @@ fn dump_record_extent<W: Write>(
     file_len: usize,
     out: &mut W,
 ) -> std::io::Result<Option<usize>> {
-    if tw.word_count < MIN_RECORD_WORDS {
+    if tw.word_count() < MIN_RECORD_WORDS {
         writeln!(
             out,
             "  !! Invalid word_count={} at 0x{:08X}, stopping",
-            tw.word_count, offset
+            tw.word_count(),
+            offset
         )?;
         log_warn!(
             "dump: invalid word_count={} at 0x{:X}; stopping record scan",
-            tw.word_count,
+            tw.word_count(),
             offset
         );
         return Ok(None);
     }
-    let record_bytes = usize::from(tw.word_count) * 2;
+    let record_bytes = usize::from(tw.word_count()) * 2;
     // record_bytes maxes at 63 * 2 = 126; offset is bounded by the loop
     // guard. checked_add belt-and-suspenders.
     let Some(record_end) = offset.checked_add(record_bytes) else {
@@ -373,22 +374,22 @@ fn write_record_annotation<W: Write>(
     // Classified message format. dump runs on suspect files, so a record that
     // cannot be classified degrades to a label rather than propagating an error.
     // `3` = IRIG timestamp words (the timestamp above is decoded as IRIG).
-    let fmt_name = classify_message_format(tw.message_type, &cmd, tw.word_count, 3)
+    let fmt_name = classify_message_format(tw.message_type(), &cmd, tw.word_count(), 3)
         .map_or("(unclassifiable)", message_format_name);
 
     writeln!(out, "{}", "-".repeat(72))?;
     writeln!(
         out,
         "  Record #{record_num}  @  0x{offset:08X}  ({record_bytes} bytes, {wc} words)",
-        wc = tw.word_count
+        wc = tw.word_count()
     )?;
     writeln!(
         out,
         "  Type:   0x{:04X}  ->  {}  Bus {}  error flag (bit 14): {}",
-        tw.raw,
-        type_name(tw.message_type),
-        tw.bus.as_str(),
-        if tw.error { "SET" } else { "clear" }
+        tw.raw(),
+        type_name(tw.message_type()),
+        tw.bus().as_str(),
+        if tw.error() { "SET" } else { "clear" }
     )?;
     writeln!(out, "  Format: {fmt_name}")?;
     writeln!(
@@ -402,8 +403,8 @@ fn write_record_annotation<W: Write>(
     // the first as a Command Word (and, with bit 14 set, the last as an Error
     // Word) printed an RT, a subaddress and a "DDC error" that were not there.
     // `3` = IRIG timestamp words, as above.
-    if tw.message_type == MessageType::SpuriousData as u8 {
-        let words = i32::from(tw.word_count) - 1 - 3;
+    if tw.message_type() == MessageType::SpuriousData as u8 {
+        let words = i32::from(tw.word_count()) - 1 - 3;
         writeln!(
             out,
             "  Data:   {} leftover word(s); SPURIOUS_DATA carries no Command Word",
@@ -418,8 +419,8 @@ fn write_record_annotation<W: Write>(
     )?;
     // For an errored record the Error Word is the last word of the record; show
     // its value and the DDC description so the reason is legible at a glance.
-    if tw.error {
-        let code = read_u16(rec, (tw.word_count as usize - 1) * 2).unwrap_or(0);
+    if tw.error() {
+        let code = read_u16(rec, (tw.word_count() as usize - 1) * 2).unwrap_or(0);
         let desc = ddc_error_description_or_unknown(code);
         writeln!(out, "  Error:  0x{code:04X}  ->  {desc}")?;
     }
@@ -760,7 +761,7 @@ mod tests {
         // word_count=36 (72 bytes), comfortably above MIN_RECORD_WORDS, so
         // the invalid-word_count branch is not the one that fires.
         let tw = decode_type_word(0x2402);
-        assert!(tw.word_count >= MIN_RECORD_WORDS);
+        assert!(tw.word_count() >= MIN_RECORD_WORDS);
 
         let mut out = Vec::new();
         let stop = dump_record_extent(tw, usize::MAX - 4, usize::MAX, &mut out).unwrap();

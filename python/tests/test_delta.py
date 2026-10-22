@@ -200,7 +200,7 @@ class TestKeyDefinition:
                     message = MieMessage(
                         timestamp=at(0),
                         type_word=TypeWord(
-                            message_type=0x02, bus=Bus.A, word_count=8, error=False, raw=0
+                            message_type=0x02, bus=Bus.A, word_count=8, error=False, raw=0x0802
                         ),
                         message_format=MessageFormat.RECEIVE,
                         command_word=command,

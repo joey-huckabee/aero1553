@@ -1513,13 +1513,7 @@ mod tests {
                 microsecond: 456_225,
                 freerun: false,
             }),
-            type_word: TypeWord {
-                message_type: 0x02,
-                bus: Bus::A,
-                word_count: 36,
-                error: false,
-                raw: 0x2402,
-            },
+            type_word: TypeWord::from_raw(0x2402),
             message_format: MessageFormat::Receive,
             command_word: Some(CommandWord {
                 rt: 15,
@@ -1540,8 +1534,7 @@ mod tests {
     /// A message that routes to the errors file (`error_label() == "ERROR"`).
     fn error_msg() -> MieMessage {
         let mut m = sample_msg();
-        m.type_word.error = true;
-        m.type_word.raw |= 1 << 14;
+        m.type_word = TypeWord::from_raw(m.type_word.raw() | 1 << 14);
         m.optional_words.set_error_word(None);
         m
     }

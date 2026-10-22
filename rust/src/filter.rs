@@ -37,8 +37,8 @@ impl FilterFields {
             .command_word
             .map_or((None, None), |cw| (Some(cw.rt), Some(cw.subaddress)));
         Self {
-            message_type: msg.type_word.message_type,
-            bus: msg.type_word.bus,
+            message_type: msg.type_word.message_type(),
+            bus: msg.type_word.bus(),
             rt,
             subaddress,
         }
@@ -87,7 +87,7 @@ impl FilterConfig {
     /// The continuation half: is the record's own type (`SPURIOUS_DATA`)
     /// excluded, or left out of an active type selection?
     fn excludes_type_of(&self, msg: &MieMessage) -> bool {
-        let t = msg.type_word.message_type;
+        let t = msg.type_word.message_type();
         self.exclude_types.contains(&t)
             || (!self.include_types.is_empty() && !self.include_types.contains(&t))
     }
@@ -271,10 +271,10 @@ fn log_filtered_out(msg: &MieMessage) {
     crate::log_debug!(
         "Filtered out: offset=0x{:X} type=0x{:02X} RT{} SA{} Bus {}",
         msg.file_offset,
-        msg.type_word.message_type,
+        msg.type_word.message_type(),
         rt,
         sa,
-        msg.type_word.bus
+        msg.type_word.bus()
     );
 }
 
@@ -317,13 +317,7 @@ mod tests {
                 upper_word: 0,
                 lower_word: 0,
             }),
-            type_word: TypeWord {
-                message_type: mt,
-                bus,
-                word_count: 5,
-                error: false,
-                raw: 0,
-            },
+            type_word: TypeWord::from_fields(mt, bus, 5, false).unwrap(),
             message_format: MessageFormat::Receive,
             command_word: Some(CommandWord {
                 rt,
@@ -427,10 +421,8 @@ mod tests {
     /// A `SPURIOUS_DATA` record; `code` is its decoder code (0x2000 / 0x2001).
     fn spurious(code: u16) -> MieMessage {
         MieMessage {
-            type_word: TypeWord {
-                message_type: MessageType::SpuriousData as u8,
-                ..msg(0, 0, Bus::A, 0).type_word
-            },
+            type_word: TypeWord::from_fields(MessageType::SpuriousData as u8, Bus::A, 5, false)
+                .unwrap(),
             message_format: MessageFormat::SpuriousData,
             command_word: None,
             optional_words: OptionalWords::new(None, None, Some(code)),
@@ -444,7 +436,7 @@ mod tests {
     /// record differing in every filtered field -- RT3 SA22 `RT_TO_BC` on bus B.
     fn pair_and_other() -> Vec<MieMessage> {
         let mut parent = msg(15, 11, Bus::A, MessageType::BcToRt as u8);
-        parent.type_word.error = true;
+        parent.type_word = TypeWord::from_raw(parent.type_word.raw() | 1 << 14);
         parent.optional_words.set_error_word(Some(0x011E));
         vec![
             parent,
@@ -611,7 +603,7 @@ mod tests {
     #[test]
     fn continuation_without_a_parent_is_judged_on_its_own() {
         let mut parent = msg(15, 11, Bus::A, MessageType::BcToRt as u8);
-        parent.type_word.error = true;
+        parent.type_word = TypeWord::from_raw(parent.type_word.raw() | 1 << 14);
         let stream = vec![
             parent,
             msg(3, 22, Bus::B, MessageType::RtToBc as u8),

@@ -115,7 +115,7 @@ fn main() -> Result<(), Error> {
     for msg in &reader {
         let msg = msg?;
         let offset = usize::try_from(msg.file_offset)?;
-        let len = usize::from(msg.type_word.word_count) * 2;
+        let len = usize::from(msg.type_word.word_count()) * 2;
         if len < 8 || offset + len > template.len() {
             return Err(format!("record at 0x{offset:X} does not fit the template").into());
         }

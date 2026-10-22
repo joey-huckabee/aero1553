@@ -90,6 +90,25 @@ shared behavior) holds at any compatible version pair. See
     still `str | None`. Writing a row's MUX cell follows one more pointer, on
     the rendering threads.
 
+- **Rust API: `TypeWord` stores only its raw 16-bit word.** `message_type`,
+  `bus`, `word_count` and `error` were bit fields of `raw` held beside it;
+  they are now methods that read those bits (`tw.word_count()` for
+  `tw.word_count`), and `tw.raw()` returns the word. Build one with
+  `TypeWord::from_raw(raw)`, or `TypeWord::from_fields(message_type, bus,
+  word_count, error)`, which returns `None` for a field wider than its bits
+  and leaves bit 15 clear. 2 bytes instead of 8, which brings the record to
+  **128 bytes** (fields 125) from 152 in 5.3.0.
+- **Python: `TypeWord(...)` rejects fields that disagree with `raw`.** The
+  signature and attributes are unchanged, but the four fields must be the
+  bits `raw` encodes (bits 0-6, 7, 8-13 and 14); a mismatch raises
+  `ValueError` naming the field, for example `TypeWord: word_count=10 does
+  not match raw=0x2402, which encodes word_count=36`. `copy.replace` goes
+  through the same check. A decoded record is never affected -- the decoder
+  builds every Type Word from the word on disk -- only a hand-built one whose
+  values contradict each other, which before this stored both and answered
+  differently depending on which was read. Bit 15 belongs to no field and is
+  kept as given.
+
 ## [5.3.0] — 2026-10-22
 
 ### Added

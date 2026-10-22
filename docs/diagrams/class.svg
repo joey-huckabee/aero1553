@@ -204,15 +204,18 @@
     </g>
     <!-- TypeWord -->
     <g id="TypeWord">
-      <rect class="box" x="790" y="130" width="140" height="120" rx="3"/>
-      <text class="name" x="860" y="148" text-anchor="middle">TypeWord</text>
-      <line class="sep" x1="790" y1="158" x2="930" y2="158"/>
+      <rect class="box" x="790" y="130" width="180" height="120" rx="3"/>
+      <text class="name" x="880" y="148" text-anchor="middle">TypeWord</text>
+      <line class="sep" x1="790" y1="158" x2="970" y2="158"/>
       <text class="mono" x="798" y="173" xml:space="preserve">
-        <tspan x="798" dy="0">message_type: u8</tspan>
-        <tspan x="798" dy="15">bus: Bus</tspan>
-        <tspan x="798" dy="15">word_count: u16</tspan>
-        <tspan x="798" dy="15">error: bool</tspan>
-        <tspan x="798" dy="15">raw: u16</tspan>
+        <tspan x="798" dy="0">- raw: u16</tspan>
+      </text>
+      <line class="sep" x1="790" y1="181" x2="970" y2="181"/>
+      <text class="mono" x="798" y="196" xml:space="preserve">
+        <tspan x="798" dy="0">message_type(): u8  0-6</tspan>
+        <tspan x="798" dy="15">bus(): Bus          7</tspan>
+        <tspan x="798" dy="15">word_count(): u16   8-13</tspan>
+        <tspan x="798" dy="15">error(): bool       14</tspan>
       </text>
     </g>
     <!-- CommandWord -->

@@ -292,13 +292,7 @@ mod tests {
                 microsecond: i % 1_000_000,
                 freerun: false,
             }),
-            type_word: TypeWord {
-                message_type: 0x02,
-                bus: Bus::A,
-                word_count: 4,
-                error,
-                raw: if error { 0x6402 } else { 0x2402 },
-            },
+            type_word: TypeWord::from_fields(0x02, Bus::A, 4, error).unwrap(),
             message_format: MessageFormat::Receive,
             command_word: Some(CommandWord {
                 rt: u8::try_from(i % 31).unwrap_or(0),

@@ -467,13 +467,13 @@ mod tests {
                     // filler.
                     let message = MieMessage {
                         timestamp: at(0),
-                        type_word: TypeWord {
-                            message_type: MessageType::BcToRt as u8,
-                            bus: Bus::A,
-                            word_count: 8,
-                            error: false,
-                            raw: 0,
-                        },
+                        type_word: TypeWord::from_fields(
+                            MessageType::BcToRt as u8,
+                            Bus::A,
+                            8,
+                            false,
+                        )
+                        .unwrap(),
                         message_format: MessageFormat::Receive,
                         command_word: Some(command),
                         command_word_2: None,

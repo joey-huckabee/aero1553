@@ -73,6 +73,56 @@ class TestMessageType:
         assert 0x03 not in VALID_MESSAGE_TYPES
 
 
+class TestTypeWord:
+    """The crate stores only ``raw``; the other four fields are its bits."""
+
+    @pytest.mark.requirement("L2-DEC-010")
+    def test_consistent_fields_round_trip(self) -> None:
+        tw = TypeWord(0x02, Bus.B, 36, True, 0x64 << 8 | 0x82)
+        assert (tw.message_type, tw.bus, tw.word_count, tw.error) == (0x02, Bus.B, 36, True)
+        assert tw.raw == 0x6482
+
+    @pytest.mark.requirement("L2-DEC-010")
+    def test_bit_15_is_kept(self) -> None:
+        # Bit 15 belongs to no field, so any value there is accepted as read.
+        assert TypeWord(0x02, Bus.A, 36, False, 0xA402).raw == 0xA402
+
+    @pytest.mark.requirement("L2-DEC-010")
+    @pytest.mark.parametrize(
+        ("args", "message"),
+        [
+            (
+                (0x04, Bus.A, 36, False, 0x2402),
+                "TypeWord: message_type=0x04 does not match raw=0x2402, "
+                "which encodes message_type=0x02",
+            ),
+            (
+                (0x02, Bus.B, 36, False, 0x2402),
+                "TypeWord: bus=B does not match raw=0x2402, which encodes bus=A",
+            ),
+            (
+                (0x02, Bus.A, 10, False, 0x2402),
+                "TypeWord: word_count=10 does not match raw=0x2402, which encodes word_count=36",
+            ),
+            (
+                (0x02, Bus.A, 36, True, 0x2402),
+                "TypeWord: error=True does not match raw=0x2402, which encodes error=False",
+            ),
+            (
+                # Wider than its 7 bits, so no raw word can encode it.
+                (0x82, Bus.A, 36, False, 0x2402),
+                "TypeWord: message_type=0x82 does not match raw=0x2402, "
+                "which encodes message_type=0x02",
+            ),
+        ],
+    )
+    def test_mismatch_with_raw_is_rejected(
+        self, args: tuple[int, Bus, int, bool, int], message: str
+    ) -> None:
+        with pytest.raises(ValueError, match=f"^{message}$"):
+            TypeWord(*args)
+
+
 class TestCommandWordProperties:
     """Tests for CommandWord convenience properties."""
 
@@ -232,7 +282,7 @@ class TestErrorProperties:
     def test_errored_message_label(self) -> None:
         msg = MieMessage(
             timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
-            type_word=TypeWord(0x02, Bus.A, 10, True, 0x6402),  # bit 14 set
+            type_word=TypeWord(0x02, Bus.A, 10, True, 0x4A02),  # bit 14 set
             message_format=MessageFormat.RECEIVE,
             command_word=CommandWord(15, Direction.RECEIVE, 11, 30, 0x797E),
             command_word_2=None,

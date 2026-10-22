@@ -46,7 +46,7 @@ def _make_msg(
     """Helper to create a minimal MieMessage for filter testing."""
     return MieMessage(
         timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
-        type_word=TypeWord(msg_type, bus, 36, False, 0x2402),
+        type_word=TypeWord(msg_type, bus, 36, False, msg_type | bus << 7 | 36 << 8),
         message_format=MessageFormat.RECEIVE,
         command_word=CommandWord(rt, direction, sa, 30, 0x797E),
         command_word_2=None,
@@ -354,7 +354,7 @@ class TestApplyFilters:
         """
         spurious = MieMessage(
             timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
-            type_word=TypeWord(0x20, Bus.A, 12, False, 0x2420),
+            type_word=TypeWord(0x20, Bus.A, 12, False, 0x0C20),
             message_format=MessageFormat.SPURIOUS_DATA,
             command_word=None,
             command_word_2=None,
@@ -418,7 +418,7 @@ class TestApplyFilters:
         exclude filters leave such records untouched."""
         spurious = MieMessage(
             timestamp=IrigTimestamp(192, 15, 54, 50, 456225, False),
-            type_word=TypeWord(0x20, Bus.A, 12, False, 0x2420),
+            type_word=TypeWord(0x20, Bus.A, 12, False, 0x0C20),
             message_format=MessageFormat.SPURIOUS_DATA,
             command_word=None,
             command_word_2=None,

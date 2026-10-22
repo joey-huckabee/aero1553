@@ -55,10 +55,10 @@ fn type_word_digest() -> u64 {
     let mut h = Fnv1a::new();
     for raw in 0..=u16::MAX {
         let tw = decode_type_word(raw);
-        h.byte(tw.message_type);
-        h.byte(tw.bus as u8);
-        h.u16(tw.word_count);
-        h.byte(u8::from(tw.error));
+        h.byte(tw.message_type());
+        h.byte(tw.bus() as u8);
+        h.u16(tw.word_count());
+        h.byte(u8::from(tw.error()));
     }
     h.0
 }

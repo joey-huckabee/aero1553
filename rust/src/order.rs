@@ -353,13 +353,7 @@ mod tests {
                 microsecond: us,
                 freerun: false,
             }),
-            type_word: TypeWord {
-                message_type: 0x02,
-                bus: Bus::A,
-                word_count: 1,
-                error: false,
-                raw: 0,
-            },
+            type_word: TypeWord::from_fields(0x02, Bus::A, 1, false).unwrap(),
             message_format: MessageFormat::Receive,
             command_word: Some(CommandWord {
                 rt,
@@ -382,7 +376,7 @@ mod tests {
         let mut m = rec(us, 0, 0, Direction::Receive);
         m.command_word = None;
         m.message_format = MessageFormat::SpuriousData;
-        m.type_word.message_type = 0x20;
+        m.type_word = TypeWord::from_raw(m.type_word.raw() & !0x7F | 0x20);
         m
     }
 
@@ -390,7 +384,7 @@ mod tests {
     /// spurious continuation stays adjacent.
     fn errored(us: u32, rt: u8, sa: u8) -> MieMessage {
         let mut m = rec(us, rt, sa, Direction::Receive);
-        m.type_word.error = true;
+        m.type_word = TypeWord::from_raw(m.type_word.raw() | 1 << 14);
         m.optional_words
             .set_error_word(Some(crate::models::ERROR_MANCHESTER_PARITY));
         m
