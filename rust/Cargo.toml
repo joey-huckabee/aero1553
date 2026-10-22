@@ -1,6 +1,6 @@
 [package]
 name = "aero1553"
-version = "5.0.0"
+version = "5.1.0"
 edition = "2024"
 rust-version = "1.88"
 description = "Decoder for DDC MIL-STD-1553 MIE binary recording files"
