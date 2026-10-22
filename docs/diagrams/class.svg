@@ -174,7 +174,7 @@
         <tspan x="478" dy="15">data_words: DataWords</tspan>
         <tspan x="478" dy="15">delta: DeltaSeconds</tspan>
         <tspan x="478" dy="15">file_offset: u64</tspan>
-        <tspan x="478" dy="15">mux: Option&lt;Arc&lt;str&gt;&gt;</tspan>
+        <tspan x="478" dy="15">mux: Option&lt;Arc&lt;String&gt;&gt;</tspan>
       </text>
       <line class="sep" x1="470" y1="318" x2="730" y2="318"/>
       <text class="mono" x="478" y="333" xml:space="preserve">
@@ -581,7 +581,7 @@
         <tspan x="48" dy="15">- strict: bool</tspan>
         <tspan x="48" dy="15">- input_time_format: TimestampFormat</tspan>
         <tspan x="48" dy="15">- lookahead_records: usize</tspan>
-        <tspan x="48" dy="15">- mux: Option&lt;Arc&lt;str&gt;&gt;</tspan>
+        <tspan x="48" dy="15">- mux: Option&lt;Arc&lt;String&gt;&gt;</tspan>
         <tspan x="48" dy="15">- calendar_year: Option&lt;u16&gt;</tspan>
       </text>
       <line class="sep" x1="40" y1="1243" x2="310" y2="1243"/>

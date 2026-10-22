@@ -74,9 +74,9 @@ pub struct MieFileReader {
     standard_tick_rate_hz: Option<f64>,
     /// L2-WRT-020: MUX column value derived once from this file's name
     /// (`None` when MUX population is disabled or the configured field is
-    /// absent/empty). Shared per file as an `Arc<str>` and cloned (a refcount
+    /// absent/empty). Shared per file as an `Arc<String>` and cloned (a refcount
     /// bump) onto each decoded message, so per-record carry is O(1).
-    mux: Option<Arc<str>>,
+    mux: Option<Arc<String>>,
     /// Cumulative sync-recovery attempts during the most recent `iter()`
     /// call. Reset to 0 at the start of each `iter()`. Shared with the
     /// active `RecordIter` via a reference so the CLI can query it
@@ -182,11 +182,11 @@ impl MieFileReader {
         );
 
         // L2-WRT-020: resolve the per-file MUX value once, from the file name.
-        let mux: Option<Arc<str>> = if opts.mux_enabled {
+        let mux: Option<Arc<String>> = if opts.mux_enabled {
             path.file_name()
                 .and_then(std::ffi::OsStr::to_str)
                 .and_then(|n| mux_from_filename(n, &opts.mux_delimiter, opts.mux_field))
-                .map(Arc::from)
+                .map(Arc::new)
         } else {
             None
         };
@@ -675,7 +675,7 @@ pub struct RecordIter<'a> {
     sync_losses_atomic: Arc<AtomicU64>,
     path_for_log: Arc<Path>,
     /// L2-WRT-020 per-file MUX value, cloned (refcount bump) onto each message.
-    mux: Option<Arc<str>>,
+    mux: Option<Arc<String>>,
     /// L2-WRT-026 clause 4 / L2-LOG-002: the calendar year in force, or `None`
     /// under `doy`. Threaded from the reader; see `ReaderOptions::calendar_year`.
     calendar_year: Option<u16>,

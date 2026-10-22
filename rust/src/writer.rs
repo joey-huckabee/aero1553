@@ -801,7 +801,7 @@ fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
 
     // MUX (L2-WRT-020: derived from the file name; empty when disabled or the
     // configured field is absent), then TERM_NAME (always empty).
-    if let Some(mux) = &msg.mux {
+    if let Some(mux) = msg.mux() {
         // Infallible: writing to a Vec never errors.
         let _ = write_csv_field(row, mux);
     }
@@ -1482,7 +1482,7 @@ mod tests {
     #[test]
     fn mux_value_written_with_quoting() {
         use std::sync::Arc;
-        let row = |mux: Option<Arc<str>>| {
+        let row = |mux: Option<Arc<String>>| {
             let msg = MieMessage {
                 mux,
                 ..sample_msg()
@@ -1492,9 +1492,9 @@ mod tests {
             String::from_utf8(buf).unwrap()
         };
         // Plain value appears verbatim in the MUX cell (after CMD 797E).
-        assert!(row(Some(Arc::from("aa"))).contains(",797E,aa,,"));
+        assert!(row(Some(Arc::new("aa".to_string()))).contains(",797E,aa,,"));
         // A value containing the delimiter is RFC4180-quoted (matches Python).
-        assert!(row(Some(Arc::from("a,b"))).contains(",797E,\"a,b\",,"));
+        assert!(row(Some(Arc::new("a,b".to_string()))).contains(",797E,\"a,b\",,"));
         // None → empty MUX (and empty TERM_NAME).
         assert!(row(None).contains(",797E,,,"));
     }

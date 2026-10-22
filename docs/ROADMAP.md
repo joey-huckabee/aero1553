@@ -335,7 +335,7 @@ they are expected to pay:
 - **PGO and fat LTO for the release binaries.** Typically 5-15% with no source
   change; the work is in CI, including the glibc 2.22 zigbuild job. Best done
   after the calling-thread work, since PGO tunes whatever the code is.
-- **Per-record `MUX` handle.** Every record holds a clone of one `Arc<str>` per
+- **Per-record `MUX` handle.** Every record holds a clone of one `Arc<String>` per
   input file. 5.2.0 stopped worker threads from dropping records (which moved
   the reference count between cores on every record); not cloning per record
   at all -- the writer looking the value up once per input -- would remove the

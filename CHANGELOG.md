@@ -77,6 +77,19 @@ shared behavior) holds at any compatible version pair. See
     words, 4 bytes smaller per retained record; an absent word's slot is
     always 0, so packed equality is the three `Option`s' equality.
 
+- **Rust API: `MieMessage::mux` is an `Option<Arc<String>>`, not an
+  `Option<Arc<str>>`.** The MUX text is still stored once per input file and
+  shared by its records; only each record's handle to it shrinks. An
+  `Arc<str>` is a pointer plus the text's length, 16 bytes in every record; an
+  `Arc<String>` keeps the length in the shared allocation and is one 8-byte
+  pointer. Read the value with the new `msg.mux()`, an `Option<&str>`; build
+  one with `Some(Arc::new(text))`.
+  - The record drops from 144 bytes to 136 (fields 131).
+  - CSV output is unchanged (`perf/baseline.py` against the previous `main`:
+    identical in all three cases), and so is Python's `MieMessage.mux`,
+    still `str | None`. Writing a row's MUX cell follows one more pointer, on
+    the rendering threads.
+
 ## [5.3.0] — 2026-10-22
 
 ### Added
