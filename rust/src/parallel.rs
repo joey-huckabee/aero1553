@@ -165,9 +165,13 @@ where
             let (job_tx, job_rx) = mpsc::channel::<Vec<MieMessage>>();
             let (result_tx, result_rx) = mpsc::channel::<Rendered>();
             scope.spawn(move || {
-                for mut batch in job_rx {
+                for batch in job_rx {
                     let (block, failure) = render_batch(&batch, render, split);
-                    batch.clear();
+                    // Sent back full: the records are dropped on the calling
+                    // thread, which also cloned them. A record's MUX is one
+                    // `Arc` shared by the whole file, and dropping records
+                    // here moved its reference count between cores on every
+                    // record.
                     if result_tx
                         .send(Rendered {
                             block,
@@ -194,7 +198,9 @@ where
             if let Some(e) = rendered.failure {
                 return Err(e);
             }
-            spare.push(rendered.batch);
+            let mut batch = rendered.batch;
+            batch.clear();
+            spare.push(batch);
             Ok(())
         };
 
