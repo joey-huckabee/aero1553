@@ -96,57 +96,44 @@ fn same_group(a: &Timestamp, b: &Timestamp) -> bool {
     }
 }
 
-/// Stable-sort one buffered run, keeping each Command-Word-less record attached
-/// to the record it followed on input.
+/// One chunk of a buffered run: its arrival index, the anchor's sort key, and
+/// the range of `buf` it covers -- the anchor plus the pinned records trailing
+/// it.
+type Chunk = (usize, Option<SortKey>, std::ops::Range<usize>);
+
+/// Split `buf` into chunks, written into `chunks` (cleared first, so its
+/// capacity is reused from run to run). Returns `true` when the chunk keys are
+/// already in non-decreasing order -- the run needs no reordering.
 ///
-/// The run is first split into **chunks**: one sortable "anchor" record plus any
-/// pinned records trailing it. Chunks — not individual records — are then sorted
-/// by the anchor's key, so a pin travels with its anchor.
+/// A chunk is one sortable "anchor" record plus any pinned records trailing it;
+/// chunks, not individual records, are what get sorted, so a pin travels with
+/// its anchor. Pins arriving before any anchor (a run that opens with
+/// `SPURIOUS_DATA`) form a leading chunk keyed `None`, which sorts ahead of
+/// every `Some` -- keeping them at the front of the run, where they arrived.
 ///
 /// Preserving a pin's *index* is not sufficient and was the original bug here: a
 /// pin held at index 1 while sorting moved a different record into index 0 ends
 /// up trailing the wrong record, which breaks exactly the `0x2000`
 /// error-continuation adjacency the pin exists to protect. A pin's position is
 /// defined relative to its predecessor, so the predecessor has to carry it.
-///
-/// Pins arriving before any anchor (a run that opens with `SPURIOUS_DATA`) form a
-/// leading chunk keyed `None`, which sorts ahead of every `Some` — keeping them
-/// at the front of the run, where they arrived.
-///
-/// `keep_tail` is set when the run is being closed by a pinned record at a
-/// **different** timestamp (L2-WRT-021). That record will follow whatever this
-/// run ends with, so if sorting would move the chunk that arrived last away from
-/// the end, the run is returned in arrival order instead: canonical tie order is
-/// given up for this one run so that the pin still follows its predecessor and
-/// timestamps still ascend. The second value reports that fallback.
-fn sort_run(buf: Vec<MieMessage>, keep_tail: bool) -> (Vec<MieMessage>, bool) {
-    /// Arrival index, then one anchor record plus the pinned records trailing it.
-    type Chunk = (usize, Option<SortKey>, Vec<MieMessage>);
-    let mut chunks: Vec<Chunk> = Vec::new();
-    for msg in buf {
-        match sort_key(&msg) {
-            Some(k) => chunks.push((chunks.len(), Some(k), vec![msg])),
+fn chunk_run(buf: &[MieMessage], chunks: &mut Vec<Chunk>) -> bool {
+    chunks.clear();
+    let mut in_order = true;
+    for (i, msg) in buf.iter().enumerate() {
+        match sort_key(msg) {
+            Some(k) => {
+                if let Some((_, prev, _)) = chunks.last() {
+                    in_order &= *prev <= Some(k);
+                }
+                chunks.push((chunks.len(), Some(k), i..i + 1));
+            }
             None => match chunks.last_mut() {
-                Some((_, _, group)) => group.push(msg),
-                None => chunks.push((0, None, vec![msg])),
+                Some((_, _, range)) => range.end = i + 1,
+                None => chunks.push((0, None, i..i + 1)),
             },
         }
     }
-    let mut fell_back = false;
-    if chunks.len() > 1 {
-        let last_arrival = chunks.len() - 1;
-        // `sort_by_key` is stable, so chunks with a fully equal key keep their
-        // relative input order (L1-OUT-003). `None` (leading pins) sorts first.
-        chunks.sort_by_key(|(_, k, _)| *k);
-        if keep_tail && chunks.last().is_some_and(|(i, _, _)| *i != last_arrival) {
-            // Undo the sort: arrival indices are unique, so this restores input
-            // order exactly.
-            chunks.sort_by_key(|(i, _, _)| *i);
-            fell_back = true;
-        }
-    }
-    let run = chunks.into_iter().flat_map(|(_, _, group)| group).collect();
-    (run, fell_back)
+    in_order
 }
 
 /// Iterator adapter imposing canonical row order on a decoded message stream
@@ -171,31 +158,71 @@ pub struct Ordered<I, E> {
     done: bool,
     /// An `Err` observed while a run was buffered, surfaced after the flush.
     pending: Option<E>,
+    /// Scratch for [`chunk_run`], kept so its capacity is reused across runs.
+    chunks: Vec<Chunk>,
 }
 
 impl<I, E> Ordered<I, E> {
     /// Move the buffered run into the emission queue, sorting it first.
     ///
-    /// `keep_tail`: the run is being closed by a pinned record at a different
-    /// timestamp, so its last-arrived record must stay last (see `sort_run`).
+    /// `keep_tail` is set when the run is being closed by a pinned record at a
+    /// **different** timestamp (L2-WRT-021). That record will follow whatever
+    /// this run ends with, so if sorting would move the chunk that arrived last
+    /// away from the end, the run is emitted in arrival order instead: canonical
+    /// tie order is given up for this one run so that the pin still follows its
+    /// predecessor and timestamps still ascend.
+    ///
+    /// `out` is empty whenever this runs -- `next` drains it before pulling
+    /// another record -- and is held reversed so `Vec::pop` emits front to back.
+    /// Nearly every run is one record, or already in canonical order, and both
+    /// are emitted without allocating: on a 1 GiB recording, building and
+    /// collecting chunk vectors for every timestamp cost twice as long as
+    /// reading and decoding the file.
     fn flush(&mut self, keep_tail: bool) {
-        if self.buf.is_empty() {
+        match self.buf.len() {
+            0 => return,
+            1 => {
+                self.out.extend(self.buf.pop());
+                return;
+            }
+            _ => {}
+        }
+        if chunk_run(&self.buf, &mut self.chunks) {
+            // A stable sort of chunks already in key order is the identity.
+            self.out.extend(self.buf.drain(..).rev());
             return;
         }
-        let (run, fell_back) = sort_run(std::mem::take(&mut self.buf), keep_tail);
-        if fell_back {
+        let last_arrival = self.chunks.len() - 1;
+        // `sort_by_key` is stable, so chunks with a fully equal key keep their
+        // relative input order (L1-OUT-003). `None` (leading pins) sorts first.
+        self.chunks.sort_by_key(|(_, k, _)| *k);
+        if keep_tail
+            && self
+                .chunks
+                .last()
+                .is_some_and(|(i, _, _)| *i != last_arrival)
+        {
             // Every record of a run shares the timestamp, so the first serves.
             crate::log_debug!(
                 "equal-timestamp run at {} emitted in arrival order: canonical order \
                  would separate its last record from the following record that has no \
                  Command Word",
-                run.first()
+                self.buf
+                    .first()
                     .map(|m| m.timestamp.format())
                     .unwrap_or_default()
             );
+            self.out.extend(self.buf.drain(..).rev());
+            return;
         }
-        // Reversed so `Vec::pop` emits front-to-back.
-        self.out.extend(run.into_iter().rev());
+        // Genuinely out of order: move each record to its sorted place. Only a
+        // real equal-timestamp tie in non-canonical order reaches this.
+        let mut slots: Vec<Option<MieMessage>> = self.buf.drain(..).map(Some).collect();
+        for (_, _, range) in self.chunks.iter().rev() {
+            for slot in slots[range.clone()].iter_mut().rev() {
+                self.out.extend(slot.take());
+            }
+        }
     }
 
     /// Add `msg` to the run being accumulated.
@@ -300,6 +327,7 @@ where
             max_group: max_group.max(MAX_SORT_GROUP_MIN),
             done: false,
             pending: None,
+            chunks: Vec::new(),
         }
     }
 }
@@ -896,5 +924,92 @@ mod tests {
             assert!(DEFAULT_MAX_SORT_GROUP >= MAX_SORT_GROUP_MIN);
             assert!(DEFAULT_MAX_SORT_GROUP <= MAX_SORT_GROUP_MAX);
         }
+    }
+
+    /// The run sort as it stood through 5.2.0: chunk vectors, a stable sort,
+    /// and the arrival-order fallback. Kept as the reference the allocation-free
+    /// `flush` is held to.
+    fn reference_sort_run(buf: Vec<MieMessage>, keep_tail: bool) -> Vec<MieMessage> {
+        type RefChunk = (usize, Option<SortKey>, Vec<MieMessage>);
+        let mut chunks: Vec<RefChunk> = Vec::new();
+        for msg in buf {
+            match sort_key(&msg) {
+                Some(k) => chunks.push((chunks.len(), Some(k), vec![msg])),
+                None => match chunks.last_mut() {
+                    Some((_, _, group)) => group.push(msg),
+                    None => chunks.push((0, None, vec![msg])),
+                },
+            }
+        }
+        if chunks.len() > 1 {
+            let last_arrival = chunks.len() - 1;
+            chunks.sort_by_key(|(_, k, _)| *k);
+            if keep_tail && chunks.last().is_some_and(|(i, _, _)| *i != last_arrival) {
+                chunks.sort_by_key(|(i, _, _)| *i);
+            }
+        }
+        chunks.into_iter().flat_map(|(_, _, group)| group).collect()
+    }
+
+    /// The allocation-free `flush` emits exactly what the 5.2.0 algorithm did,
+    /// over generated runs: one to nine records, keys drawn from a small set so
+    /// ties, equal keys and already-ordered runs all occur, pinned records
+    /// anywhere (leading ones included), and both `keep_tail` settings.
+    /// Records are told apart by `file_offset`, their arrival index.
+    /// Requirements: L2-WRT-021
+    #[test]
+    fn flush_matches_the_reference_sort_on_generated_runs() {
+        let mut seed: u64 = 0x5EED_1553;
+        let mut next = move |n: u64| {
+            seed = seed
+                .wrapping_mul(6_364_136_223_846_793_005)
+                .wrapping_add(1_442_695_040_888_963_407);
+            (seed >> 33) % n
+        };
+        let mut paths = [0usize; 3];
+        for case in 0..20_000 {
+            let len = 1 + usize::try_from(next(9)).unwrap_or(0);
+            let run: Vec<MieMessage> = (0..len)
+                .map(|i| {
+                    let mut m = if next(4) == 0 {
+                        spurious(7)
+                    } else {
+                        let dir = if next(2) == 0 {
+                            Direction::Receive
+                        } else {
+                            Direction::Transmit
+                        };
+                        let rt = u8::try_from(next(3)).unwrap_or(0);
+                        let sa = u8::try_from(next(2)).unwrap_or(0);
+                        rec(7, rt, sa, dir)
+                    };
+                    m.file_offset = i as u64;
+                    m
+                })
+                .collect();
+            let keep_tail = next(2) == 0;
+
+            let expected: Vec<u64> = reference_sort_run(run.clone(), keep_tail)
+                .iter()
+                .map(|m| m.file_offset)
+                .collect();
+
+            let mut stage = std::iter::empty::<Result<MieMessage, ()>>().order_rows(64);
+            stage.buf = run;
+            let mut scratch = Vec::new();
+            paths[if len == 1 {
+                0
+            } else if chunk_run(&stage.buf, &mut scratch) {
+                1
+            } else {
+                2
+            }] += 1;
+            stage.flush(keep_tail);
+            let got: Vec<u64> = stage.out.iter().rev().map(|m| m.file_offset).collect();
+            assert_eq!(got, expected, "case {case}, keep_tail {keep_tail}");
+            assert_eq!(stage.buf.len(), 0);
+        }
+        // Every path through `flush` was exercised, not just the fast ones.
+        assert!(paths.iter().all(|&n| n > 1_000), "paths taken: {paths:?}");
     }
 }

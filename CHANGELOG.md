@@ -19,6 +19,22 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **Decoding is 1.5x-1.8x faster: canonical row ordering no longer
+  allocates per timestamp** (L2-WRT-021). Every timestamp, even one holding
+  a single record, was split into a vector of chunk vectors and collected
+  into a new vector, and the run buffer's capacity was dropped each time; on
+  a 1 GiB recording that cost 8.6 s on the decoding thread against 4.6 s
+  for reading and decoding the file. A one-record run now goes straight to
+  the output, a run already in canonical order is emitted as it stands,
+  and only a genuine out-of-order tie is sorted; the buffers are reused.
+  Ordering's cost on that file fell to 1.2 s. Measured on Windows against
+  5.2.0, output byte-identical in every case: the 21 MB golden recording
+  0.330 s to 0.179 s (x1.84), a 1 GiB recording 14.9 s to 8.4 s (x1.78), a
+  16 x 32 MiB merge 9.6 s to 5.9 s (x1.62), and a 1 GiB corrupt recording
+  with `--separate-errors` 18.7 s to 12.1 s (x1.55).
+
 ## [5.2.0] — 2026-10-21
 
 ### Added
