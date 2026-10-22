@@ -4,11 +4,11 @@ version = 4
 
 [[package]]
 name = "aero1553"
-version = "5.0.0"
+version = "5.1.0"
 
 [[package]]
 name = "aero1553-py"
-version = "5.0.0"
+version = "5.1.0"
 dependencies = [
  "aero1553",
  "pyo3",
