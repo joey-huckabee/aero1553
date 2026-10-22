@@ -69,8 +69,8 @@ aero1553/
 │   └── diagrams/           hand-written SVG diagrams (the source of truth)
 ├── config/default.toml     fully-commented reference TOML schema
 └── .github/workflows/      ci.yml, differential.yml, fuzz.yml,
-                            perf.yml, perf-baseline.yml, codeql.yml,
-                            sonarcloud.yml
+                            semver.yml, perf.yml, perf-baseline.yml,
+                            codeql.yml, sonarcloud.yml
 ```
 
 ---
@@ -127,7 +127,7 @@ cargo cov-ci                                     # coverage gate (alias in rust/
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps   # rustdoc link check (CI-gated)
 cargo +1.88 check --all-targets                  # MSRV 1.88 floor (CI-gated)
 cargo deny check                                 # supply-chain audit (CI-gated; config rust/deny.toml)
-cargo semver-checks check-release --baseline-rev "$(git describe --tags --abbrev=0)" --release-type minor  # public-API break check (CI-gated)
+cargo semver-checks check-release --baseline-rev origin/main --release-type minor  # public-API break check (CI-gated per PR; see section 9)
 
 # Python (from repo root)
 uv --directory python run pytest                      # all tests
@@ -487,7 +487,7 @@ shows up as a gap rather than silently drifting:
 | `rust-glibc-2-22` | `cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22` -- the SLES 12 SP5 binary (L3-RS-018); fails on any symbol newer than `GLIBC_2.22`, runs the conformance suite against that binary, uploads it as the `aero1553-x86_64-linux-glibc2.22` artifact | `ubuntu-latest` | Block merge |
 | `rust-msrv` | `cargo check --all-targets` on the pinned **1.88** toolchain — enforces the declared `rust-version` (the main `rust` job builds on stable) | `ubuntu-latest` | Block merge |
 | `cargo-deny` | `cargo deny check` — RustSec advisories, license allow-list, bans (duplicates/wildcards), and crates.io-only sources (config in `rust/deny.toml`) | `ubuntu-latest` | Block merge |
-| `cargo-semver-checks` | `cargo semver-checks check-release` vs the latest release tag (`baseline-rev`, `release-type: minor`) — fails a PR that makes a **breaking** public-API change without a major bump; additive changes pass | `ubuntu-latest` | Block merge |
+| `cargo-semver-checks` | `cargo semver-checks check-release` against the commit the pull request merges into (`release-type: minor`, or `major` once `Cargo.toml` declares one) -- fails a PR that makes a **breaking** public-API change unless it carries the `semver-break-accepted` label, which reports the break as a warning instead. Lives alone in `.github/workflows/semver.yml`, so adding or removing the label re-runs only this check. Breaks may ship in a minor release while the crate has no outside users; each accepted one is recorded in `CHANGELOG.md`. Each PR answers only for its own changes: comparing against the latest release tag failed every PR after an accepted break. Note the tool does not see every break -- a changed public field type passed it -- so the CHANGELOG entry is the record, not the check | `ubuntu-latest` | Block merge |
 | `python` | `uv sync --locked` + `uv run pytest`; `uv lock --check` + `uv build` (asserts one `cp310-abi3` wheel) Linux/3.12-only | 5 versions × Linux (3.10–3.14), 2 versions × Windows (3.12, 3.14) | Block merge |
 | `mypy` | `uv run mypy src` — strict type check, analyzed as Python 3.10 (config in `python/pyproject.toml`) | `ubuntu-latest` (3.12) | Block merge |
 | `pylint` | `uv run pylint src/aero1553` — lints the package; curated disables + line length in `python/pyproject.toml` `[tool.pylint.*]` (gate fails below 10/10) | `ubuntu-latest` (3.12) | Block merge |
