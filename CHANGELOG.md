@@ -58,6 +58,25 @@ shared behavior) holds at any compatible version pair. See
   - First step toward a record of 128 bytes or less, the size below which a
     copy between pipeline stages is inlined rather than a call to `memmove`.
 
+- **Rust API: `MieMessage`'s `status_word`, `status_word_2` and `error_word`
+  fields are one `optional_words: OptionalWords`.** It holds the same three
+  optional 16-bit words in 8 bytes instead of 12: three `Option<u16>`s pad
+  each tag to a whole `u16`, where `OptionalWords` keeps the three in one
+  byte. Read them with the methods of the same names on the message --
+  `msg.error_word()` for `msg.error_word` -- and build or change them with
+  `OptionalWords::new(status, status_2, error)`, `OptionalWords::NONE` and
+  the `set_*` methods. `Debug` prints the three `Option`s.
+  - The record stays at 144 bytes for now: its fields drop from 143 to 139
+    bytes, and a record aligned to 8 rounds that back up to 144. The saving
+    counts once the next layout steps bring the fields to 128 or less.
+  - CSV output is unchanged (`perf/baseline.py` against the previous `main`:
+    identical in all three cases), and so is Python: `MieMessage`'s
+    `status_word`, `status_word_2` and `error_word` are still `int | None`,
+    with the same constructor keywords, `to_dict()` and `columns()`.
+  - The merge's duplicate check (`--collapse-duplicates`) compares the packed
+    words, 4 bytes smaller per retained record; an absent word's slot is
+    always 0, so packed equality is the three `Option`s' equality.
+
 ## [5.3.0] — 2026-10-22
 
 ### Added

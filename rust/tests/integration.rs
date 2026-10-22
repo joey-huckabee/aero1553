@@ -149,7 +149,7 @@ fn single_receive_record_decodes_to_expected_fields() {
     assert_eq!(m.data_words.as_slice()[3], 0x002F);
     assert_eq!(m.data_words.as_slice()[4], 0xCA22);
     assert_eq!(m.data_words.as_slice()[29], 0xC771);
-    assert_eq!(m.status_word, Some(0x7800));
+    assert_eq!(m.status_word(), Some(0x7800));
     assert_eq!(m.error_label(), "");
 }
 
@@ -183,13 +183,13 @@ fn continuation_takes_its_parents_timestamp() {
     let msgs: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
     assert_eq!(msgs.len(), 4);
     assert_eq!(irig_micros(&msgs[0]), 500);
-    assert_eq!(msgs[1].error_word, Some(0x2000));
+    assert_eq!(msgs[1].error_word(), Some(0x2000));
     assert_eq!(
         irig_micros(&msgs[1]),
         500,
         "a continuation takes its parent's time"
     );
-    assert_eq!(msgs[2].error_word, Some(0x2001));
+    assert_eq!(msgs[2].error_word(), Some(0x2001));
     assert_eq!(
         irig_micros(&msgs[2]),
         900,
@@ -209,7 +209,7 @@ fn single_transmit_record_layout() {
     assert_eq!(m.command_word.unwrap().direction, Direction::Transmit);
     assert_eq!(m.command_word.unwrap().subaddress, 22);
     assert_eq!(m.message_format, MessageFormat::Transmit);
-    assert_eq!(m.status_word, Some(0x7800));
+    assert_eq!(m.status_word(), Some(0x7800));
     assert_eq!(m.data_words.len(), 30);
 }
 
@@ -692,7 +692,7 @@ fn payload_capacity_mismatch_skipped_in_lenient_mode() {
     assert_eq!(m.command_word.unwrap().rt, 15);
     assert_eq!(m.command_word.unwrap().subaddress, 11);
     assert_eq!(m.data_words.len(), 30);
-    assert_eq!(m.status_word, Some(0x7800));
+    assert_eq!(m.status_word(), Some(0x7800));
 }
 
 /// Requirements: L2-SYN-011, L1-EXIT-002

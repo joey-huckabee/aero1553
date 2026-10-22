@@ -333,10 +333,8 @@ mod tests {
                 raw: 0,
             }),
             command_word_2: None,
-            status_word: None,
-            status_word_2: None,
+            optional_words: OptionalWords::NONE,
             data_words: DataWords::new(),
-            error_word: None,
             delta: DeltaSeconds::new(0.0),
             file_offset: 0,
             mux: None,
@@ -435,7 +433,7 @@ mod tests {
             },
             message_format: MessageFormat::SpuriousData,
             command_word: None,
-            error_word: Some(code),
+            optional_words: OptionalWords::new(None, None, Some(code)),
             delta: DeltaSeconds::NONE,
             ..msg(0, 0, Bus::A, 0)
         }
@@ -447,7 +445,7 @@ mod tests {
     fn pair_and_other() -> Vec<MieMessage> {
         let mut parent = msg(15, 11, Bus::A, MessageType::BcToRt as u8);
         parent.type_word.error = true;
-        parent.error_word = Some(0x011E);
+        parent.optional_words.set_error_word(Some(0x011E));
         vec![
             parent,
             spurious(ERROR_SPURIOUS_CONTINUATION),

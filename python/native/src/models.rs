@@ -17,7 +17,8 @@ use std::sync::Arc;
 
 use aero1553::models::{
     Bus, CalendarError, CommandWord, DataWords, Direction, IrigTimestamp, MessageFormat,
-    MieMessage, OutputTimeFormat, StandardTimestamp, TimeRender, Timestamp, TypeWord,
+    MieMessage, OptionalWords, OutputTimeFormat, StandardTimestamp, TimeRender, Timestamp,
+    TypeWord,
 };
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
@@ -657,16 +658,16 @@ impl PyMieMessage {
             ),
             ("command_word", command_word_object(py, m.command_word)?),
             ("command_word_2", command_word_object(py, m.command_word_2)?),
-            ("status_word", m.status_word.into_pyobject(py)?.into_any()),
+            ("status_word", m.status_word().into_pyobject(py)?.into_any()),
             (
                 "status_word_2",
-                m.status_word_2.into_pyobject(py)?.into_any(),
+                m.status_word_2().into_pyobject(py)?.into_any(),
             ),
             (
                 "data_words",
                 PyTuple::new(py, m.data_words.as_slice())?.into_any(),
             ),
-            ("error_word", m.error_word.into_pyobject(py)?.into_any()),
+            ("error_word", m.error_word().into_pyobject(py)?.into_any()),
             ("delta", m.delta.get().into_pyobject(py)?.into_any()),
             ("file_offset", m.file_offset.into_pyobject(py)?.into_any()),
             ("mux", m.mux.as_deref().into_pyobject(py)?.into_any()),
@@ -706,11 +707,9 @@ impl PyMieMessage {
                 message_format: message_format_from(message_format)?,
                 command_word: command_word.map(|cw| cw.get().inner),
                 command_word_2: command_word_2.map(|cw| cw.get().inner),
-                status_word,
-                status_word_2,
+                optional_words: OptionalWords::new(status_word, status_word_2, error_word),
                 // Capped at 32, as the dataclass's __post_init__ capped it.
                 data_words: DataWords::from_slice(&data_words),
-                error_word,
                 delta: delta.into(),
                 file_offset,
                 mux: mux.map(Arc::from),
@@ -750,12 +749,12 @@ impl PyMieMessage {
     /// Primary Status Word, if any.
     #[getter]
     fn status_word(&self) -> Option<u16> {
-        self.inner.status_word
+        self.inner.status_word()
     }
     /// Second Status Word for RT-to-RT, if any.
     #[getter]
     fn status_word_2(&self) -> Option<u16> {
-        self.inner.status_word_2
+        self.inner.status_word_2()
     }
     /// Raw 16-bit data words in bus wire order.
     #[getter]
@@ -765,7 +764,7 @@ impl PyMieMessage {
     /// DDC error code (0x01xx) or decoder-assigned code (0x20xx), if any.
     #[getter]
     fn error_word(&self) -> Option<u16> {
-        self.inner.error_word
+        self.inner.error_word()
     }
     /// Seconds since the prior message with the same RT+MSG, if meaningful.
     #[getter]

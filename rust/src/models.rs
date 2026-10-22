@@ -1004,6 +1004,112 @@ impl fmt::Debug for DeltaSeconds {
     }
 }
 
+// ── OptionalWords ─────────────────────────────────────────────────────
+
+/// The words a record may or may not carry: the RT's status word(s) and the
+/// card's error word.
+///
+/// Behaves as three `Option<u16>`s -- build one with [`OptionalWords::new`] or
+/// [`OptionalWords::NONE`], read each with its getter -- in 8 bytes instead of
+/// 12. An `Option<u16>` pads its tag to a whole `u16`; here the three tags
+/// share one byte. An absent word's slot always holds 0 and only this type's
+/// methods write the slots, so comparing two values byte for byte is the same
+/// as comparing the three `Option`s.
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct OptionalWords {
+    /// Status word, second status word, error word.
+    words: [u16; 3],
+    /// Bit `i` set when `words[i]` is present.
+    present: u8,
+}
+
+impl OptionalWords {
+    const STATUS: usize = 0;
+    const STATUS_2: usize = 1;
+    const ERROR: usize = 2;
+
+    /// No status words and no error word.
+    pub const NONE: Self = Self {
+        words: [0; 3],
+        present: 0,
+    };
+
+    #[must_use]
+    pub const fn new(
+        status_word: Option<u16>,
+        status_word_2: Option<u16>,
+        error_word: Option<u16>,
+    ) -> Self {
+        let mut words = Self::NONE;
+        words.set(Self::STATUS, status_word);
+        words.set(Self::STATUS_2, status_word_2);
+        words.set(Self::ERROR, error_word);
+        words
+    }
+
+    /// The RT's status word.
+    #[must_use]
+    pub const fn status_word(self) -> Option<u16> {
+        self.get(Self::STATUS)
+    }
+
+    /// The second status word (RT-to-RT transfers).
+    #[must_use]
+    pub const fn status_word_2(self) -> Option<u16> {
+        self.get(Self::STATUS_2)
+    }
+
+    /// The card's error word, or the decoder's `0x20xx` code on `SPURIOUS_DATA`.
+    #[must_use]
+    pub const fn error_word(self) -> Option<u16> {
+        self.get(Self::ERROR)
+    }
+
+    pub const fn set_status_word(&mut self, word: Option<u16>) {
+        self.set(Self::STATUS, word);
+    }
+
+    pub const fn set_status_word_2(&mut self, word: Option<u16>) {
+        self.set(Self::STATUS_2, word);
+    }
+
+    pub const fn set_error_word(&mut self, word: Option<u16>) {
+        self.set(Self::ERROR, word);
+    }
+
+    const fn get(self, slot: usize) -> Option<u16> {
+        if self.present & (1 << slot) == 0 {
+            None
+        } else {
+            Some(self.words[slot])
+        }
+    }
+
+    const fn set(&mut self, slot: usize, word: Option<u16>) {
+        match word {
+            Some(w) => {
+                self.words[slot] = w;
+                self.present |= 1 << slot;
+            }
+            None => {
+                self.words[slot] = 0;
+                self.present &= !(1 << slot);
+            }
+        }
+    }
+}
+
+/// Formats as the three `Option<u16>`s it stands for.
+impl fmt::Debug for OptionalWords {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("OptionalWords")
+            .field("status_word", &self.status_word())
+            .field("status_word_2", &self.status_word_2())
+            .field("error_word", &self.error_word())
+            .finish()
+    }
+}
+
 // ── MieMessage ────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, PartialEq)]
@@ -1013,10 +1119,10 @@ pub struct MieMessage {
     pub message_format: MessageFormat,
     pub command_word: Option<CommandWord>,
     pub command_word_2: Option<CommandWord>,
-    pub status_word: Option<u16>,
-    pub status_word_2: Option<u16>,
+    /// Status word(s) and error word; read them with the getters of the same
+    /// names on the message.
+    pub optional_words: OptionalWords,
     pub data_words: DataWords,
-    pub error_word: Option<u16>,
     /// Seconds since prior message with the same RT+MSG; read it with
     /// [`DeltaSeconds::get`].
     ///
@@ -1034,6 +1140,24 @@ pub struct MieMessage {
 }
 
 impl MieMessage {
+    /// The RT's status word.
+    #[must_use]
+    pub const fn status_word(&self) -> Option<u16> {
+        self.optional_words.status_word()
+    }
+
+    /// The second status word (RT-to-RT transfers).
+    #[must_use]
+    pub const fn status_word_2(&self) -> Option<u16> {
+        self.optional_words.status_word_2()
+    }
+
+    /// The card's error word, or the decoder's `0x20xx` code on `SPURIOUS_DATA`.
+    #[must_use]
+    pub const fn error_word(&self) -> Option<u16> {
+        self.optional_words.error_word()
+    }
+
     #[must_use]
     pub fn rt(&self) -> Option<u8> {
         self.command_word.map(|c| c.rt)
@@ -1098,7 +1222,7 @@ impl MieMessage {
     /// on its own.
     #[must_use]
     pub fn is_continuation(&self) -> bool {
-        self.is_spurious() && self.error_word == Some(ERROR_SPURIOUS_CONTINUATION)
+        self.is_spurious() && self.error_word() == Some(ERROR_SPURIOUS_CONTINUATION)
     }
 
     /// CSV-column error label: `""`, `"ERROR"`, or `"SPURIOUS"`.
@@ -1412,10 +1536,8 @@ mod tests {
                 raw: 0,
             }),
             command_word_2: None,
-            status_word: None,
-            status_word_2: None,
+            optional_words: OptionalWords::NONE,
             data_words: DataWords::new(),
-            error_word: None,
             delta: DeltaSeconds::new(0.0),
             file_offset: 0,
             mux: None,
@@ -1857,5 +1979,59 @@ mod tests {
         assert_eq!(std::mem::size_of::<Option<f64>>(), 16);
         // 152 bytes with an Option<f64>; every byte is copied between stages.
         assert!(std::mem::size_of::<MieMessage>() <= 144);
+    }
+
+    /// Requirements: L2-DEC-010, L2-MRG-007
+    #[test]
+    fn optional_words_round_trip_as_three_options_in_eight_bytes() {
+        // Every present/absent pattern, with 0 as a real word: a present 0
+        // must not read back as absent.
+        let values = [None, Some(0), Some(0xFFFF)];
+        for &s in &values {
+            for &s2 in &values {
+                for &e in &values {
+                    let w = OptionalWords::new(s, s2, e);
+                    assert_eq!(
+                        (w.status_word(), w.status_word_2(), w.error_word()),
+                        (s, s2, e)
+                    );
+                    assert_eq!(
+                        format!("{w:?}"),
+                        format!(
+                            "OptionalWords {{ status_word: {s:?}, status_word_2: {s2:?}, error_word: {e:?} }}"
+                        )
+                    );
+                    // Equal exactly when the three Options are: the duplicate
+                    // check (L2-MRG-007) compares the packed value.
+                    for &t in &values {
+                        let other = OptionalWords::new(t, s2, e);
+                        assert_eq!(w == other, s == t);
+                    }
+                }
+            }
+        }
+        // Clearing a word restores equality with a value that never had it,
+        // and each setter touches only its own word.
+        let mut w = OptionalWords::new(Some(0x7800), Some(0x1234), Some(0x011E));
+        w.set_error_word(None);
+        assert_eq!(w, OptionalWords::new(Some(0x7800), Some(0x1234), None));
+        w.set_status_word_2(None);
+        w.set_status_word(None);
+        assert_eq!(w, OptionalWords::NONE);
+        assert_eq!(OptionalWords::default(), OptionalWords::NONE);
+        w.set_status_word(Some(1));
+        assert_eq!(w, OptionalWords::new(Some(1), None, None));
+        w.set_status_word_2(Some(2));
+        assert_eq!(w, OptionalWords::new(Some(1), Some(2), None));
+
+        // The message's getters read the same words.
+        let mut m = make_msg(1, Direction::Receive, 2);
+        m.optional_words = OptionalWords::new(Some(0x7800), None, Some(0x2000));
+        assert_eq!(m.status_word(), Some(0x7800));
+        assert_eq!(m.status_word_2(), None);
+        assert_eq!(m.error_word(), Some(0x2000));
+
+        assert_eq!(std::mem::size_of::<OptionalWords>(), 8);
+        assert_eq!(3 * std::mem::size_of::<Option<u16>>(), 12);
     }
 }

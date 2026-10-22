@@ -369,10 +369,8 @@ mod tests {
                 raw: 0,
             }),
             command_word_2: None,
-            status_word: None,
-            status_word_2: None,
+            optional_words: OptionalWords::NONE,
             data_words: DataWords::new(),
-            error_word: None,
             delta: DeltaSeconds::new(0.0),
             file_offset: 0,
             mux: None,
@@ -393,7 +391,8 @@ mod tests {
     fn errored(us: u32, rt: u8, sa: u8) -> MieMessage {
         let mut m = rec(us, rt, sa, Direction::Receive);
         m.type_word.error = true;
-        m.error_word = Some(crate::models::ERROR_MANCHESTER_PARITY);
+        m.optional_words
+            .set_error_word(Some(crate::models::ERROR_MANCHESTER_PARITY));
         m
     }
 
