@@ -163,6 +163,16 @@ class TestMieMessage:
         with pytest.raises(AttributeError):
             sample_msg.delta = 1.0  # type: ignore[misc]
 
+    @pytest.mark.requirement("L2-RDR-017")
+    def test_delta_none_and_nan_read_back_as_none(self, sample_msg: MieMessage) -> None:
+        # The crate stores "no DELTA" as NaN in 8 bytes, so a NaN passed in is
+        # the same value as None -- never a number, never an equality trap.
+        assert sample_msg.delta == 0.0
+        assert sample_msg.with_delta(None).delta is None
+        assert sample_msg.with_delta(float("nan")).delta is None
+        assert sample_msg.with_delta(float("nan")) == sample_msg.with_delta(None)
+        assert sample_msg.with_delta(1.5).delta == 1.5
+
     @pytest.mark.requirement("L2-MSG-001")
     def test_message_format_field(self, sample_msg: MieMessage) -> None:
         assert sample_msg.message_format == MessageFormat.RECEIVE

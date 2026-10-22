@@ -24,8 +24,8 @@ use crate::decode::{
 use crate::delta::{DeltaOutcome, DeltaTracker};
 use crate::error::{MieError, MieResult};
 use crate::models::{
-    CommandWord, DataWords, ERROR_SPURIOUS_CONTINUATION, ERROR_SPURIOUS_STANDALONE, MessageFormat,
-    MessageType, MieMessage, Timestamp, TimestampFormat, TypeWord,
+    CommandWord, DataWords, DeltaSeconds, ERROR_SPURIOUS_CONTINUATION, ERROR_SPURIOUS_STANDALONE,
+    MessageFormat, MessageType, MieMessage, Timestamp, TimestampFormat, TypeWord,
     ddc_error_description_or_unknown, is_known_ddc_error_code, timestamp_word_count,
 };
 use crate::source::{DEFAULT_CHUNK, Window, open_input};
@@ -1203,7 +1203,7 @@ impl RecordIter<'_> {
             status_word_2: None,
             data_words,
             error_word: Some(error_code),
-            delta: None,
+            delta: DeltaSeconds::NONE,
             file_offset: self.offset as u64,
             mux: self.mux.clone(),
         };
@@ -1311,7 +1311,7 @@ impl RecordIter<'_> {
             status_word_2: status2,
             data_words,
             error_word: None,
-            delta,
+            delta: delta.into(),
             file_offset: self.offset as u64,
             mux: self.mux.clone(),
         };
@@ -1449,7 +1449,7 @@ impl RecordIter<'_> {
             status_word_2: None,
             data_words,
             error_word: Some(error_code),
-            delta,
+            delta: delta.into(),
             file_offset: self.offset as u64,
             mux: self.mux.clone(),
         })

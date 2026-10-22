@@ -564,9 +564,9 @@ fn delta_tracker_per_rt_msg_key() {
     let reader = MieFileReader::new(f.path()).unwrap();
     let msgs: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
     assert_eq!(msgs.len(), 2);
-    assert_eq!(msgs[0].delta, Some(0.0));
+    assert_eq!(msgs[0].delta.get(), Some(0.0));
     // Same timestamp in both fixtures → delta should be exactly 0.0 (not negative)
-    assert_eq!(msgs[1].delta, Some(0.0));
+    assert_eq!(msgs[1].delta.get(), Some(0.0));
 }
 
 /// Requirements: L2-FLT-001
@@ -1166,9 +1166,9 @@ fn merge_orders_records_across_files_by_absolute_time() {
 
     // Global DELTA (L2-MRG-005): first occurrence 0.0, then non-negative gaps
     // on the unified timeline (all four share one RT/SA/dir key).
-    assert_eq!(msgs[0].delta, Some(0.0));
+    assert_eq!(msgs[0].delta.get(), Some(0.0));
     for m in &msgs[1..] {
-        assert!(m.delta.unwrap() >= 0.0);
+        assert!(m.delta.get().unwrap() >= 0.0);
     }
 }
 
@@ -2497,7 +2497,7 @@ fn per_file_delta_matches_single_file_decode() {
         let r = MieFileReader::new(path).unwrap();
         for m in &r {
             let m = m.unwrap();
-            alone.push((m.file_offset, m.delta));
+            alone.push((m.file_offset, m.delta.get()));
         }
     }
 
@@ -2517,7 +2517,7 @@ fn per_file_delta_matches_single_file_decode() {
         assert!(
             merged
                 .iter()
-                .any(|m| m.file_offset == offset && m.delta == delta),
+                .any(|m| m.file_offset == offset && m.delta.get() == delta),
             "offset {offset:#X} delta {delta:?} missing from the merged stream"
         );
     }
@@ -2548,12 +2548,12 @@ fn global_scope_measures_across_the_merged_timeline() {
     let shared: Vec<Option<f64>> = merged
         .iter()
         .filter(|m| m.delta_key() == "20:5R")
-        .map(|m| m.delta)
+        .map(|m| m.delta.get())
         .collect();
     let unique: Vec<Option<f64>> = merged
         .iter()
         .filter(|m| m.delta_key() == "15:11R")
-        .map(|m| m.delta)
+        .map(|m| m.delta.get())
         .collect();
     assert_eq!(
         shared,
@@ -2586,7 +2586,7 @@ fn per_file_is_the_default_scope() {
             Some(s) => it.delta_scope(s),
             None => it,
         };
-        it.map(|m| m.unwrap().delta).collect()
+        it.map(|m| m.unwrap().delta.get()).collect()
     };
     assert_eq!(deltas(None), deltas(Some(DeltaScope::PerFile)));
 }
@@ -2606,7 +2606,7 @@ fn scope_does_not_affect_a_single_input() {
         MergedRecordIter::new(&readers, None, false, false)
             .unwrap()
             .delta_scope(scope)
-            .map(|m| m.unwrap().delta)
+            .map(|m| m.unwrap().delta.get())
             .collect()
     };
     assert_eq!(deltas(DeltaScope::PerFile), deltas(DeltaScope::Global));

@@ -437,7 +437,7 @@ fn put(
         F::ErrorWord => d.set_item(key, m.error_word),
         F::DataWordCount => d.set_item(key, m.data_words.len()),
         F::DataWords => d.set_item(key, PyTuple::new(py, m.data_words.as_slice())?),
-        F::Delta => d.set_item(key, m.delta),
+        F::Delta => d.set_item(key, m.delta.get()),
         F::Mux => d.set_item(key, m.mux.as_deref()),
     }
 }
@@ -541,7 +541,9 @@ impl Column {
             (F::DataWordCount, Self::U8(v)) => {
                 v.extend(batch.iter().map(|m| m.data_words.len() as u8))
             }
-            (F::Delta, Self::F64(v)) => v.extend(batch.iter().map(|m| m.delta.unwrap_or(f64::NAN))),
+            (F::Delta, Self::F64(v)) => {
+                v.extend(batch.iter().map(|m| m.delta.get().unwrap_or(f64::NAN)))
+            }
             (F::Mux, Self::Text(v)) => {
                 v.extend(batch.iter().map(|m| m.mux.as_deref().map(str::to_owned)))
             }

@@ -813,7 +813,7 @@ fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
 
     // DELTA — empty cell when delta is None (SPURIOUS_DATA, uncalibrated
     // Standard timestamps, or non-monotonic timestamps).
-    if let Some(d) = msg.delta {
+    if let Some(d) = msg.delta.get() {
         push_delta(row, d);
     }
     row.push(b',');
@@ -1533,7 +1533,7 @@ mod tests {
             status_word_2: None,
             data_words: DataWords::from_slice(&[0x0400, 0x0000, 0x0000, 0x002F]),
             error_word: None,
-            delta: Some(0.123456),
+            delta: DeltaSeconds::new(0.123456),
             file_offset: 0,
             mux: None,
         }
@@ -1565,7 +1565,7 @@ mod tests {
                 if let Timestamp::Irig(t) = &mut m.timestamp {
                     t.microsecond = i % 1_000_000;
                 }
-                m.delta = Some(f64::from(i % 1000) / 1_000_000.0);
+                m.delta = DeltaSeconds::new(f64::from(i % 1000) / 1_000_000.0);
                 m
             })
             .collect();

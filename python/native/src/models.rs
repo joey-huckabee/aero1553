@@ -667,7 +667,7 @@ impl PyMieMessage {
                 PyTuple::new(py, m.data_words.as_slice())?.into_any(),
             ),
             ("error_word", m.error_word.into_pyobject(py)?.into_any()),
-            ("delta", m.delta.into_pyobject(py)?.into_any()),
+            ("delta", m.delta.get().into_pyobject(py)?.into_any()),
             ("file_offset", m.file_offset.into_pyobject(py)?.into_any()),
             ("mux", m.mux.as_deref().into_pyobject(py)?.into_any()),
         ])
@@ -711,7 +711,7 @@ impl PyMieMessage {
                 // Capped at 32, as the dataclass's __post_init__ capped it.
                 data_words: DataWords::from_slice(&data_words),
                 error_word,
-                delta,
+                delta: delta.into(),
                 file_offset,
                 mux: mux.map(Arc::from),
             },
@@ -770,7 +770,7 @@ impl PyMieMessage {
     /// Seconds since the prior message with the same RT+MSG, if meaningful.
     #[getter]
     fn delta(&self) -> Option<f64> {
-        self.inner.delta
+        self.inner.delta.get()
     }
     /// Byte offset of this record in the source file.
     #[getter]
@@ -847,7 +847,7 @@ impl PyMieMessage {
     /// Return a copy of this message carrying a new DELTA.
     fn with_delta(&self, delta: Option<f64>) -> Self {
         let mut inner = self.inner.clone();
-        inner.delta = delta;
+        inner.delta = delta.into();
         Self { inner }
     }
 
