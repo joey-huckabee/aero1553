@@ -288,14 +288,19 @@ from two rendering threads on, a decode waits on the **calling thread** -- read,
 validate, decode, filter, order, merge, and write -- which is why eight threads
 measured no faster than four. 5.3.0 took the two largest costs off that thread
 -- ordering stopped allocating per timestamp (1.5x-1.8x on a whole decode) and
-`DELTA` moved to a fixed table (a further 6-16%). Beyond them, in the order
+`DELTA` moved to a fixed table (a further 6-16%). 5.4.0 profiled that thread:
+a third of it was copying the 152-byte record between stages through `memmove`.
+Skipping the filter stage when no filter is set, and shrinking `MieMessage` to
+128 bytes so those copies inline, cut `memmove` from 12.2% to 1.6% of the thread
+and made a decode 0.70x-0.80x the time of 5.3.0. Beyond that, in the order
 they are expected to pay:
 
-- **Profile the calling thread.** Measure before choosing
-  the next target. Remaining suspects: record validation with its look-ahead,
-  the copy of each record into a rendering batch, and the merge heap. Any change
-  must keep the output byte-identical and the N-record look-ahead
-  (`L2-SYN-026`).
+- **Profile the calling thread again.** Measure before choosing the next
+  target. Open questions: why a decode with `MUX` populated gained least
+  (0.963x against 0.876x-0.929x without), whether building each record in
+  place in its rendering batch still pays now that copies inline, and the
+  record validation with its look-ahead and the merge heap. Any change must
+  keep the output byte-identical and the N-record look-ahead (`L2-SYN-026`).
 - **Parallel decoding and writing.** Workers only format CSV; reading,
   decoding, ordering, merging and the output writes stay on one thread, so more
   formatting workers cannot speed those up. For **multi-file** decodes: decode
