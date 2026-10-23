@@ -21,6 +21,27 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **A multi-file merge is 10-19% faster.** The merge's heap held each
+  input's next record inside its entries, so every push and pop moved
+  152-byte entries -- above the size that copies inline, so each move was a
+  `memmove` call, 8-15% of the merge's decoding thread. The heap now holds
+  only the 24-byte key `(microseconds, file index, sequence)`, and each
+  file's next record waits in a slot of its own; a file has at most one record
+  in the heap, so one slot per file is enough. The key order and so the output
+  are unchanged.
+
+  Measured on 256 MiB of input in WSL against the previous `main`, output
+  identical:
+
+  | Case | candidate / previous | A/A |
+  |---|---|---|
+  | merge of 8 files (`perf/baseline.py`, 15 rounds) | 0.810 | -- |
+  | merge of 8 files, `MUX` populated (21 rounds) | 0.902 (faster in 20/21) | 0.981 |
+  | the same with `--collapse-duplicates` (21 rounds) | 0.890 (faster in 20/21) | 1.003 |
+  | single-file decode / corrupt-split (`perf/baseline.py`) | 1.004 / 0.988 | -- |
+
+  `memmove` on the merge's decoding thread went from 8.4% to 0.0%.
+
 - **A decode with the `MUX` column populated is 6-12% faster.** It was the
   case 5.4.0 helped least, and a profile showed why: every record holds a
   clone of its file's `Arc<String>`, whose reference count shares a cache line
