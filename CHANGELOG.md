@@ -19,6 +19,31 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **A decode with the `MUX` column populated is 6-12% faster.** It was the
+  case 5.4.0 helped least, and a profile showed why: every record holds a
+  clone of its file's `Arc<String>`, whose reference count shares a cache line
+  with the string's length. The decoding thread wrote that line on every
+  record (the reference-count increment was half of `decode_normal_record`)
+  and each rendering thread read it on every row (the length load was a
+  quarter of `render_message`), so the line moved between cores on every
+  record. Rendering threads now keep each file's rendered cell for the batch,
+  matched by the `Arc`'s address without reading it, for up to 16 files; a
+  merge changes file on most rows, so one cell per file rather than the last.
+  The cells borrow the records' `Arc`s, so an address cannot be reused by
+  another file's value while it is compared. Internal only: no API change.
+
+  Measured on 256 MiB recordings in WSL against 5.4.0, 21 shuffled rounds
+  with an A/A pair, output identical:
+
+  | Case | candidate / 5.4.0 | A/A |
+  |---|---|---|
+  | `MUX` populated, 2 threads (default) | 0.921 | 1.037 |
+  | `MUX` populated, 4 threads | 0.879 (faster in 20/21) | 1.029 |
+  | merge of 8 files, `MUX` populated | 0.943 (faster in 17/21) | 1.001 |
+  | decode / merge / corrupt-split, no `MUX` (`perf/baseline.py`) | 1.011 / 0.979 / 0.968 | -- |
+
 ## [5.4.0] — 2026-10-22
 
 ### Changed

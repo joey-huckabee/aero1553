@@ -296,10 +296,9 @@ and made a decode 0.70x-0.80x the time of 5.3.0. Beyond that, in the order
 they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
-  target. Open questions: why a decode with `MUX` populated gained least
-  (0.963x against 0.876x-0.929x without), whether building each record in
-  place in its rendering batch still pays now that copies inline, and the
-  record validation with its look-ahead and the merge heap. Any change must
+  target. Open questions: whether building each record in place in its
+  rendering batch still pays now that copies inline, and the record
+  validation with its look-ahead and the merge heap. Any change must
   keep the output byte-identical and the N-record look-ahead (`L2-SYN-026`).
 - **Parallel decoding and writing.** Workers only format CSV; reading,
   decoding, ordering, merging and the output writes stay on one thread, so more
@@ -342,9 +341,13 @@ they are expected to pay:
   after the calling-thread work, since PGO tunes whatever the code is.
 - **Per-record `MUX` handle.** Every record holds a clone of one `Arc<String>` per
   input file. 5.2.0 stopped worker threads from dropping records (which moved
-  the reference count between cores on every record); not cloning per record
-  at all -- the writer looking the value up once per input -- would remove the
-  remaining atomic increment and decrement.
+  the reference count between cores on every record), and rendering threads
+  now copy each file's cell instead of reading the string through the `Arc`,
+  whose reference count shares its cache line (`MuxCells`, `writer.rs`). Not
+  cloning per record at all -- the writer looking the value up once per input
+  -- would remove the remaining, now uncontended, atomic increment and
+  decrement, and the 17th and later files of a merge still read through the
+  `Arc`. Measure first.
 - **Rust per-row allocations in the merge.** The de-duplication key and any
   remaining per-row `String` building on the merge path. Verify against the
   current code first: the 5.1.0 formatter removed the writer's per-row

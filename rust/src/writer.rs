@@ -14,6 +14,7 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -500,7 +501,7 @@ impl<W: Write> CsvWriter<W> {
     /// treat it as a clean exit (L2-WRT-018).
     pub fn write_message(&mut self, msg: &MieMessage) -> MieResult<()> {
         self.row.clear();
-        render_message(&mut self.row, msg, self.time_render)?;
+        render_message(&mut self.row, msg, self.time_render, None)?;
         self.out
             .write_all(&self.row)
             .map_err(|source| MieError::WriterError {
@@ -665,10 +666,14 @@ fn push_u8(row: &mut Vec<u8>, n: u8) {
 /// day-of-year the configured year does not have (L2-WRT-026 clause 3).
 /// Resolving it first keeps that refusal from leaving a half-written line in
 /// the output: on `Err`, `row` is exactly as it was.
-pub(crate) fn render_message(
+///
+/// `mux` is the rendering thread's [`MuxCells`]; `None` writes the cell from
+/// the record itself.
+pub(crate) fn render_message<'a>(
     row: &mut Vec<u8>,
-    msg: &MieMessage,
+    msg: &'a MieMessage,
     render: TimeRender,
+    mux: Option<&mut MuxCells<'a>>,
 ) -> MieResult<()> {
     match msg.timestamp {
         // The default rendering, written without an intermediate String.
@@ -685,7 +690,7 @@ pub(crate) fn render_message(
             row.extend_from_slice(timestamp.as_bytes());
         }
     }
-    render_fields(row, msg);
+    render_fields(row, msg, mux);
     Ok(())
 }
 
@@ -697,7 +702,7 @@ pub(crate) fn render_message(
 #[cfg(test)]
 fn render_row(row: &mut Vec<u8>, msg: &MieMessage, timestamp: &str) {
     row.extend_from_slice(timestamp.as_bytes());
-    render_fields(row, msg);
+    render_fields(row, msg, None);
 }
 
 /// Append `n` as exactly `width` decimal digits (`n` must fit).
@@ -758,9 +763,57 @@ fn push_delta(row: &mut Vec<u8>, d: f64) {
     let _ = write!(row, "{d:.6}");
 }
 
+/// How many files' `MUX` cells one [`MuxCells`] keeps. A merge of more files
+/// writes the cells of the rest from their records, as before.
+const MUX_CELLS: usize = 16;
+
+/// The `MUX` cells a rendering thread has rendered, one per file, kept so that
+/// later records of the same file copy their cell instead of reading the
+/// file's shared `Arc<String>` (L2-WRT-027).
+///
+/// Every record of a file holds a clone of one `Arc`, and the reference count
+/// shares a cache line with the string's length. The decoding thread writes
+/// the count on every record; a rendering thread that read the length on every
+/// row pulled that line between cores on every record, about a tenth of each
+/// thread's time. Comparing two `Arc`s by address reads neither. A merge
+/// changes file on most rows, hence one cell per file rather than the last.
+///
+/// The cells borrow each `Arc` they hold for as long as they hold it, so its
+/// allocation cannot be freed and its address reused by another file's value
+/// while they compare against it.
+pub(crate) struct MuxCells<'a> {
+    /// Each file's `Arc` and where its rendered cell sits in `bytes`.
+    cells: Vec<(&'a Arc<String>, usize, usize)>,
+    bytes: Vec<u8>,
+}
+
+impl<'a> MuxCells<'a> {
+    pub(crate) const fn new() -> Self {
+        Self {
+            cells: Vec::new(),
+            bytes: Vec::new(),
+        }
+    }
+
+    fn push(&mut self, row: &mut Vec<u8>, mux: &'a Arc<String>) {
+        if let Some(&(_, start, end)) = self.cells.iter().find(|c| Arc::ptr_eq(c.0, mux)) {
+            row.extend_from_slice(&self.bytes[start..end]);
+        } else if self.cells.len() < MUX_CELLS {
+            let start = self.bytes.len();
+            // Infallible: writing to a Vec never errors.
+            let _ = write_csv_field(&mut self.bytes, mux);
+            self.cells.push((mux, start, self.bytes.len()));
+            row.extend_from_slice(&self.bytes[start..]);
+        } else {
+            // Infallible: writing to a Vec never errors.
+            let _ = write_csv_field(row, mux);
+        }
+    }
+}
+
 /// Render every column after `TIME_STAMP`, from its separating comma to the
 /// newline.
-fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
+fn render_fields<'a>(row: &mut Vec<u8>, msg: &'a MieMessage, cell: Option<&mut MuxCells<'a>>) {
     row.push(b',');
 
     // RT, then MSG (`<SA><T|R>`; both empty for SPURIOUS_DATA)
@@ -801,9 +854,13 @@ fn render_fields(row: &mut Vec<u8>, msg: &MieMessage) {
 
     // MUX (L2-WRT-020: derived from the file name; empty when disabled or the
     // configured field is absent), then TERM_NAME (always empty).
-    if let Some(mux) = msg.mux() {
-        // Infallible: writing to a Vec never errors.
-        let _ = write_csv_field(row, mux);
+    match (msg.mux.as_ref(), cell) {
+        (Some(mux), Some(cell)) => cell.push(row, mux),
+        (Some(mux), None) => {
+            // Infallible: writing to a Vec never errors.
+            let _ = write_csv_field(row, mux);
+        }
+        (None, _) => {}
     }
     row.extend_from_slice(b",,");
 
