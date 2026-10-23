@@ -22,7 +22,7 @@ use std::{io, mem, thread};
 
 use crate::error::{MieError, MieResult};
 use crate::models::{MieMessage, TimeRender};
-use crate::writer::render_message;
+use crate::writer::{MuxCells, render_message};
 
 /// Records per batch: large enough that channel traffic is noise against the
 /// rendering, small enough that `workers * DEPTH` batches stay a few MB.
@@ -116,13 +116,14 @@ fn render_batch(
         errors: Vec::new(),
         error_rows: 0,
     };
+    let mut mux = MuxCells::new();
     for msg in batch {
         let (buf, rows) = if split && !msg.error_label().is_empty() {
             (&mut block.errors, &mut block.error_rows)
         } else {
             (&mut block.main, &mut block.main_rows)
         };
-        if let Err(e) = render_message(buf, msg, render) {
+        if let Err(e) = render_message(buf, msg, render, Some(&mut mux)) {
             return (block, Some(e));
         }
         *rows += 1;
@@ -364,6 +365,50 @@ mod tests {
                     "split={split} workers={workers} differs"
                 );
             }
+        }
+    }
+
+    /// Records of several files interleaved within one batch each keep their
+    /// own file's `MUX` value -- including two files whose values are equal
+    /// but separately held, and more files than one rendering thread keeps
+    /// cells for.
+    ///
+    /// Requirements: L2-WRT-020, L2-WRT-027
+    #[test]
+    fn each_row_keeps_its_own_files_mux_value() {
+        use std::sync::Arc;
+        let mut files = vec![
+            Some(Arc::new("BUS3".to_string())),
+            Some(Arc::new("a,b".to_string())),
+            None,
+            Some(Arc::new("BUS3".to_string())),
+        ];
+        files.extend((0..20).map(|k| Some(Arc::new(format!("F{k}")))));
+        let n = u32::try_from(BATCH * 3 + 7).unwrap_or(u32::MAX);
+        // Runs of 1 to 4 records from each file in turn, so the value changes
+        // at many places inside a batch and across batch boundaries.
+        let messages = || {
+            (0..n).map(|i| {
+                let mut m = record(i);
+                m.mux = files[(i / (1 + i % 4)) as usize % files.len()].clone();
+                Ok(m)
+            })
+        };
+        let mut expected = Vec::new();
+        for m in messages() {
+            let m = m.unwrap_or_else(|_| record(0));
+            render_message(&mut expected, &m, TimeRender::doy(), None).unwrap_or(());
+        }
+        let text = String::from_utf8_lossy(&expected);
+        assert!(text.contains(",797E,\"a,b\",,"));
+        assert!(
+            text.contains(",797E,F19,,"),
+            "a file past the cells' capacity"
+        );
+        for workers in [0, 1, 3] {
+            let (sunk, err) = run(messages(), TimeRender::doy(), false, workers);
+            assert_eq!(err, None);
+            assert!(sunk.main == expected, "workers={workers} differs");
         }
     }
 
