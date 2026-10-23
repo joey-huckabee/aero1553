@@ -2267,7 +2267,11 @@ class TestSeparateModeCommitOrder:
         fpath = tmp_path / "in.mie"
         fpath.write_bytes(RECORD_RT15_SA11_RCV)
         normal = next(iter(MieFileReader(fpath)))
-        errored = replace(normal, type_word=replace(normal.type_word, error=True))
+        # error is bit 14 of raw, so the two change together.
+        errored = replace(
+            normal,
+            type_word=replace(normal.type_word, error=True, raw=normal.type_word.raw | 1 << 14),
+        )
         assert errored.error_label == "ERROR"
 
         dest = tmp_path / "out.csv"

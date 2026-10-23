@@ -422,7 +422,7 @@ fn put(
             Some(us) => d.set_item(key, py_datetime(py, us, spec.utc_offset_minutes)?),
             None => d.set_item(key, py.None()),
         },
-        F::MessageType => d.set_item(key, m.type_word.message_type),
+        F::MessageType => d.set_item(key, m.type_word.message_type()),
         F::MessageFormat => d.set_item(key, m.message_format as u8),
         F::Bus => d.set_item(key, m.bus() as u8),
         F::Error => d.set_item(key, m.is_error()),
@@ -518,7 +518,7 @@ impl Column {
                 v.extend(batch.iter().map(|m| datetime_us(m, spec).unwrap_or(NAT)))
             }
             (F::MessageType, Self::U8(v)) => {
-                v.extend(batch.iter().map(|m| m.type_word.message_type))
+                v.extend(batch.iter().map(|m| m.type_word.message_type()))
             }
             (F::MessageFormat, Self::U8(v)) => {
                 v.extend(batch.iter().map(|m| m.message_format as u8))

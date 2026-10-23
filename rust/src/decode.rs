@@ -5,7 +5,7 @@
 
 use crate::error::{MieError, MieResult};
 use crate::models::{
-    Bus, CommandWord, Direction, IrigTimestamp, MessageFormat, MessageType, StandardTimestamp,
+    CommandWord, Direction, IrigTimestamp, MessageFormat, MessageType, StandardTimestamp,
     TimestampFormat, TypeWord, is_valid_message_type,
 };
 
@@ -68,17 +68,7 @@ pub fn read_u16_array(data: &[u8], offset: usize, count: usize, out: &mut [u16])
 #[inline]
 #[must_use]
 pub fn decode_type_word(raw: u16) -> TypeWord {
-    let message_type = (raw & 0x7F) as u8;
-    let bus = if (raw >> 7) & 1 == 0 { Bus::A } else { Bus::B };
-    let word_count = (raw >> 8) & 0x3F;
-    let error = ((raw >> 14) & 1) != 0;
-    TypeWord {
-        message_type,
-        bus,
-        word_count,
-        error,
-        raw,
-    }
+    TypeWord::from_raw(raw)
 }
 
 #[must_use]
@@ -303,7 +293,7 @@ pub fn validate_structural_invariants(
     ts_words: u16,
 ) -> Result<(), InvariantViolation> {
     // L2-SYN-020 / L2-SYN-021: per-type direction.
-    if tw.message_type == MessageType::BcToRt as u8 && cmd.direction != Direction::Receive {
+    if tw.message_type() == MessageType::BcToRt as u8 && cmd.direction != Direction::Receive {
         return Err(InvariantViolation {
             kind: WhichInvariant::DirectionBcToRt,
             severity: InvariantSeverity::Reject,
@@ -314,7 +304,7 @@ pub fn validate_structural_invariants(
             ),
         });
     }
-    if tw.message_type == MessageType::RtToBc as u8 && cmd.direction != Direction::Transmit {
+    if tw.message_type() == MessageType::RtToBc as u8 && cmd.direction != Direction::Transmit {
         return Err(InvariantViolation {
             kind: WhichInvariant::DirectionRtToBc,
             severity: InvariantSeverity::Reject,
@@ -328,14 +318,17 @@ pub fn validate_structural_invariants(
 
     // L2-SYN-022: word-count capacity check.
     let min_wc = 1 + ts_words + 1 + min_payload_words(msg_fmt, *cmd);
-    if tw.word_count < min_wc {
+    if tw.word_count() < min_wc {
         return Err(InvariantViolation {
             kind: WhichInvariant::WordCountCapacity,
             severity: InvariantSeverity::Reject,
             detail: format!(
                 "TW.word_count = {} is too small for declared payload \
                  (need at least {} for {:?} with data_word_count = {})",
-                tw.word_count, min_wc, msg_fmt, cmd.data_word_count
+                tw.word_count(),
+                min_wc,
+                msg_fmt,
+                cmd.data_word_count
             ),
         });
     }
@@ -434,14 +427,14 @@ pub fn detect_record_anomalies(
     }
 
     // L2-SYN-025: Type Word bit 15 reserved.
-    if (tw.raw >> 15) & 1 != 0 {
+    if (tw.raw() >> 15) & 1 != 0 {
         out.push(InvariantViolation {
             kind: WhichInvariant::TypeWordReservedBit,
             severity: InvariantSeverity::AnomalyWarn,
             detail: format!(
                 "Type Word bit 15 (reserved) is set in raw 0x{:04X}; \
                  possible undocumented vendor extension",
-                tw.raw
+                tw.raw()
             ),
         });
     }
@@ -606,7 +599,7 @@ fn accumulate_probe_scores(
         let tw = decode_type_word(tw_raw);
         // Defensively skip structurally-impossible records — these would also
         // fail the reader's validate_record path, and would skew the score.
-        if tw.word_count < MIN_RECORD_WORDS_STANDARD {
+        if tw.word_count() < MIN_RECORD_WORDS_STANDARD {
             break;
         }
 
@@ -615,7 +608,7 @@ fn accumulate_probe_scores(
         std_score += s_delta;
         records_probed += 1;
 
-        let record_bytes = usize::from(tw.word_count) * 2;
+        let record_bytes = usize::from(tw.word_count()) * 2;
         if record_bytes == 0 {
             break;
         }
@@ -661,8 +654,8 @@ fn score_single_record(data: &[u8], offset: usize, type_word: TypeWord) -> (i32,
 /// T/R consistency: a `BC_TO_RT` type expects a Receive command, `RT_TO_BC`
 /// expects Transmit. Other message types never match.
 fn tr_direction_matches(type_word: TypeWord, cmd: CommandWord) -> bool {
-    (type_word.message_type == MessageType::BcToRt as u8 && cmd.direction == Direction::Receive)
-        || (type_word.message_type == MessageType::RtToBc as u8
+    (type_word.message_type() == MessageType::BcToRt as u8 && cmd.direction == Direction::Receive)
+        || (type_word.message_type() == MessageType::RtToBc as u8
             && cmd.direction == Direction::Transmit)
 }
 
@@ -678,7 +671,7 @@ fn score_irig_candidate(data: &[u8], offset: usize, type_word: TypeWord) -> i32 
         score += 2;
     }
     // IRIG overhead = TS(3) + Cmd(1) + Stat(1) + Type(1) = 6
-    if i32::from(type_word.word_count) - 6 == i32::from(cmd.data_word_count) {
+    if i32::from(type_word.word_count()) - 6 == i32::from(cmd.data_word_count) {
         score += 2;
     }
     if let (Some(ts_upper), Some(ts_middle)) =
@@ -710,7 +703,7 @@ fn score_standard_candidate(data: &[u8], offset: usize, type_word: TypeWord) -> 
         score += 2;
     }
     // Standard overhead = TS(2) + Cmd(1) + Stat(1) + Type(1) = 5
-    if i32::from(type_word.word_count) - 5 == i32::from(cmd.data_word_count) {
+    if i32::from(type_word.word_count()) - 5 == i32::from(cmd.data_word_count) {
         score += 2;
     }
     score
@@ -725,6 +718,7 @@ pub fn message_type_is_valid(code: u8) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::models::Bus;
 
     /// Requirements: L2-WRT-020
     #[test]
@@ -796,11 +790,11 @@ mod tests {
     fn type_word_layout() {
         // 0x2402: word_count=36 in upper byte (0x24), type=0x02 in lower
         let tw = decode_type_word(0x2402);
-        assert_eq!(tw.message_type, 2);
-        assert_eq!(tw.bus, Bus::A);
-        assert_eq!(tw.word_count, 36);
-        assert!(!tw.error);
-        assert_eq!(tw.raw, 0x2402);
+        assert_eq!(tw.message_type(), 2);
+        assert_eq!(tw.bus(), Bus::A);
+        assert_eq!(tw.word_count(), 36);
+        assert!(!tw.error());
+        assert_eq!(tw.raw(), 0x2402);
     }
 
     /// Requirements: L2-DEC-001, L2-ERR-001
@@ -809,8 +803,8 @@ mod tests {
         // bit 7 set → Bus B, bit 14 set → error
         let raw = 0b0100_0000_1000_0000 | 0x02; // type 0x02
         let tw = decode_type_word(raw);
-        assert_eq!(tw.bus, Bus::B);
-        assert!(tw.error);
+        assert_eq!(tw.bus(), Bus::B);
+        assert!(tw.error());
     }
 
     /// Requirements: L2-DEC-002
@@ -1015,13 +1009,7 @@ mod tests {
     // ── L2-SYN-020..025 structural invariants (Phase 7a) ──────────────────
 
     fn tw(message_type: u8, word_count: u16) -> TypeWord {
-        TypeWord {
-            message_type,
-            bus: Bus::A,
-            word_count,
-            error: false,
-            raw: 0,
-        }
+        TypeWord::from_fields(message_type, Bus::A, word_count, false).unwrap()
     }
 
     fn cmd_with(direction: Direction, dwc: u8) -> CommandWord {
@@ -1241,13 +1229,7 @@ mod tests {
         // Type word raw with bit 15 set: 0x8402 (wc=4, bit15=1, type=0x02).
         // (The framing parts here are irrelevant — the anomaly check
         // only looks at bit 15.)
-        let t = TypeWord {
-            message_type: 0x02,
-            bus: Bus::A,
-            word_count: 4,
-            error: false,
-            raw: 0x8402,
-        };
+        let t = TypeWord::from_raw(0x8402);
         let c = cmd_with(Direction::Receive, 1);
         let anomalies = detect_record_anomalies(&t, &c, None);
         assert_eq!(anomalies.len(), 1);
@@ -1259,13 +1241,7 @@ mod tests {
     #[test]
     fn anomaly_multiple_can_fire_on_one_record() {
         // Status RT mismatch + reserved bit set: expect TWO anomalies.
-        let t = TypeWord {
-            message_type: 0x02,
-            bus: Bus::A,
-            word_count: 36,
-            error: false,
-            raw: 0xA402, // bit 15 set
-        };
+        let t = TypeWord::from_raw(0xA402);
         let c = cmd_with(Direction::Receive, 30); // rt=15
         let anomalies = detect_record_anomalies(&t, &c, Some(0x2800)); // status RT=5
         assert_eq!(anomalies.len(), 2);

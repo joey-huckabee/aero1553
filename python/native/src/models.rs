@@ -183,6 +183,11 @@ fn calendar_error(py: Python<'_>, err: CalendarError) -> PyErr {
 // ── TypeWord ───────────────────────────────────────────────────────────────
 
 /// Decoded DDC MIE record Type Word.
+///
+/// ``message_type``, ``bus``, ``word_count`` and ``error`` are bit fields of
+/// ``raw`` (bits 0-6, 7, 8-13 and 14). The constructor -- and so
+/// ``copy.replace`` -- raises ``ValueError`` when a field disagrees with
+/// ``raw``; bit 15 belongs to no field and is kept as given.
 #[pyclass(
     frozen,
     eq,
@@ -200,18 +205,18 @@ impl PyTypeWord {
         Ok(vec![
             (
                 "message_type",
-                self.inner.message_type.into_pyobject(py)?.into_any(),
+                self.inner.message_type().into_pyobject(py)?.into_any(),
             ),
-            ("bus", member(py, PyEnum::Bus, self.inner.bus as u8)?),
+            ("bus", member(py, PyEnum::Bus, self.inner.bus() as u8)?),
             (
                 "word_count",
-                self.inner.word_count.into_pyobject(py)?.into_any(),
+                self.inner.word_count().into_pyobject(py)?.into_any(),
             ),
             (
                 "error",
-                self.inner.error.into_pyobject(py)?.to_owned().into_any(),
+                self.inner.error().into_pyobject(py)?.to_owned().into_any(),
             ),
-            ("raw", self.inner.raw.into_pyobject(py)?.into_any()),
+            ("raw", self.inner.raw().into_pyobject(py)?.into_any()),
         ])
     }
 }
@@ -221,41 +226,71 @@ impl PyTypeWord {
     #[new]
     #[pyo3(signature = (message_type, bus, word_count, error, raw))]
     fn new(message_type: u8, bus: u8, word_count: u16, error: bool, raw: u16) -> PyResult<Self> {
-        Ok(Self {
-            inner: TypeWord {
-                message_type,
-                bus: bus_from(bus)?,
-                word_count,
-                error,
-                raw,
-            },
-        })
+        // Every field is a bit field of `raw`, which is all the crate stores, so
+        // the four must agree with it. A mismatch is rejected rather than one
+        // side silently dropped.
+        let bus = bus_from(bus)?;
+        let inner = TypeWord::from_raw(raw);
+        let py_bool = |b: bool| if b { "True" } else { "False" };
+        let mismatch = if message_type != inner.message_type() {
+            Some((
+                "message_type",
+                format!("0x{message_type:02X}"),
+                format!("0x{:02X}", inner.message_type()),
+            ))
+        } else if bus != inner.bus() {
+            Some((
+                "bus",
+                bus.as_str().to_owned(),
+                inner.bus().as_str().to_owned(),
+            ))
+        } else if word_count != inner.word_count() {
+            Some((
+                "word_count",
+                word_count.to_string(),
+                inner.word_count().to_string(),
+            ))
+        } else if error != inner.error() {
+            Some((
+                "error",
+                py_bool(error).to_owned(),
+                py_bool(inner.error()).to_owned(),
+            ))
+        } else {
+            None
+        };
+        if let Some((field, given, encoded)) = mismatch {
+            return Err(PyValueError::new_err(format!(
+                "TypeWord: {field}={given} does not match raw=0x{raw:04X}, which encodes {field}={encoded}"
+            )));
+        }
+        Ok(Self { inner })
     }
 
     /// DDC message type code (0x01-0x20).
     #[getter]
     fn message_type(&self) -> u8 {
-        self.inner.message_type
+        self.inner.message_type()
     }
     /// Which redundant 1553 bus this message was captured on.
     #[getter]
     fn bus<'py>(&self, py: Python<'py>) -> PyResult<Bound<'py, PyAny>> {
-        member(py, PyEnum::Bus, self.inner.bus as u8)
+        member(py, PyEnum::Bus, self.inner.bus() as u8)
     }
     /// Total record size in 16-bit words.
     #[getter]
     fn word_count(&self) -> u16 {
-        self.inner.word_count
+        self.inner.word_count()
     }
     /// True if the recording card flagged an error (bit 14).
     #[getter]
     fn error(&self) -> bool {
-        self.inner.error
+        self.inner.error()
     }
     /// The original 16-bit value.
     #[getter]
     fn raw(&self) -> u16 {
-        self.inner.raw
+        self.inner.raw()
     }
 
     fn __repr__(&self, py: Python<'_>) -> PyResult<String> {

@@ -156,18 +156,18 @@ fn validate_record_detailed_impl(
     let tw = decode_type_word(type_raw);
 
     // Check 2: Valid message type.
-    if !message_type_is_valid(tw.message_type) {
+    if !message_type_is_valid(tw.message_type()) {
         return Err(ValidationFailure::UnknownMessageType);
     }
 
     // Check 3: Plausible word count.
     let min_wc = min_word_count(ts_format);
-    if tw.word_count < min_wc || tw.word_count > 63 {
+    if tw.word_count() < min_wc || tw.word_count() > 63 {
         return Err(ValidationFailure::InvalidWordCount);
     }
 
     // Check 4: Record fits in file.
-    let record_bytes = usize::from(tw.word_count) * 2;
+    let record_bytes = usize::from(tw.word_count()) * 2;
     if offset
         .checked_add(record_bytes)
         .is_none_or(|end| end > file_len)
@@ -281,15 +281,15 @@ fn validate_lookahead_records(
             break;
         }
         let next_tw = decode_type_word(next_raw);
-        if !message_type_is_valid(next_tw.message_type) {
+        if !message_type_is_valid(next_tw.message_type()) {
             return Err(ValidationFailure::LookaheadUnknownMessageType);
         }
-        if next_tw.word_count < min_wc || next_tw.word_count > 63 {
+        if next_tw.word_count() < min_wc || next_tw.word_count() > 63 {
             return Err(ValidationFailure::LookaheadInvalidWordCount);
         }
         // Advance by the candidate's declared length so the next iteration
         // validates the record AFTER it, not 2 bytes forward.
-        let next_record_bytes = usize::from(next_tw.word_count) * 2;
+        let next_record_bytes = usize::from(next_tw.word_count()) * 2;
         if next_record_bytes == 0 {
             // Defensive — wc=0 is already rejected by the min_wc floor above,
             // so this is unreachable; break rather than loop forever.
@@ -407,15 +407,15 @@ pub fn diagnose_header_scan_failure(
             break;
         };
         let tw = decode_type_word(type_raw);
-        if !message_type_is_valid(tw.message_type) {
+        if !message_type_is_valid(tw.message_type()) {
             offset += 2;
             continue;
         }
-        if tw.word_count < min_wc || tw.word_count > 63 {
+        if tw.word_count() < min_wc || tw.word_count() > 63 {
             offset += 2;
             continue;
         }
-        let record_bytes = usize::from(tw.word_count) * 2;
+        let record_bytes = usize::from(tw.word_count()) * 2;
         if offset + record_bytes > file_len {
             return Some((offset, record_bytes, file_len - offset));
         }

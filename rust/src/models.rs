@@ -778,13 +778,96 @@ pub const fn timestamp_word_count(fmt: TimestampFormat) -> u16 {
 
 // ── TypeWord / CommandWord ────────────────────────────────────────────
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+/// A record's Type Word: message type, bus, word count and error flag, all
+/// bit fields of the one 16-bit word on disk.
+///
+/// Only the raw word is stored -- 2 bytes, where the decoded fields held
+/// beside it took 8 in every record -- and each field is a method that reads
+/// its bits:
+///
+/// | Field | Bits |
+/// |---|---|
+/// | `message_type` | 0-6 |
+/// | `bus` | 7 (A = 0, B = 1) |
+/// | `word_count` | 8-13 |
+/// | `error` | 14 |
+///
+/// Bit 15 belongs to no field and is kept as read.
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub struct TypeWord {
-    pub message_type: u8,
-    pub bus: Bus,
-    pub word_count: u16,
-    pub error: bool,
-    pub raw: u16,
+    raw: u16,
+}
+
+impl TypeWord {
+    /// The Type Word read from disk; every field comes from these bits.
+    #[must_use]
+    pub const fn from_raw(raw: u16) -> Self {
+        Self { raw }
+    }
+
+    /// A Type Word with these fields and bit 15 clear, or `None` when a field
+    /// does not fit its bits (`message_type` > 127, `word_count` > 63).
+    #[must_use]
+    pub const fn from_fields(
+        message_type: u8,
+        bus: Bus,
+        word_count: u16,
+        error: bool,
+    ) -> Option<Self> {
+        if message_type > 0x7F || word_count > 0x3F {
+            return None;
+        }
+        Some(Self::from_raw(
+            message_type as u16 | (bus as u16) << 7 | word_count << 8 | (error as u16) << 14,
+        ))
+    }
+
+    /// The 16-bit word as read.
+    #[must_use]
+    pub const fn raw(self) -> u16 {
+        self.raw
+    }
+
+    /// Bits 0-6: the message type (see [`MessageType`]).
+    #[must_use]
+    pub const fn message_type(self) -> u8 {
+        (self.raw & 0x7F) as u8
+    }
+
+    /// Bit 7: the bus the record was captured on.
+    #[must_use]
+    pub const fn bus(self) -> Bus {
+        if (self.raw >> 7) & 1 == 0 {
+            Bus::A
+        } else {
+            Bus::B
+        }
+    }
+
+    /// Bits 8-13: the record's word count.
+    #[must_use]
+    pub const fn word_count(self) -> u16 {
+        (self.raw >> 8) & 0x3F
+    }
+
+    /// Bit 14: the card flagged a bus error on this record.
+    #[must_use]
+    pub const fn error(self) -> bool {
+        (self.raw >> 14) & 1 != 0
+    }
+}
+
+/// Formats with every field, as the struct did when it stored them.
+impl fmt::Debug for TypeWord {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("TypeWord")
+            .field("message_type", &self.message_type())
+            .field("bus", &self.bus())
+            .field("word_count", &self.word_count())
+            .field("error", &self.error())
+            .field("raw", &self.raw)
+            .finish()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -1180,7 +1263,7 @@ impl MieMessage {
 
     #[must_use]
     pub fn bus(&self) -> Bus {
-        self.type_word.bus
+        self.type_word.bus()
     }
 
     /// Message label in `<SA><T|R>` format, or empty for `SPURIOUS_DATA`.
@@ -1215,7 +1298,7 @@ impl MieMessage {
 
     #[must_use]
     pub fn is_error(&self) -> bool {
-        self.type_word.error
+        self.type_word.error()
     }
 
     #[must_use]
@@ -1246,7 +1329,7 @@ impl MieMessage {
     pub fn error_label(&self) -> &'static str {
         if self.is_spurious() {
             "SPURIOUS"
-        } else if self.type_word.error {
+        } else if self.type_word.error() {
             "ERROR"
         } else {
             ""
@@ -1499,13 +1582,13 @@ mod tests {
     fn error_label_lets_the_message_type_decide() {
         let mut msg = make_msg(15, Direction::Receive, 11);
         assert_eq!(msg.error_label(), "");
-        msg.type_word.error = true;
+        msg.type_word = TypeWord::from_raw(msg.type_word.raw() | 1 << 14);
         assert_eq!(msg.error_label(), "ERROR");
         msg.message_format = MessageFormat::SpuriousData;
         msg.command_word = None;
         assert!(msg.is_error());
         assert_eq!(msg.error_label(), "SPURIOUS");
-        msg.type_word.error = false;
+        msg.type_word = TypeWord::from_raw(msg.type_word.raw() & !(1 << 14));
         assert_eq!(msg.error_label(), "SPURIOUS");
     }
 
@@ -1530,13 +1613,7 @@ mod tests {
                 upper_word: 0,
                 lower_word: 0,
             }),
-            type_word: TypeWord {
-                message_type: 0x02,
-                bus: Bus::A,
-                word_count: 5,
-                error: false,
-                raw: 0,
-            },
+            type_word: TypeWord::from_fields(0x02, Bus::A, 5, false).unwrap(),
             message_format: MessageFormat::Receive,
             command_word: Some(CommandWord {
                 rt,
@@ -2067,5 +2144,51 @@ mod tests {
         assert_eq!(std::mem::size_of::<Option<Arc<str>>>(), 16);
         // 144 before; the fields are 131 bytes, rounded to 8.
         assert!(std::mem::size_of::<MieMessage>() <= 136);
+    }
+
+    /// Requirements: L2-DEC-010
+    #[test]
+    fn type_word_fields_are_bits_of_the_raw_word() {
+        // Every field reads its own bits; bit 15 belongs to none and is kept.
+        let tw = TypeWord::from_raw(0xE4A2);
+        assert_eq!(tw.raw(), 0xE4A2);
+        assert_eq!(tw.message_type(), 0x22);
+        assert_eq!(tw.bus(), Bus::B);
+        assert_eq!(tw.word_count(), 0x24);
+        assert!(tw.error());
+        assert_eq!(
+            format!("{tw:?}"),
+            "TypeWord { message_type: 34, bus: B, word_count: 36, error: true, raw: 58530 }"
+        );
+
+        // from_fields builds the same word with bit 15 clear, for every
+        // combination of the four fields' extremes.
+        for message_type in [0, 0x02, 0x20, 0x7F] {
+            for bus in [Bus::A, Bus::B] {
+                for word_count in [0, 1, 36, 0x3F] {
+                    for error in [false, true] {
+                        let tw =
+                            TypeWord::from_fields(message_type, bus, word_count, error).unwrap();
+                        assert_eq!(
+                            (tw.message_type(), tw.bus(), tw.word_count(), tw.error()),
+                            (message_type, bus, word_count, error)
+                        );
+                        assert_eq!(tw.raw() & 0x8000, 0);
+                        assert_eq!(TypeWord::from_raw(tw.raw()), tw);
+                    }
+                }
+            }
+        }
+        // A field wider than its bits has no raw word.
+        assert_eq!(TypeWord::from_fields(0x80, Bus::A, 1, false), None);
+        assert_eq!(TypeWord::from_fields(0x02, Bus::A, 0x40, false), None);
+        // Equality is equality of the raw word, bit 15 included.
+        assert_ne!(TypeWord::from_raw(0x2402), TypeWord::from_raw(0xA402));
+
+        // The point of the type, and of the layout work: 2 bytes where the
+        // decoded fields took 8, which brings the record to 128 -- the size at
+        // or below which a copy between stages is inlined.
+        assert_eq!(std::mem::size_of::<TypeWord>(), 2);
+        assert_eq!(std::mem::size_of::<MieMessage>(), 128);
     }
 }

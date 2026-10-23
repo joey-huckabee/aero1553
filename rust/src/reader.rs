@@ -252,7 +252,7 @@ impl MieFileReader {
     ) -> (TimestampFormat, Option<MieError>) {
         let candidate_type_raw = read_u16(data, hit.offset).unwrap_or(0);
         let candidate_tw = decode_type_word(candidate_type_raw);
-        let candidate_record_bytes = usize::from(candidate_tw.word_count) * 2;
+        let candidate_record_bytes = usize::from(candidate_tw.word_count()) * 2;
         if crate::sync::is_homogeneous_payload(data, hit.offset, candidate_record_bytes) {
             log_error!(
                 "pathological homogeneous-payload input at offset 0x{:X} \
@@ -819,7 +819,7 @@ impl RecordIter<'_> {
         let tw = decode_type_word(type_raw);
         let resolved = self.resolved_format;
         let ts_words = timestamp_word_count(resolved);
-        let record_bytes = usize::from(tw.word_count) * 2;
+        let record_bytes = usize::from(tw.word_count()) * 2;
 
         // Validate via the shared sync path (same heuristics as header-skip and
         // recovery), so corrupt-but-plausible records don't slip through.
@@ -852,7 +852,7 @@ impl RecordIter<'_> {
         let cmd_byte_offset = self.rel() + 2 + usize::from(ts_words) * 2;
 
         // SPURIOUS_DATA: no Command Word.
-        if tw.message_type == MessageType::SpuriousData as u8 {
+        if tw.message_type() == MessageType::SpuriousData as u8 {
             let msg = self.spurious_message(tw, timestamp, ts_words, cmd_byte_offset, record_bytes);
             return Step::Yield(Ok(msg));
         }
@@ -864,7 +864,7 @@ impl RecordIter<'_> {
         let cmd = decode_command_word(cmd_raw);
 
         // Errored record (Type Word bit 14 set).
-        if tw.error {
+        if tw.error() {
             // The Error Word is the record's last word, so it needs a slot of
             // its own after the Command Word (L2-ERR-002). Sync validation
             // admits a record that ends AT the Command Word, and reading "the
@@ -872,11 +872,11 @@ impl RecordIter<'_> {
             // Checked before `delta_for`, which would otherwise advance the
             // DELTA state for a record that is then skipped.
             let min_words = 1 + ts_words + 1 + 1;
-            if tw.word_count < min_words {
+            if tw.word_count() < min_words {
                 let detail = format!(
                     "errored record has no Error Word: word count {} ends at the \
                      Command Word (needs at least {min_words})",
-                    tw.word_count
+                    tw.word_count()
                 );
                 if self.strict {
                     self.done = true;
@@ -933,12 +933,12 @@ impl RecordIter<'_> {
                 ValidationFailure::UnknownMessageType => MieError::UnknownTypeWord {
                     offset: self.offset as u64,
                     raw_type_word: type_raw,
-                    message_type: tw.message_type,
+                    message_type: tw.message_type(),
                 },
                 ValidationFailure::InvalidWordCount => MieError::InvalidTypeWord {
                     offset: self.offset as u64,
                     raw_type_word: type_raw,
-                    word_count: tw.word_count,
+                    word_count: tw.word_count(),
                 },
                 ValidationFailure::RecordTruncated => MieError::RecordTruncated {
                     offset: self.offset as u64,
@@ -997,8 +997,8 @@ impl RecordIter<'_> {
         log_warn!(
             "sync lost at 0x{:X} (type=0x{:02X} wc={}); scanning forward",
             self.offset,
-            tw.message_type,
-            tw.word_count
+            tw.message_type(),
+            tw.word_count()
         );
         match scan {
             Some(hit) => {
@@ -1155,7 +1155,7 @@ impl RecordIter<'_> {
         cmd_byte_offset: usize,
         record_bytes: usize,
     ) -> MieMessage {
-        let raw_word_count = i32::from(tw.word_count) - 1 - i32::from(ts_words);
+        let raw_word_count = i32::from(tw.word_count()) - 1 - i32::from(ts_words);
         let mut data_words = DataWords::new();
         if raw_word_count > 0 {
             // Guarded by `raw_word_count > 0` above.
@@ -1222,12 +1222,13 @@ impl RecordIter<'_> {
         cmd_byte_offset: usize,
         record_bytes: usize,
     ) -> Step {
-        let Ok(msg_fmt) = classify_message_format(tw.message_type, &cmd, tw.word_count, ts_words)
+        let Ok(msg_fmt) =
+            classify_message_format(tw.message_type(), &cmd, tw.word_count(), ts_words)
         else {
             log_warn!(
                 "cannot classify record at 0x{:X} (type=0x{:02X}); skipping",
                 self.offset,
-                tw.message_type
+                tw.message_type()
             );
             self.offset += record_bytes;
             self.prev_error_timestamp = None;
@@ -1237,7 +1238,7 @@ impl RecordIter<'_> {
         log_debug!(
             "record at 0x{:X}: type=0x{:02X} fmt={:?} RT{} SA{}",
             self.offset,
-            tw.message_type,
+            tw.message_type(),
             msg_fmt,
             cmd.rt,
             cmd.subaddress
@@ -1380,7 +1381,7 @@ impl RecordIter<'_> {
         ts_words: u16,
         delta: Option<f64>,
     ) -> MieResult<MieMessage> {
-        let error_word_offset = self.rel() + (usize::from(tw.word_count) - 1) * 2;
+        let error_word_offset = self.rel() + (usize::from(tw.word_count()) - 1) * 2;
         let Some(error_code) = read_u16(self.win(), error_word_offset) else {
             return Err(MieError::PayloadError {
                 offset: self.offset as u64,
@@ -1403,7 +1404,7 @@ impl RecordIter<'_> {
         }
 
         // Payload words = total - Type(1) - TS - Cmd(1) - ErrorWord(1)
-        let payload_words = i32::from(tw.word_count) - 1 - i32::from(ts_words) - 1 - 1;
+        let payload_words = i32::from(tw.word_count()) - 1 - i32::from(ts_words) - 1 - 1;
         let mut data_words = DataWords::new();
         if payload_words > 0 {
             // Guarded by `payload_words > 0` above; try_from makes that
@@ -1414,14 +1415,14 @@ impl RecordIter<'_> {
             // Bound to the current record's bytes. payload_words is
             // already derived from tw.word_count, so this is structurally
             // safe; bounding makes it explicit.
-            let record_end = self.rel() + usize::from(tw.word_count) * 2;
+            let record_end = self.rel() + usize::from(tw.word_count()) * 2;
             let record_data = &self.win()[..record_end];
             if read_u16_array(record_data, cmd_byte_offset + 2, n_capped, &mut buf) {
                 data_words = DataWords::from_slice(&buf[..n_capped]);
             }
         }
 
-        let msg_fmt = classify_message_format(tw.message_type, &cmd, tw.word_count, ts_words)
+        let msg_fmt = classify_message_format(tw.message_type(), &cmd, tw.word_count(), ts_words)
             .unwrap_or(MessageFormat::Receive);
 
         log_info!(
