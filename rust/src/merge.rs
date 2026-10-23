@@ -18,7 +18,7 @@
 //! and the `--glob` matcher is hand-rolled (L3-RS-014, preserving L3-RS-002).
 
 use std::borrow::Borrow;
-use std::cmp::{Ordering, Reverse};
+use std::cmp::Reverse;
 use std::collections::{BinaryHeap, VecDeque};
 use std::fs;
 use std::io;
@@ -199,37 +199,18 @@ pub fn expand_glob(pattern: &str) -> io::Result<Vec<PathBuf>> {
 
 // ── k-way merge ────────────────────────────────────────────────────────────
 
-/// One record at the front of an input file, ordered by the merge key
-/// `(microseconds, file index, within-file sequence)` for a total,
-/// deterministic order including ties (L2-MRG-002).
-struct HeapEntry {
+/// The merge key of the record at the front of an input file:
+/// `(microseconds, file index, within-file sequence)`, compared in that order
+/// for a total, deterministic order including ties (L2-MRG-002).
+///
+/// The record itself waits in [`MergedRecordIter::fronts`], not in the heap.
+/// Every push and pop moves heap entries; with the 128-byte record inside
+/// them each move was a `memmove` call, 15% of a merge's decoding thread.
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct HeapKey {
     us: u64,
     file_index: usize,
     seq: u64,
-    msg: MieMessage,
-}
-
-impl HeapEntry {
-    fn key(&self) -> (u64, usize, u64) {
-        (self.us, self.file_index, self.seq)
-    }
-}
-
-impl PartialEq for HeapEntry {
-    fn eq(&self, other: &Self) -> bool {
-        self.key() == other.key()
-    }
-}
-impl Eq for HeapEntry {}
-impl PartialOrd for HeapEntry {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.cmp(other))
-    }
-}
-impl Ord for HeapEntry {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.key().cmp(&other.key())
-    }
 }
 
 /// The microsecond merge key for a message. IRIG always yields `Some`; the
@@ -392,7 +373,10 @@ impl DedupWindow {
 /// single reader (`MieResult<MieMessage>`) so the writer consumes it unchanged.
 pub struct MergedRecordIter<'a> {
     iters: Vec<RecordIter<'a>>,
-    heap: BinaryHeap<Reverse<HeapEntry>>,
+    heap: BinaryHeap<Reverse<HeapKey>>,
+    /// The record each input file has on the heap, by file index. A file has
+    /// at most one: its next record is pulled only after this one is popped.
+    fronts: Vec<Option<MieMessage>>,
     next_seq: Vec<u64>,
     tick: Option<f64>,
     allow_partial: bool,
@@ -518,6 +502,7 @@ impl<'a> MergedRecordIter<'a> {
         strict: bool,
     ) -> MieResult<Self> {
         let mut heap = BinaryHeap::new();
+        let mut fronts: Vec<Option<MieMessage>> = (0..paths.len()).map(|_| None).collect();
         let mut next_seq = vec![0u64; paths.len()];
         let mut prev_us = vec![None; paths.len()];
         // L2-MRG-004: `--allow-partial` keeps what could be decoded. When EVERY
@@ -532,12 +517,12 @@ impl<'a> MergedRecordIter<'a> {
                     check_mergeable(&msg, idx, &paths[idx])?;
                     let us = merge_micros(&msg, tick);
                     prev_us[idx] = Some(us);
-                    heap.push(Reverse(HeapEntry {
+                    heap.push(Reverse(HeapKey {
                         us,
                         file_index: idx,
                         seq: 0,
-                        msg,
                     }));
+                    fronts[idx] = Some(msg);
                     next_seq[idx] = 1;
                 }
                 Some(Err(e)) => {
@@ -576,6 +561,7 @@ impl<'a> MergedRecordIter<'a> {
         Ok(Self {
             iters,
             heap,
+            fronts,
             next_seq,
             tick,
             allow_partial,
@@ -735,12 +721,12 @@ impl<'a> MergedRecordIter<'a> {
                 self.prev_us[file_index] = Some(us);
                 let seq = self.next_seq[file_index];
                 self.next_seq[file_index] = seq + 1;
-                self.heap.push(Reverse(HeapEntry {
+                self.heap.push(Reverse(HeapKey {
                     us,
                     file_index,
                     seq,
-                    msg,
                 }));
+                self.fronts[file_index] = Some(msg);
             }
             Some(Err(e)) => {
                 if self.allow_partial
@@ -773,10 +759,14 @@ impl Iterator for MergedRecordIter<'_> {
             if let Some(e) = self.pending_error.take() {
                 return Some(Err(e));
             }
-            let Some(Reverse(entry)) = self.heap.pop() else {
+            let Some(Reverse(key)) = self.heap.pop() else {
                 return self.take_terminal().map(Err);
             };
-            let file_index = entry.file_index;
+            let file_index = key.file_index;
+            // Always filled: a key is pushed only together with its record.
+            let Some(msg) = self.fronts[file_index].take() else {
+                continue;
+            };
             // Collapse cross-recorder duplicates *before* the global-DELTA stage
             // (L2-MRG-007): a suppressed duplicate must not advance the per-key
             // DELTA tracker, so DELTA is measured across the deduped timeline.
@@ -789,10 +779,10 @@ impl Iterator for MergedRecordIter<'_> {
             // words. It is not added to the survivor set either, so nothing is
             // ever collapsed against it.
             if let Some(dedup) = self.dedup.as_mut() {
-                let collapse = if entry.msg.is_continuation() {
+                let collapse = if msg.is_continuation() {
                     self.last_collapsed[file_index]
                 } else {
-                    dedup.is_duplicate(entry.us, file_index, &entry.msg)
+                    dedup.is_duplicate(key.us, file_index, &msg)
                 };
                 self.last_collapsed[file_index] = collapse;
                 if collapse {
@@ -801,7 +791,7 @@ impl Iterator for MergedRecordIter<'_> {
                     continue;
                 }
             }
-            let msg = self.apply_global_delta(entry.msg);
+            let msg = self.apply_global_delta(msg);
             self.advance(file_index);
             return Some(Ok(msg));
         }
@@ -1127,11 +1117,19 @@ mod tests {
 
     /// Requirements: L2-MRG-002
     #[test]
-    fn heap_entry_orders_by_key_tuple() {
+    fn heap_key_orders_by_key_tuple() {
         // Lower microseconds sort first; ties break on file index then seq.
-        let mk = |us, fi, seq| (us, fi, seq);
+        // The order is derived, so it is the fields' declaration order.
+        let mk = |us, file_index, seq| HeapKey {
+            us,
+            file_index,
+            seq,
+        };
         assert!(mk(10, 0, 0) < mk(20, 0, 0));
+        assert!(mk(10, 5, 9) < mk(20, 0, 0));
         assert!(mk(10, 0, 5) < mk(10, 1, 0));
         assert!(mk(10, 1, 0) < mk(10, 1, 1));
+        // The record is not in the key, so the heap moves 24 bytes, not 152.
+        assert_eq!(std::mem::size_of::<HeapKey>(), 24);
     }
 }

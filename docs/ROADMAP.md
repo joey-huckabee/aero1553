@@ -296,9 +296,13 @@ and made a decode 0.70x-0.80x the time of 5.3.0. Beyond that, in the order
 they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
-  target. Open questions: whether building each record in place in its
-  rendering batch still pays now that copies inline, and the record
-  validation with its look-ahead and the merge heap. Any change must
+  target. A profile after the merge-heap change found the decoding thread
+  spending about as long in the kernel writing the CSV as decoding (1.1 s
+  system against 1.45 s user on a 930 MB output; perf at
+  `perf_event_paranoid=2` does not show kernel time -- read
+  `/proc/<pid>/task/*/stat`); a writer thread would overlap the two but
+  changes the `L2-WRT-027` rule that every write stays on the calling
+  thread. Copies into the rendering batch are about 2% now. Any change must
   keep the output byte-identical and the N-record look-ahead (`L2-SYN-026`).
 - **Parallel decoding and writing.** Workers only format CSV; reading,
   decoding, ordering, merging and the output writes stay on one thread, so more
