@@ -151,7 +151,7 @@ pub const DEFAULT_MUX_FIELD: i64 = 4;
 ///
 /// Returns `None` (→ empty MUX) when the index is out of range, the selected
 /// field is empty after trimming, or `delimiter` is empty. Pure and
-/// allocation-light; the caller wraps the result in a shared `Arc<str>`.
+/// allocation-light; the caller wraps the result in a shared `Arc<String>`.
 #[must_use]
 pub fn mux_from_filename(file_name: &str, delimiter: &str, field: i64) -> Option<String> {
     if delimiter.is_empty() {

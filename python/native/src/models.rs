@@ -670,7 +670,7 @@ impl PyMieMessage {
             ("error_word", m.error_word().into_pyobject(py)?.into_any()),
             ("delta", m.delta.get().into_pyobject(py)?.into_any()),
             ("file_offset", m.file_offset.into_pyobject(py)?.into_any()),
-            ("mux", m.mux.as_deref().into_pyobject(py)?.into_any()),
+            ("mux", m.mux().into_pyobject(py)?.into_any()),
         ])
     }
 }
@@ -712,7 +712,7 @@ impl PyMieMessage {
                 data_words: DataWords::from_slice(&data_words),
                 delta: delta.into(),
                 file_offset,
-                mux: mux.map(Arc::from),
+                mux: mux.map(Arc::new),
             },
         })
     }
@@ -779,7 +779,7 @@ impl PyMieMessage {
     /// MUX column value derived from the source file name, if any.
     #[getter]
     fn mux(&self) -> Option<&str> {
-        self.inner.mux.as_deref()
+        self.inner.mux()
     }
 
     /// Remote Terminal address, or ``None`` for SPURIOUS_DATA.

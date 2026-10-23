@@ -1133,13 +1133,23 @@ pub struct MieMessage {
     pub delta: DeltaSeconds,
     pub file_offset: u64,
     /// MUX column value derived from the source file name (L2-WRT-020), shared
-    /// (one `Arc<str>` per input file) so per-record carry stays O(1) in resident
-    /// memory. `None` when MUX population is disabled or the configured filename
-    /// field is absent/empty.
-    pub mux: Option<std::sync::Arc<str>>,
+    /// (one `Arc<String>` per input file) so per-record carry stays O(1) in
+    /// resident memory; read it with [`MieMessage::mux`]. `None` when MUX
+    /// population is disabled or the configured filename field is absent/empty.
+    ///
+    /// An `Arc<String>`, not an `Arc<str>`: an `Arc<str>` is a pointer plus a
+    /// length, 16 bytes in every record, where an `Arc<String>` keeps the length
+    /// in the shared allocation and is one 8-byte pointer.
+    pub mux: Option<std::sync::Arc<String>>,
 }
 
 impl MieMessage {
+    /// The MUX column value, if any (L2-WRT-020).
+    #[must_use]
+    pub fn mux(&self) -> Option<&str> {
+        self.mux.as_deref().map(String::as_str)
+    }
+
     /// The RT's status word.
     #[must_use]
     pub const fn status_word(&self) -> Option<u16> {
@@ -2033,5 +2043,29 @@ mod tests {
 
         assert_eq!(std::mem::size_of::<OptionalWords>(), 8);
         assert_eq!(3 * std::mem::size_of::<Option<u16>>(), 12);
+    }
+
+    /// Requirements: L2-WRT-020
+    #[test]
+    fn mux_is_one_shared_pointer_read_as_str() {
+        use std::sync::Arc;
+        let mut m = make_msg(1, Direction::Receive, 2);
+        assert_eq!(m.mux(), None);
+        let shared = Arc::new("BUS3".to_string());
+        m.mux = Some(Arc::clone(&shared));
+        let copy = m.clone();
+        assert_eq!(m.mux(), Some("BUS3"));
+        assert_eq!(copy.mux(), Some("BUS3"));
+        // Records share the one per-file value rather than copying the text.
+        assert!(Arc::ptr_eq(m.mux.as_ref().unwrap(), &shared));
+        assert_eq!(Arc::strong_count(&shared), 3);
+        assert_eq!(m, copy);
+
+        // The point of the type: one pointer per record, where Arc<str> is a
+        // pointer plus a length.
+        assert_eq!(std::mem::size_of::<Option<Arc<String>>>(), 8);
+        assert_eq!(std::mem::size_of::<Option<Arc<str>>>(), 16);
+        // 144 before; the fields are 131 bytes, rounded to 8.
+        assert!(std::mem::size_of::<MieMessage>() <= 136);
     }
 }

@@ -36,7 +36,7 @@ The sync helpers (`sync.rs`; the Python package runs the Rust one) are **pure** 
 
 Per L1-CONF-001 both implementations must remain aligned on shared format and CSV semantics. Per-implementation requirements (`L3-PY-*` / `L3-RS-*`; the `L3-CPP-*` set is withdrawn) cover the technology-specific obligations (the compiled Rust extension for Python; the streaming input window / streaming `BufWriter` for Rust). See [`L3-REQ.md`](L3-REQ.md) for the per-impl details.
 
-The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its name when the reader is constructed (config → `ReaderOptions` / reader kwargs), and attached to every `MieMessage` the reader yields — Rust as a shared `Arc<str>` (a refcount-bump clone per record), Python as a shared `str` reference. The value therefore rides along through the filter and merge iterators unchanged (so a merged stream keeps each record's source-file MUX), and the writer emits it without any extra per-record allocation — preserving the O(1)-in-record-count streaming guarantee.
+The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its name when the reader is constructed (config → `ReaderOptions` / reader kwargs), and attached to every `MieMessage` the reader yields — Rust as a shared `Arc<String>` (one 8-byte pointer per record, a refcount-bump clone), Python as a shared `str` reference. The value therefore rides along through the filter and merge iterators unchanged (so a merged stream keeps each record's source-file MUX), and the writer emits it without any extra per-record allocation — preserving the O(1)-in-record-count streaming guarantee.
 
 ---
 

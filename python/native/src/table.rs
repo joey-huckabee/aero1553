@@ -438,7 +438,7 @@ fn put(
         F::DataWordCount => d.set_item(key, m.data_words.len()),
         F::DataWords => d.set_item(key, PyTuple::new(py, m.data_words.as_slice())?),
         F::Delta => d.set_item(key, m.delta.get()),
-        F::Mux => d.set_item(key, m.mux.as_deref()),
+        F::Mux => d.set_item(key, m.mux()),
     }
 }
 
@@ -546,9 +546,7 @@ impl Column {
             (F::Delta, Self::F64(v)) => {
                 v.extend(batch.iter().map(|m| m.delta.get().unwrap_or(f64::NAN)))
             }
-            (F::Mux, Self::Text(v)) => {
-                v.extend(batch.iter().map(|m| m.mux.as_deref().map(str::to_owned)))
-            }
+            (F::Mux, Self::Text(v)) => v.extend(batch.iter().map(|m| m.mux().map(str::to_owned))),
             (F::DataWords, Self::Words(v)) => {
                 for m in batch {
                     let w = m.data_words.as_slice();
