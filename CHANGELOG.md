@@ -35,6 +35,19 @@ shared behavior) holds at any compatible version pair. See
   Before it was trusted, each check was shown to fail against a CLI broken on
   purpose. It found no defect: 21 seeds, about 11,000 runs, all passed. Test
   only; no decoder change.
+- **Checks that the generated checks still check** (test only).
+  - **Coverage floors in `flag_pairs.py`, run on every push.** It fails if
+    under 60% of its combinations decode (measured 68-82% over 30 seeds), if an
+    input never decodes, if the big input stops spanning more than two
+    rendering batches, or if any property is checked fewer than 3 times. Two
+    refusals compare equal, so without the floors a change that made every
+    run fail early would pass silently.
+  - **`tests/conformance/selftest.py`, run daily in `fuzz.yml` on Linux and
+    Windows.** It runs each check against `broken_cli.py`, a wrapper that
+    breaks one rule per mode, and requires the check to fail naming that rule.
+    It then sweeps `flag_pairs.py` over 20 seeds (`MIE_FLAG_PAIRS_SEEDS`).
+  - `docs/FUZZING.md` and `tests/conformance/README.md` document both, and
+    say how to add a property so the self-test covers it.
 
 ## [5.6.0] — 2026-10-31
 
