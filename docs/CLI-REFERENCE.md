@@ -211,7 +211,7 @@ multi-file merge — see [Merge](#merge-multi-file) below.
 
 | Flag | Value | Default | Description |
 |------|-------|---------|-------------|
-| `INPUT...` (positional) | path(s) | — | One or more MIE recording files. More than one merges them. |
+| `INPUT...` (positional) | path(s) or `-` | — | One or more MIE recording files. More than one merges them. A lone `-` reads the recording from standard input -- see [Standard input](#standard-input). |
 | `--manifest PATH` | path | *(none)* | Read input paths from a file, one per line; blank lines and `#`-comments are ignored. |
 | `--glob PATTERN` | glob | *(none)* | Expand a single-directory glob (e.g. `dir/*.mie`); `*` and `?` match over the filename only. A wildcard in the directory part (`captures/**/*.mie`, `capt*/a.mie`) is a usage error (exit `4`): there is no recursion. For a set spread over several directories, list it in a `--manifest`. |
 
@@ -234,6 +234,40 @@ multi-file merge — see [Merge](#merge-multi-file) below.
 > an undecodable input (WARN) and commit a `.partial` output instead of aborting
 > — but it does not rescue a single-file glob, and it marks the output partial
 > (signalling possible data loss), so a precise pattern is the better default.
+
+### Standard input
+
+`-` as the input reads the recording from standard input, so a decode can run
+straight from a pipe, with no temporary file (`L2-CLI-023`):
+
+```bash
+ssh recorder 'cat /data/rec.mie' | aero1553 decode - -o rec.csv
+zcat rec.mie.gz | aero1553 decode - -o rec.csv
+aero1553 decode - -o rec.csv < rec.mie
+```
+
+The result is exactly what the same bytes give from a file -- rows, exit code
+and warnings -- with `<stdin>` where the file's name would appear. Memory stays
+constant however long the stream is. The differences all follow from a stream
+having no name and being readable once:
+
+- **`-` must be the only input.** A merge reads files: `decode - other.mie` is a
+  usage error (exit `4`).
+- **`MUX` is empty**: there is no file name to take it from.
+- **No input/output collision check**: there is no input path. `--no-clobber`
+  still protects the destination.
+- **A terminal is refused** (exit `4`): `decode -` typed with nothing piped in
+  would otherwise wait for input that cannot be typed.
+- **`dump -` is refused** (exit `4`): the dump states the input's size first.
+- **`-` is special only as the positional input, before `--`.** `decode -- -`
+  decodes a file named `-`, a manifest line or glob match of `-` is a file, and
+  `-o -` still writes a file named `-`: stdout is chosen by leaving out `-o`.
+
+On Windows, pipe from `cmd` (`type rec.mie | aero1553 decode -`), redirect
+(`aero1553 decode - < rec.mie`), or use PowerShell 7.4 or later
+(`cmd /c type rec.mie | aero1553 decode -`). **Windows PowerShell 5.1 corrupts
+binary data piped between programs** -- it re-encodes it as text -- so do not
+pipe a recording through it; redirect with `cmd` instead.
 
 ### Output
 
@@ -357,7 +391,7 @@ aero1553 count <INPUT>
 
 | Argument | Value | Description |
 |----------|-------|-------------|
-| `INPUT` (positional) | path | The MIE recording file to count. |
+| `INPUT` (positional) | path or `-` | The MIE recording file to count; `-` reads standard input (see [Standard input](#standard-input)). |
 
 Streams the file and prints the integer count to stdout, with a status summary on
 stderr. Honors the config file's `[filter]` section (CLI filter flags are
@@ -376,7 +410,7 @@ aero1553 dump <INPUT> [options]
 
 | Flag | Value | Default | Description |
 |------|-------|---------|-------------|
-| `INPUT` (positional) | path | — | The MIE file to dump. |
+| `INPUT` (positional) | path | — | The MIE file to dump. `-` (standard input) is refused, exit `4`: the dump reports the file's size first. |
 | `--raw` | flag | off | Raw hex dump with no record parsing. |
 | `--offset N` | int (accepts `0x…`) | `0` | Start offset in bytes. |
 | `--length N` | int (accepts `0x…`) | *(all)* | Number of bytes to dump (raw mode). |

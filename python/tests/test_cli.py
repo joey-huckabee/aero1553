@@ -199,6 +199,52 @@ class TestEntryPoints:
         assert proc.stdout == f"aero1553 {__version__}\n"
 
 
+# ── standard input (L2-CLI-023) ─────────────────────────────────────────────
+
+
+def _cli_process(args: list[str], stdin: bytes | None) -> subprocess.CompletedProcess[bytes]:
+    """``python -m aero1553`` as a process, so its standard input is a real pipe."""
+    return subprocess.run(
+        [sys.executable, "-m", "aero1553", *args],
+        input=stdin,
+        stdin=None if stdin is not None else subprocess.DEVNULL,
+        capture_output=True,
+        check=False,
+        timeout=60,
+    )
+
+
+class TestStdin:
+    """``-`` reads the recording from standard input, exactly as from a file."""
+
+    @pytest.mark.requirement("L2-CLI-023")
+    @pytest.mark.parametrize(
+        "fixture", ["basic-multi-record", "header-and-sync-recovery", "lookahead-corruption-chain"]
+    )
+    def test_decode_from_stdin_matches_the_file(self, tmp_path: Path, fixture: str) -> None:
+        data = conformance_input(fixture)
+        path = tmp_path / "rec.mie"
+        path.write_bytes(data)
+        from_file = _cli_process(["decode", str(path)], None)
+        from_stdin = _cli_process(["decode", "-"], data)
+        assert from_stdin.returncode == from_file.returncode
+        assert from_stdin.stdout == from_file.stdout
+        assert from_stdin.stdout.startswith(b"TIME_STAMP,")
+
+    @pytest.mark.requirement("L2-CLI-023")
+    def test_count_from_stdin(self, multi_record_data: bytes) -> None:
+        result = _cli_process(["count", "-"], multi_record_data)
+        assert result.returncode == EXIT_OK
+        assert result.stdout == b"3\n"
+        assert b"<stdin>" in result.stderr
+
+    @pytest.mark.requirement("L2-CLI-023")
+    def test_stdin_with_another_input_is_a_usage_error(self, rec: Path) -> None:
+        result = _cli_process(["decode", "-", str(rec)], b"")
+        assert result.returncode == EXIT_USAGE
+        assert result.stdout == b""
+
+
 # ── the exit taxonomy (L2-CLI-011) ──────────────────────────────────────────
 
 

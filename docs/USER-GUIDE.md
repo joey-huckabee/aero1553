@@ -155,6 +155,23 @@ aero1553 decode flight.mie | head -100
 aero1553 decode flight.mie | awk -F, '$2=="15"'      # only RT 15
 ```
 
+### Read a recording from a pipe
+
+Give `-` as the input to read the recording from standard input -- straight
+from SSH, a decompressor or a capture tool, with no temporary file:
+
+```bash
+ssh recorder 'cat /data/flight.mie' | aero1553 decode - -o flight.csv
+zcat flight.mie.gz | aero1553 decode - | head -100
+aero1553 count - < flight.mie
+```
+
+The output is exactly what the same file gives, except that `MUX` is empty (a
+stream has no file name to take it from). `-` must be the only input, `dump`
+does not take it, and `-o -` is still a file named `-`. On Windows, use `cmd`
+or `<` redirection, or PowerShell 7.4 or later: Windows PowerShell 5.1
+corrupts binary data in a pipe. Details: `docs/CLI-REFERENCE.md`, "Standard input".
+
 ### Separate vs inline error handling
 
 By default, **errored records** (DDC card detected a bus error) and **SPURIOUS_DATA** records (orphan data fragments) stay in the main CSV alongside clean records, flagged by the `ERROR` / `ERROR_CODE` columns. One file, nothing hidden, and the same layout the vendor tool produces:

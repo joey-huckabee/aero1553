@@ -515,12 +515,13 @@ one of them:
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
 
 **Performance** (`.github/workflows/perf.yml`, every pull request and push to
-`main`, Linux) runs the performance suite in `perf/`: the Rust library, the
+`main`; gates enforced on Linux, reported only on Windows) runs the performance suite in `perf/`: the Rust library, the
 Python library and both CLIs timed on the golden recording (`tests/golden/`),
 every case's output checked against the golden pins. It fails on a wrong
 answer or on a **gate** -- a ratio between two cases of the same run, such as
 the Python library decode against the Rust library's, which runner noise
-cannot trip the way an absolute time limit would. The full table (raw runs,
+cannot trip the way an absolute time limit would. Each gate is the median of
+interleaved paired rounds of its two cases (`--gate-rounds`). The full table (raw runs,
 phases, import times, totals, records/s, peak memory) goes to the job summary
 and the JSON report to an artifact. Run it locally with
 `uv --directory python run python ../perf/run.py`; `perf/README.md` explains
@@ -528,9 +529,11 @@ the cases, the report and how to calibrate a gate.
 
 **Performance baseline** (`.github/workflows/perf-baseline.yml`, release pull
 requests -- head branch `release/*` -- any pull request labelled
-`perf-baseline`, and `workflow_dispatch`, Linux) builds the latest `v*` tag
-beside the candidate and runs `perf/baseline.py`: both CLIs on three 256 MiB
-recordings tiled from the golden one by `rust/examples/synth_large.rs`. It
+`perf-baseline`, `workflow_dispatch`, and weekly against `main`, Linux) builds
+the latest `v*` tag beside the candidate and runs `perf/baseline.py`: both CLIs
+on three 256 MiB recordings tiled from the golden one by
+`rust/examples/synth_large.rs`, plus the candidate decoding standard input
+against the same file (`decode-stdin`). It
 fails when their outputs differ or when a case's candidate/baseline time ratio
 exceeds 1.15 -- the gate the same-build ratios above cannot provide, since a
 slowdown in the shared Rust core moves both sides of them. The 15% margin is

@@ -14,8 +14,11 @@ and ``perf-report.md`` (and the GitHub job summary when there is one).
 Gates (``perf/gates.json``) compare two cases *of the same run*. Shared CI
 runners vary run to run by more than any regression worth catching, so an
 absolute time limit would fail at random; a ratio between two cases measured
-side by side on the same machine does not. Everything else is reported, not
-gated. See ``perf/README.md``.
+side by side on the same machine does not. Each gate's two cases are timed
+again in interleaved pairs -- one run of each per round, in shuffled order --
+and the gate is the median of the per-round ratios, so a runner that slows
+down while one case's runs are in progress cannot decide it. Everything else
+is reported, not gated. See ``perf/README.md``.
 """
 
 from __future__ import annotations
@@ -26,11 +29,14 @@ import importlib.util
 import json
 import os
 import platform
+import random
+import shutil
 import statistics
 import subprocess
 import sys
 import tempfile
 import time
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
@@ -111,14 +117,16 @@ def run_json(cmd: list[str]) -> dict[str, Any]:
 
 
 def time_process(
-    cmd: list[str], repeat: int, *, peak: bool = True
+    cmd: list[str], repeat: int, *, peak: bool = True, stdin: Path | None = None
 ) -> tuple[list[float], int | None]:
-    """Wall time of a whole process, and (POSIX) its peak memory."""
+    """Wall time of a whole process, and (POSIX) its peak memory. ``stdin``
+    is a file the process reads as its standard input."""
     runs = []
     for _ in range(repeat):
-        start = time.perf_counter()
-        subprocess.run(cmd, check=True, capture_output=True)
-        runs.append(time.perf_counter() - start)
+        with stdin.open("rb") if stdin else Path(os.devnull).open("rb") as feed:
+            start = time.perf_counter()
+            subprocess.run(cmd, check=True, capture_output=True, stdin=feed)
+            runs.append(time.perf_counter() - start)
     peak_bytes = None
     if peak and sys.platform != "win32":
         # RUSAGE_CHILDREN is the largest child a process has had, so it is
@@ -128,12 +136,33 @@ def time_process(
             "subprocess.run(sys.argv[1:], check=True, capture_output=True);"
             "print(resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss * 1024)"
         )
-        peak_bytes = int(
-            subprocess.run(
-                [sys.executable, "-c", wrapper, *cmd], check=True, capture_output=True, text=True
-            ).stdout
-        )
+        with stdin.open("rb") if stdin else Path(os.devnull).open("rb") as feed:
+            peak_bytes = int(
+                subprocess.run(
+                    [sys.executable, "-c", wrapper, *cmd],
+                    check=True,
+                    capture_output=True,
+                    text=True,
+                    stdin=feed,
+                ).stdout
+            )
     return runs, peak_bytes
+
+
+def paired_ratio(
+    numerator: Callable[[], float], denominator: Callable[[], float], rounds: int, seed: int
+) -> list[float]:
+    """Per-round ratios numerator / denominator, each round one run of each in
+    shuffled order: pairing each run with the one beside it cancels a runner
+    whose speed drifts during the job (the method of ``perf/baseline.py``)."""
+    rng = random.Random(seed)
+    ratios = []
+    for _ in range(rounds):
+        order = [("n", numerator), ("d", denominator)]
+        rng.shuffle(order)
+        times = {side: run() for side, run in order}
+        ratios.append(times["n"] / times["d"])
+    return ratios
 
 
 def time_import(lib: str, repeat: int) -> list[float]:
@@ -164,6 +193,13 @@ def main() -> int:
     parser.add_argument(
         "--no-gates", action="store_true", help="Report only; never fail on a gate."
     )
+    parser.add_argument(
+        "--gate-rounds",
+        type=int,
+        default=7,
+        help="Interleaved rounds per gate; the gate is the median of the per-round "
+        "ratios (default 7).",
+    )
     args = parser.parse_args()
 
     size = "small" if args.small else "large"
@@ -177,6 +213,27 @@ def main() -> int:
 
     results: dict[str, dict[str, Any]] = {}
     problems: list[str] = []
+    # One untimed-overhead run of a case, in seconds: what a gate pairs.
+    once: dict[str, Callable[[], float]] = {}
+
+    def json_once(cmd: list[str], out: Path | None) -> Callable[[], float]:
+        def run() -> float:
+            res = run_json([*cmd, "--repeat", "1"])
+            # A gate's two outputs must not pile up in memory-backed storage.
+            if out is not None:
+                out.unlink(missing_ok=True)
+            first = res["runs"][0]
+            return float(sum(first.values()) if isinstance(first, dict) else first)
+
+        return run
+
+    def process_once(cmd: list[str], feed: Path | None, out: Path) -> Callable[[], float]:
+        def run() -> float:
+            took = time_process(cmd, 1, peak=False, stdin=feed)[0][0]
+            out.unlink(missing_ok=True)
+            return took
+
+        return run
 
     def check(case: str, **want: Any) -> None:
         got = results[case].get("fingerprint", {})
@@ -200,13 +257,14 @@ def main() -> int:
     # Rust library cases.
     for case in RUST_CASES:
         name = case.split(".", 1)[1]
-        cmd = [str(harness), "--case", name, "--input", str(a), "--repeat", str(args.repeat)]
+        cmd = [str(harness), "--case", name, "--input", str(a)]
         out = scratch / f"{name}.csv"
         if name == "merge_csv":
             cmd += ["--input", str(b)]
         if name in ("decode_csv", "merge_csv"):
             cmd += ["--output", str(out)]
-        res = run_json(cmd)
+        once[case] = json_once(cmd, out if name in ("decode_csv", "merge_csv") else None)
+        res = run_json([*cmd, "--repeat", str(args.repeat)])
         results[case] = {
             "runs": [{"run": t} for t in res["runs"]],
             "fingerprint": {"rows": res["rows"], "rt_sum": res["rt_sum"]},
@@ -217,15 +275,34 @@ def main() -> int:
         if name == "merge_csv":
             check_csv(case, out, pins["merges"][f"{a_name}+{b_name}"]["csv_sha256"])
 
-    # Both CLIs as whole processes: what an operator waits for.
-    for case, cmd_head in (
-        ("rust.cli_process", [str(cli)]),
-        ("py.cli_process", [sys.executable, "-m", "aero1553"]),
+    # Both CLIs as whole processes: what an operator waits for -- reading the
+    # recording from its path, and from standard input as `decode -`
+    # (L2-CLI-023), which must cost no more. A stream has no file name, so its
+    # MUX column is empty: it is held to the file decoded with `--no-mux`,
+    # byte for byte and in time, since rendering MUX has a cost of its own.
+    no_mux = scratch / "no-mux-reference.csv"
+    subprocess.run([str(cli), "decode", str(a), "--no-mux", "-o", str(no_mux)], check=True)
+    no_mux_sha = sha256(no_mux)
+    no_mux.unlink()
+    for case, cmd_head, source, pinned in (
+        ("rust.cli_process", [str(cli)], [str(a)], pins["recordings"][a_name]["csv_sha256"]),
+        ("rust.cli_no_mux", [str(cli)], [str(a), "--no-mux"], no_mux_sha),
+        ("rust.cli_stdin", [str(cli)], ["-"], no_mux_sha),
+        (
+            "py.cli_process",
+            [sys.executable, "-m", "aero1553"],
+            [str(a)],
+            pins["recordings"][a_name]["csv_sha256"],
+        ),
+        ("py.cli_stdin", [sys.executable, "-m", "aero1553"], ["-"], no_mux_sha),
     ):
         out = scratch / f"{case}.csv"
-        runs, peak = time_process([*cmd_head, "decode", str(a), "-o", str(out)], args.repeat)
+        cmd = [*cmd_head, "decode", *source, "-o", str(out)]
+        feed = a if source == ["-"] else None
+        runs, peak = time_process(cmd, args.repeat, stdin=feed)
         results[case] = {"runs": [{"process": t} for t in runs], "peak_bytes": peak}
-        check_csv(case, out, pins["recordings"][a_name]["csv_sha256"])
+        check_csv(case, out, pinned)
+        once[case] = process_once(cmd, feed, out)
 
     # Python library cases.
     for case in PY_CASES:
@@ -238,12 +315,11 @@ def main() -> int:
             str(a),
             "--output",
             str(out),
-            "--repeat",
-            str(args.repeat),
         ]
         if case == "py.merge_csv":
             cmd += ["--input", str(b)]
-        results[case] = run_json(cmd)
+        once[case] = json_once(cmd, out)
+        results[case] = run_json([*cmd, "--repeat", str(args.repeat)])
         if case in ("py.decode_csv", "py.cli_decode", "py.csv_pandas"):
             check_csv(case, out, pins["recordings"][a_name]["csv_sha256"])
         if case == "py.merge_csv":
@@ -280,7 +356,7 @@ def main() -> int:
         res["median"] = statistics.median(totals)
         needs = (
             ["aero1553", *NEEDS[case]]
-            if case.startswith("py.") and case != "py.cli_process"
+            if case.startswith("py.") and case not in ("py.cli_process", "py.cli_stdin")
             else []
         )
         res["imports"] = {lib: import_median[lib] for lib in needs}
@@ -293,12 +369,20 @@ def main() -> int:
     # Gates.
     gates = json.loads((PERF / "gates.json").read_text(encoding="utf-8"))["gates"]
     gate_results = []
-    for gate in gates:
-        ratio = results[gate["numerator"]]["best"] / results[gate["denominator"]]["best"]
+    for index, gate in enumerate(gates):
+        best_ratio = results[gate["numerator"]]["best"] / results[gate["denominator"]]["best"]
+        rounds = paired_ratio(
+            once[gate["numerator"]], once[gate["denominator"]], args.gate_rounds, seed=index
+        )
+        ratio = statistics.median(rounds)
         ok = ("max" not in gate or ratio <= gate["max"]) and (
             "min" not in gate or ratio >= gate["min"]
         )
-        gate_results.append({**gate, "ratio": ratio, "ok": ok})
+        gate_results.append(
+            {**gate, "ratio": ratio, "rounds": rounds, "best_ratio": best_ratio, "ok": ok}
+        )
+
+    shutil.rmtree(scratch, ignore_errors=True)
 
     report = {
         "environment": {
@@ -306,8 +390,11 @@ def main() -> int:
             "python": platform.python_version(),
             "platform": f"{platform.system()} {platform.machine()}",
             "cpu": platform.processor() or os.environ.get("PROCESSOR_IDENTIFIER", ""),
+            # The default decode thread count follows it (L2-WRT-027).
+            "cpu_count": os.cpu_count(),
             "recording": {"a": pinned_a, "b": pins["recordings"][b_name]},
             "repeat": args.repeat,
+            "gate_rounds": args.gate_rounds,
         },
         "cases": results,
         "gates": gate_results,
@@ -346,6 +433,7 @@ def render(report: dict[str, Any]) -> str:
         "## Performance report",
         "",
         f"aero1553 {env['aero1553']} | Python {env['python']} | {env['platform']} | "
+        f"{env['cpu_count']} CPUs | "
         f"{a['rows']:,} records ({a['bytes'] / 1e6:.2f} MB golden recording) | "
         f"{env['repeat']} runs per case",
         "",
@@ -369,16 +457,17 @@ def render(report: dict[str, Any]) -> str:
         )
     lines += [
         "",
-        "### Gates (ratios of best times, measured side by side)",
+        f"### Gates (median of {env['gate_rounds']} interleaved paired rounds)",
         "",
-        "| Gate | Ratio | Limit | Result |",
-        "|---|---:|---|---|",
+        "| Gate | Ratio | Rounds | Best / best | Limit | Result |",
+        "|---|---:|---:|---:|---|---|",
     ]
     for g in report["gates"]:
         limit = " and ".join(f"{k} {g[k]}" for k in ("min", "max") if k in g)
         lines.append(
             f"| {g['name']} (`{g['numerator']}` / `{g['denominator']}`) | "
-            f"{g['ratio']:.3f} | {limit} | {'pass' if g['ok'] else '**FAIL**'} |"
+            f"{g['ratio']:.3f} | {min(g['rounds']):.3f}-{max(g['rounds']):.3f} | "
+            f"{g['best_ratio']:.3f} | {limit} | {'pass' if g['ok'] else '**FAIL**'} |"
         )
     if report["problems"]:
         lines += ["", "### Wrong answers", ""] + [f"- {p}" for p in report["problems"]]

@@ -375,6 +375,7 @@ over-collapses. See [`USER-GUIDE.md`](USER-GUIDE.md) for worked examples.
 | **Inline** (default) | (nothing) | One CSV with every record; the `ERROR` / `ERROR_CODE` columns flag errored and spurious rows. Matches the vendor layout. |
 | **Separate** | `--separate-errors` | Clean rows → main CSV; error + spurious rows → `<stem>_errors.csv` (created only if such rows exist). |
 | **Stdout** | omit `-o` | Streams to stdout; forces inline mode (a stream can't be split). A consumer that closes early (`… \| head`) is fine — exit 0. There is no `-` filename convention: `-o -` writes a file literally named `-`. |
+| **From a pipe** | `-` as the input (`… \| aero1553 decode -`) | Reads the recording from standard input; the same output as the file gives, with `MUX` empty. `decode` and `count` only, and the only input (`L2-CLI-023`). |
 | **Count** | `count` subcommand | Just the integer message count on stdout; no CSV. |
 | **Dump** | `dump` subcommand | A hex view of the bytes for debugging; no CSV. |
 

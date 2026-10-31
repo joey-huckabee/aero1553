@@ -2394,3 +2394,285 @@ fn threads_out_of_range_is_a_usage_error() {
     assert_eq!(exit_code(&out), 4);
     assert!(String::from_utf8_lossy(&out.stderr).contains("invalid --threads: 17"));
 }
+
+// ── Standard input (L2-CLI-023) ─────────────────────────────────────
+
+/// Run the binary with `stdin` piped in, from a thread so a large input
+/// cannot deadlock against a full stdout pipe.
+fn run_with_stdin<I, S>(args: I, stdin: &[u8]) -> Output
+where
+    I: IntoIterator<Item = S>,
+    S: AsRef<std::ffi::OsStr>,
+{
+    let mut child = Command::new(BIN)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("failed to spawn aero1553 binary");
+    let mut pipe = child.stdin.take().unwrap();
+    let bytes = stdin.to_vec();
+    let feeder = std::thread::spawn(move || {
+        // A child that refuses its input closes the pipe early; that is a
+        // result to assert on, not a test failure.
+        let _ = pipe.write_all(&bytes);
+    });
+    let out = child.wait_with_output().unwrap();
+    feeder.join().unwrap();
+    out
+}
+
+/// Records with distinct data, IRIG timestamps rising, and an errored record
+/// and a junk gap in the middle -- so the stdin path is exercised through
+/// recovery and error rows, not just clean records.
+fn varied_recording(n: u32) -> Vec<u8> {
+    let mut data = Vec::new();
+    for i in 0..n {
+        let mut r = one_valid_record();
+        r[10..14].copy_from_slice(&i.to_le_bytes());
+        data.extend_from_slice(&r);
+        if i == n / 2 {
+            data.extend_from_slice(&errored_record());
+            data.extend(std::iter::repeat_n(0xFF, 64));
+        }
+    }
+    data
+}
+
+/// Requirements: L2-CLI-023
+#[test]
+fn decode_stdin_writes_the_same_csv_as_the_file() {
+    let tmp = TempDir::new();
+    let data = varied_recording(5_000); // ~360 KB: more than one read window
+    let input = tmp.write("rec.mie", &data);
+    let from_file = tmp.path().join("file.csv");
+    let from_stdin = tmp.path().join("stdin.csv");
+
+    let a = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("-o"),
+        from_file.as_os_str(),
+    ]);
+    let b = run_with_stdin(
+        [
+            std::ffi::OsStr::new("decode"),
+            std::ffi::OsStr::new("-"),
+            std::ffi::OsStr::new("-o"),
+            from_stdin.as_os_str(),
+        ],
+        &data,
+    );
+    assert_eq!(exit_code(&a), exit_code(&b));
+    assert_eq!(
+        std::fs::read(&from_file).unwrap(),
+        std::fs::read(&from_stdin).unwrap()
+    );
+
+    // And to stdout, the other destination.
+    let c = run_with_stdin(["decode", "-"], &data);
+    assert_eq!(exit_code(&c), exit_code(&a));
+    assert_eq!(c.stdout, std::fs::read(&from_file).unwrap());
+}
+
+/// Requirements: L2-CLI-023
+#[test]
+fn count_stdin_counts_what_the_file_counts() {
+    let tmp = TempDir::new();
+    let data = varied_recording(300);
+    let input = tmp.write("rec.mie", &data);
+    let a = run([std::ffi::OsStr::new("count"), input.as_os_str()]);
+    let b = run_with_stdin(["count", "-"], &data);
+    assert_eq!(exit_code(&a), 0);
+    assert_eq!(exit_code(&b), 0);
+    assert_eq!(a.stdout, b.stdout);
+    assert!(String::from_utf8_lossy(&b.stderr).contains("<stdin>"));
+}
+
+/// Requirements: L2-CLI-023
+#[test]
+fn stdin_errors_match_the_file_errors() {
+    let tmp = TempDir::new();
+    // Empty, not a recording, and a lone truncated record (strict).
+    for (data, strict) in [
+        (Vec::new(), false),
+        (b"this is not a recording".to_vec(), false),
+        (one_valid_record()[..40].to_vec(), true),
+    ] {
+        let input = tmp.write("case.mie", &data);
+        let mut file_args = vec![std::ffi::OsString::from("decode")];
+        let mut stdin_args = file_args.clone();
+        file_args.push(input.clone().into_os_string());
+        stdin_args.push("-".into());
+        if strict {
+            file_args.push("--strict".into());
+            stdin_args.push("--strict".into());
+        }
+        let a = run(&file_args);
+        let b = run_with_stdin(&stdin_args, &data);
+        assert_eq!(exit_code(&a), exit_code(&b), "{data:?}");
+        assert_ne!(exit_code(&a), 0);
+        let file_err =
+            String::from_utf8_lossy(&a.stderr).replace(&input.display().to_string(), "<stdin>");
+        assert_eq!(file_err, String::from_utf8_lossy(&b.stderr), "{data:?}");
+    }
+}
+
+/// Requirements: L2-CLI-023
+#[test]
+fn stdin_must_be_the_only_input_and_dump_refuses_it() {
+    let tmp = TempDir::new();
+    let input = tmp.write("rec.mie", &one_valid_record());
+    let rec = one_valid_record();
+    for args in [
+        vec![
+            std::ffi::OsString::from("decode"),
+            "-".into(),
+            input.clone().into_os_string(),
+        ],
+        vec!["decode".into(), "-".into(), "-".into()],
+        vec!["count".into(), "-".into(), "-".into()],
+        vec!["dump".into(), "-".into()],
+    ] {
+        let out = run_with_stdin(&args, &rec);
+        assert_eq!(exit_code(&out), 4, "{args:?}");
+        assert!(out.stdout.is_empty(), "{args:?}");
+    }
+}
+
+/// Requirements: L2-CLI-016, L2-CLI-023
+#[test]
+fn after_end_of_options_a_dash_is_a_file_named_dash() {
+    let tmp = TempDir::new();
+    tmp.write("-", &one_valid_record());
+    let out = Command::new(BIN)
+        .current_dir(tmp.path())
+        .args(["count", "--", "-"])
+        .stdin(std::process::Stdio::null())
+        .output()
+        .unwrap();
+    assert_eq!(exit_code(&out), 0);
+    assert_eq!(String::from_utf8_lossy(&out.stdout).trim(), "1");
+}
+
+/// Requirements: L2-CLI-023, L2-WRT-014
+#[test]
+fn stdin_is_not_checked_for_an_input_output_collision() {
+    // There is no input path; `--no-clobber` still guards the destination.
+    let tmp = TempDir::new();
+    let dest = tmp.write("out.csv", b"keep me");
+    let out = run_with_stdin(
+        [
+            std::ffi::OsStr::new("decode"),
+            std::ffi::OsStr::new("-"),
+            std::ffi::OsStr::new("--no-clobber"),
+            std::ffi::OsStr::new("-o"),
+            dest.as_os_str(),
+        ],
+        &one_valid_record(),
+    );
+    assert_ne!(exit_code(&out), 0);
+    assert_eq!(std::fs::read(&dest).unwrap(), b"keep me");
+}
+
+/// A recording holding 0x1A (Ctrl-Z, an old end-of-file mark on Windows) and
+/// CR and LF, so a shell that treats any byte as text fails the comparison.
+fn recording_for_shells() -> Vec<u8> {
+    let data = varied_recording(400);
+    assert!(data.contains(&0x1A) && data.contains(&b'\r') && data.contains(&b'\n'));
+    data
+}
+
+/// The reference CSV for `data`, decoded from a file.
+fn csv_from_file(tmp: &TempDir, data: &[u8]) -> Vec<u8> {
+    let input = tmp.write("ref.mie", data);
+    let out = run([std::ffi::OsStr::new("decode"), input.as_os_str()]);
+    assert_eq!(exit_code(&out), 0);
+    out.stdout
+}
+
+/// Requirements: L2-CLI-023
+#[cfg(unix)]
+#[test]
+fn shell_pipe_and_redirect_feed_stdin() {
+    let tmp = TempDir::new();
+    let data = recording_for_shells();
+    let want = csv_from_file(&tmp, &data);
+    let input = tmp.write("rec.mie", &data);
+    for script in [
+        format!("cat '{}' | '{BIN}' decode -", input.display()),
+        format!("'{BIN}' decode - < '{}'", input.display()),
+    ] {
+        let out = Command::new("sh").args(["-c", &script]).output().unwrap();
+        assert_eq!(exit_code(&out), 0, "{script}");
+        assert!(
+            out.stdout == want,
+            "{script}: output differs from the file decode"
+        );
+    }
+}
+
+/// Requirements: L2-CLI-023
+#[cfg(windows)]
+#[test]
+fn cmd_pipe_and_redirect_feed_stdin() {
+    use std::os::windows::process::CommandExt as _;
+    let tmp = TempDir::new();
+    let data = recording_for_shells();
+    let want = csv_from_file(&tmp, &data);
+    let input = tmp.write("rec.mie", &data);
+    for script in [
+        format!("type \"{}\" | \"{BIN}\" decode -", input.display()),
+        format!("\"{BIN}\" decode - < \"{}\"", input.display()),
+    ] {
+        // `/S /C "..."`: cmd strips exactly the outer quotes, so the quoted
+        // paths inside survive.
+        let out = Command::new("cmd")
+            .raw_arg(format!("/S /C \"{script}\""))
+            .output()
+            .unwrap();
+        assert_eq!(exit_code(&out), 0, "{script}");
+        assert!(
+            out.stdout == want,
+            "{script}: output differs from the file decode"
+        );
+    }
+}
+
+/// Requirements: L2-CLI-023
+///
+/// PowerShell 7.4 and later pass bytes unchanged between two native commands.
+/// Windows PowerShell 5.1 re-encodes them as text, which corrupts a recording;
+/// the user guide says so, and this test pins the supported case.
+#[cfg(windows)]
+#[test]
+fn powershell_7_pipe_feeds_stdin() {
+    let tmp = TempDir::new();
+    let data = recording_for_shells();
+    let want = csv_from_file(&tmp, &data);
+    let input = tmp.write("rec.mie", &data);
+    let out_csv = tmp.path().join("out.csv");
+    let script = format!(
+        "cmd /c type '{}' | & '{BIN}' decode - -o '{}'; exit $LASTEXITCODE",
+        input.display(),
+        out_csv.display()
+    );
+    let Ok(out) = Command::new("pwsh")
+        .args(["-NoProfile", "-NonInteractive", "-Command", &script])
+        .output()
+    else {
+        eprintln!("SKIP powershell_7_pipe_feeds_stdin: pwsh is not installed");
+        return;
+    };
+    assert_eq!(
+        exit_code(&out),
+        0,
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(
+        std::fs::read(&out_csv).unwrap() == want,
+        "output differs from the file decode"
+    );
+}

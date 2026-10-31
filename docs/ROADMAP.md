@@ -99,6 +99,9 @@ reuse that same parsed identity:
   survivor is chosen by which recorder it came from rather than by argument
   order. (`--collapse-duplicates` already addresses the common case by emitting
   one row instead of choosing between two.)
+- **An explicit `MUX` value** (`--mux-value TEXT`, `[mux] value`) -- for a
+  file whose name does not encode its recorder, and for standard input
+  (`decode -`, 5.6.0), whose `MUX` is empty because it has no name.
 - **Optional `TERM_NAME` from the filename** — the same delimiter+index
   mechanism (a second configurable field) could populate the still-empty
   `TERM_NAME` column, if a terminal-name field is encoded in the name.
@@ -294,11 +297,20 @@ Skipping the filter stage when no filter is set, and shrinking `MieMessage` to
 128 bytes so those copies inline, cut `memmove` from 12.2% to 1.6% of the thread
 and made a decode 0.70x-0.80x the time of 5.3.0. 5.5.0 removed false sharing
 on the per-file `MUX` string (a `MUX`-populated decode 6-12% faster) and kept
-records out of the merge heap (a merge 10-19% faster). Beyond that, in the
+records out of the merge heap (a merge 10-19% faster). 5.6.0 changed no
+decode speed; it added `decode -` (measured at the same cost as a file),
+steadier gates and a per-thread profiler. Beyond that, in the
 order they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
-  target. A profile after the merge-heap change found the decoding thread
+  target; `perf/profile.py` (5.6.0) reports user and system CPU per thread
+  from `/proc`. Its first run, on a 256 MiB decode to a 906 MB CSV on native
+  Linux (arm64, 4 CPUs, 2 rendering threads), put the calling thread at 97%
+  busy -- 0.80 s user against 0.12 s system -- and each rendering thread at
+  31%, with 5 MB peak memory, the same from standard input. So on that host
+  the next target is the calling thread's own decoding, not the kernel's
+  writes; the WSL figures that follow disagree, so profile the deployment hosts
+  (SLES 12, Windows) before choosing. A WSL profile after the merge-heap change found the decoding thread
   spending about as long in the kernel writing the CSV as decoding (1.1 s
   system against 1.45 s user on a 930 MB output; perf at
   `perf_event_paranoid=2` does not show kernel time -- read
@@ -325,23 +337,15 @@ order they are expected to pay:
   different-input rule and the `max_collapse_survivors` cap (L2-MRG-008). Only
   merges with collapsing enabled are affected; a single-file decode never
   reaches this code.
-- **Steadier performance gates.** `perf/gates.json` compares best-of-5 ratios on
-  the 21 MB golden recording (about 0.2 s a case). With rendering threads on a
-  shared CI runner that is noisy: two gates each failed once by a hair on the
-  5.2.0 change and passed on re-run, and the merge gate did again on the 5.3.0
-  CI change (1.173 against 1.15; 1.013-1.088 on the same code before, 1.014 on
-  re-run). More runs per case, a larger input, or a
-  gate on the median of several ratios would keep real regressions visible
-  without random failures. Record the runner's core count in the report too:
-  the default thread count depends on it.
-- **A large-file benchmark in CI (partly done).** Since 5.3.0,
-  release pull requests time the candidate against the previous release on
-  256 MiB generated recordings (`perf/baseline.py`), with a 15% margin measured
-  from A/A runs. That catches a regression before it ships, not when it lands,
-  and nothing smaller than 15%. A scheduled run against `main` would place a
-  regression nearer its commit; the multi-gigabyte cases that justified 5.0.0
-  to 5.2.0 are still run by hand (`rust/examples/synth_large.rs`, the full
-  experiment tagged `archive/perf-io-backends`).
+- **Multi-gigabyte benchmark cases.** Release pull requests and a weekly run
+  against `main` time the candidate against the previous release on 256 MiB
+  generated recordings (`perf/baseline.py`, 15% margin from A/A runs). The
+  multi-gigabyte cases that justified 5.0.0 to 5.2.0 are still run by hand
+  (`rust/examples/synth_large.rs`, the full experiment tagged
+  `archive/perf-io-backends`), and nothing under 15% is caught automatically.
+- **Enforce the Windows performance gates.** Since 5.6.0 the suite runs on
+  Windows report-only. Once a few runs show where its ratios sit, set limits
+  and enforce them.
 - **PGO and fat LTO for the release binaries.** Typically 5-15% with no source
   change; the work is in CI, including the glibc 2.22 zigbuild job. Best done
   after the calling-thread work, since PGO tunes whatever the code is.
@@ -365,15 +369,6 @@ order they are expected to pay:
 
 None changes CSV output, so all are guarded by the byte-exact conformance
 oracle.
-
-## Input from stdin (not started)
-
-`aero1553 decode -` reading the recording from standard input would let a
-decode run straight from a pipe -- an SSH stream, a decompressor, a capture
-tool -- without a temporary file. The reader would need a forward-only mode,
-since it reads at file offsets today. Needs a design decision on what `dump`,
-the multi-file merge (probably refused) and the input/output collision check
-(`L2-WRT-014`) do with a stdin input.
 
 ## Config ergonomics (deferred)
 
