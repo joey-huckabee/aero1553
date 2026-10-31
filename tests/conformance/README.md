@@ -138,6 +138,33 @@ at any implementation count, `--only` included:
   platform; only Windows needed work to pass it, since Win32 refuses such paths
   without the `\\?\` prefix that Rust's standard library adds and the former
   C++ build (removed in 5.0.0) had not.
+- **`stdin_parity.py`** -- L2-CLI-023: every single-input manifest case run
+  again with the recording piped to standard input as `-`, requiring the same
+  exit code, files, stdout and stderr (with `<stdin>` for the path).
+- **`flag_pairs.py`** -- every **pair** of decode-flag values. A greedy
+  generator builds about 80 command lines that between them cover every pair
+  of 62 values over 19 settings (inputs, stdin, destination, error mode,
+  strict, partial, clobber, both time formats, detection and look-ahead depth,
+  tick rate, MUX, duplicate collapsing, DELTA scope, sort-group and survivor
+  caps, threads, filters). One-flag-at-a-time cases cannot catch a defect that
+  needs two flags to appear. Each command line is checked for:
+  1. every implementation agreeing (exit code, stdout, stderr, files);
+  2. a sane outcome (documented exit code, ASCII stderr, a CSV header);
+  3. identical output at `--threads` 0, 1 and 3 (L2-WRT-027);
+  4. identical CSV to a file and to stdout;
+  5. `--separate-errors` splitting exactly the inline CSV's rows;
+  6. standard input matching the file decoded with `--no-mux`;
+  7. a filter only removing rows, and keeping only matching ones.
+
+  Checks 2-7 run against the first implementation only: the Python CLI runs
+  the Rust CLI in-process, which check 1 covers. Value pairs that can only end
+  in a refusal pinned elsewhere (stdin in a merge, IRIG data read as Standard,
+  a calendar date from a Standard counter) are left out of the generator, so
+  every other pair is spent on a run that decodes. The inputs include the
+  golden recording ten times over (~7,200 records, so the rendering threads
+  see several 2048-record batches) and a golden merge. Deterministic for a
+  seed; set `MIE_FLAG_PAIRS_SEED` to explore others. Each check was confirmed
+  to fail on a CLI broken on purpose before it was trusted.
 
 ## Manifest schema
 

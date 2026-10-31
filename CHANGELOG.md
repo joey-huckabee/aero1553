@@ -19,6 +19,23 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **Pairwise flag-combination checks** (`tests/conformance/flag_pairs.py`,
+  run by the conformance runner). About 80 generated command lines cover every
+  pair of 62 values over 19 decode settings, and each is checked for:
+  - every implementation agreeing;
+  - a documented exit code, ASCII diagnostics and a CSV header;
+  - identical output at any `--threads`;
+  - the same CSV to a file and to stdout;
+  - `--separate-errors` splitting exactly the inline rows;
+  - standard input matching the file;
+  - filters that only remove rows.
+
+  Before it was trusted, each check was shown to fail against a CLI broken on
+  purpose. It found no defect: 21 seeds, about 11,000 runs, all passed. Test
+  only; no decoder change.
+
 ## [5.6.0] — 2026-10-31
 
 ### Added

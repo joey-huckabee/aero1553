@@ -279,9 +279,10 @@ conformance suite (`L3-RS-018`). Releases 5.0.0 to 5.2.0 attach it as
   (`x86_64-pc-windows-msvc`). Needs deciding: is a static CRT
   (`-C target-feature=+crt-static`) wanted, so the binary does not depend on the
   VC++ redistributable being present?
-- **Repository setting: delete head branches on merge.** Off today, so merged
-  branches stay on the remote until deleted by hand
-  (`gh api -X PATCH repos/joey-huckabee/aero1553 -f delete_branch_on_merge=true`).
+
+Merged branches are deleted by hand, on the remote and locally together, so
+the two stay consistent; the repository's "delete head branches on merge"
+setting stays off (decided 2026-10-31).
 
 ## Performance
 
@@ -421,21 +422,6 @@ against the current code. Known follow-ups:
   Windows machine with the switch off; if Python fails, give its output path
   handling the same treatment, and decide whether the check should force that
   configuration in CI rather than inherit the runner's.
-
-- **Keeping the implementations aligned by contract, not by code shape.** Every
-  C++-only defect in the review was behaviour that Rust's runtime or standard
-  library provides implicitly (ignoring SIGPIPE, the `\\?\` long-path prefix),
-  or a flag combination no test exercised (`--separate-errors` with
-  `--output-time-format`). The C++ implementation is gone (5.0.0), but the
-  second lesson still applies to Rust and Python:
-  - **Differential testing over flag combinations.** A generator, like
-    `record_fuzz.py` is for inputs, that runs every implementation over
-    pairwise combinations of the decode flags and compares exit codes and
-    output all-pairs. Single-flag cases cannot catch a defect that needs two
-    flags to appear.
-
-  The working rule that goes with it, already followed in #136: a bug fixed in
-  one implementation still gets a shared test that runs against both.
 
 ## Non-ASCII text in output (deferred, needs direction)
 
