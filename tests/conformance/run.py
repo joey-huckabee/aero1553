@@ -21,6 +21,7 @@ from config_fuzz import check_config_parser_fuzz
 from config_parity import check_config_parser_parity
 from config_path_parity import check_config_path_parity
 from differential import describe_stderr_problems, normalized_stderr
+from flag_pairs import check_flag_pairs
 from glob_parity import check_glob_parity
 from long_paths import check_long_paths
 from output_mode import check_output_mode
@@ -840,6 +841,9 @@ def main() -> int:
             _STDOUT_MODES,
             temp,
         )
+        # Every pair of decode-flag values, through every implementation, with
+        # the properties that must hold whatever the flags (flag_pairs.py).
+        check_flag_pairs(contract, ROOT, SUITE, temp)
 
         # Differential config-parser checks, over EVERY implementation under
         # test rather than a fixed pair. The comparison is all-pairs: any two
