@@ -357,9 +357,10 @@ pub fn load_config(path: Option<&Path>) -> Result<DecoderConfig, ConfigError> {
     // is not a sufficient guard: it is true for directories, FIFOs, and
     // character devices, so `--config <dir>` produces a confusing OS error and
     // `--config /dev/zero` reads forever. Requiring a *regular file* is the
-    // actual precondition. Mirrors the Python loader's check and message
-    // (`pythonsecurity:S8707` there); both are held to the same wording so a
-    // bad `--config` fails identically on either implementation.
+    // actual precondition. The Python binding raises `FileNotFoundError` with
+    // this same message for a missing file, from a test made in Rust (Python's
+    // own `exists()` missed long paths on Windows, L2-CLI-024), so a bad
+    // `--config` fails identically through either entry point.
     if !path.exists() {
         return Err(ConfigError(format!(
             "Config file not found: {}",

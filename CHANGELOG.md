@@ -49,6 +49,27 @@ shared behavior) holds at any compatible version pair. See
   - `docs/FUZZING.md` and `tests/conformance/README.md` document both, and
     say how to add a property so the self-test covers it.
 
+### Fixed
+
+- **`aero1553.load_config()` found a config file at a long Windows path**
+  (`L2-CLI-024`). On Windows with long-path support (`LongPathsEnabled`) off,
+  a config file whose full path is over 260 characters raised
+  `FileNotFoundError: Config file not found`, although the file existed and
+  the Rust loader could read it. Python checked the path with its own
+  `Path.exists()`, which cannot see such a path with the switch off; the check
+  is now made in Rust, which adds the Windows `\\?\` prefix itself. Only the
+  Python library's `load_config` was affected. Both CLIs, and every other
+  Python function that takes a path, already went through Rust; a new test now
+  proves that for each of them (`python/tests/test_long_paths.py`).
+- **Windows CI tests long paths with long-path support off.** The runners have
+  it on, so the existing long-path check had only ever run on a machine where
+  long paths work anyway. `scripts/force-long-paths-off.ps1` turns it off
+  before the Python tests and the conformance suite, and fails the job unless
+  a new process really cannot see an ordinary-spelled long path. The
+  conformance long-path check now also covers `--config` at a long path, and
+  removes its deep directory itself, since Python's temporary-directory cleanup
+  cannot delete it with the switch off.
+
 ## [5.6.0] — 2026-10-31
 
 ### Added

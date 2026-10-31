@@ -13,7 +13,7 @@ use std::path::PathBuf;
 
 use aero1553::config::{self as core, ConfigError};
 use aero1553::models::Bus;
-use pyo3::exceptions::{PyUnicodeDecodeError, PyValueError};
+use pyo3::exceptions::{PyFileNotFoundError, PyUnicodeDecodeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 
@@ -36,6 +36,17 @@ fn buses(values: &[Bus]) -> Vec<u8> {
 #[pyfunction]
 pub fn load_config(py: Python<'_>, path: PathBuf) -> PyResult<Bound<'_, PyDict>> {
     logbridge::sync_level(py)?;
+    // A missing file is Python's `FileNotFoundError`, as `load_config`
+    // documents. The test is made here, in Rust, and not in `aero1553.config`:
+    // Rust's standard library adds the Windows `\\?\` prefix itself, so a
+    // path over 260 characters is found whatever `LongPathsEnabled` says, where
+    // Python's own `Path.exists()` reported such a file missing (L2-CLI-024).
+    if !path.exists() {
+        return Err(PyFileNotFoundError::new_err(format!(
+            "Config file not found: {}",
+            path.display()
+        )));
+    }
     let c = match core::load_config(Some(&path)) {
         Ok(c) => c,
         Err(err) => {

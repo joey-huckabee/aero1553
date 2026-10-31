@@ -18,7 +18,9 @@ from __future__ import annotations
 
 import io
 import os
+import shutil
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -64,17 +66,20 @@ def _exists(path: Path) -> bool:
 
 
 @pytest.fixture
-def dirs(tmp_path: Path) -> tuple[Path, Path]:
-    """A short directory and a deep one, both existing."""
+def dirs(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
+    """A short directory and a deep one, both existing. The deep one is removed
+    through the extended-length spelling: pytest's own cleanup cannot delete it
+    with Windows long-path support off."""
     base = tmp_path.resolve()
     short = base / "s"
     short.mkdir()
-    deep = base
+    deep = base / "deep"
     while len(str(deep)) < MIN_PATH_CHARS:
         deep /= SEGMENT
     os.makedirs(_native(deep))  # noqa: PTH103 -- prefixed str, not a Path
     assert len(str(deep / "rec.mie")) > 260
-    return short, deep
+    yield short, deep
+    shutil.rmtree(_native(base / "deep"), ignore_errors=True)
 
 
 def _both(dirs: tuple[Path, Path], name: str, data: bytes) -> tuple[Path, Path]:
