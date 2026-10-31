@@ -297,7 +297,9 @@ Skipping the filter stage when no filter is set, and shrinking `MieMessage` to
 128 bytes so those copies inline, cut `memmove` from 12.2% to 1.6% of the thread
 and made a decode 0.70x-0.80x the time of 5.3.0. 5.5.0 removed false sharing
 on the per-file `MUX` string (a `MUX`-populated decode 6-12% faster) and kept
-records out of the merge heap (a merge 10-19% faster). Beyond that, in the
+records out of the merge heap (a merge 10-19% faster). 5.6.0 changed no
+decode speed; it added `decode -` (measured at the same cost as a file),
+steadier gates and a per-thread profiler. Beyond that, in the
 order they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
