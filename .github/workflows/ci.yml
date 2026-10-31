@@ -293,6 +293,12 @@ jobs:
       - name: Synchronize locked dependencies
         run: uv --directory python sync --locked
 
+      - name: Force long-path support off (Windows)
+        # tests/test_long_paths.py means something only with it off; see the script.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/force-long-paths-off.ps1
+
       - name: Run Python tests
         run: uv --directory python run pytest
 
@@ -577,6 +583,12 @@ jobs:
 
       - name: Verify aero1553 is importable
         run: python -c "import aero1553; print('aero1553 at:', aero1553.__file__)"
+
+      - name: Force long-path support off (Windows)
+        # tests/conformance/long_paths.py means something only with it off.
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./scripts/force-long-paths-off.ps1
 
       - name: Run cross-implementation conformance suite
         # run.py already handles the .exe suffix on Windows when

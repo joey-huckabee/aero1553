@@ -370,8 +370,9 @@ def load_config(path: str | Path | None = None) -> DecoderConfig:
         logger.debug("No config file specified, using defaults")
         return DecoderConfig()
     config_path = Path(path)
-    if not config_path.exists():
-        raise FileNotFoundError(f"Config file not found: {config_path}")
+    # The extension raises FileNotFoundError for a missing file. Python does not
+    # test the path itself: on Windows its own file calls miss a path over 260
+    # characters unless LongPathsEnabled is on, and Rust's do not (L2-CLI-024).
     logger.info("Loading config from %s", config_path)
     fields = _native.load_config(config_path)
     f = fields.pop("filters")

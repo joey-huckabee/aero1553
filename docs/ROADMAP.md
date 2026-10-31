@@ -412,17 +412,6 @@ against the current code. Known follow-ups:
   passed (0.992). To do: find which loop or buffer in the merge hot path is
   alignment-sensitive.
 
-- **Python long paths on Windows -- untested.** Rust's standard library accepts
-  paths longer than 260 characters by adding the `\\?\` prefix itself (#136
-  made the former C++ build do the same). Python reads through the Rust extension, but writes
-  CSV through its own file handling, and passed `tests/conformance/long_paths.py`
-  only on a machine where the `LongPathsEnabled` registry switch is on (where
-  `python.exe`'s long-path manifest takes effect). With the switch off, writing
-  output into a deep directory probably fails. To do: run the check on a
-  Windows machine with the switch off; if Python fails, give its output path
-  handling the same treatment, and decide whether the check should force that
-  configuration in CI rather than inherit the runner's.
-
 ## Non-ASCII text in output (deferred, needs direction)
 
 Found while fixing non-UTF-8 command-line arguments (#153). `L2-CLI-014` says

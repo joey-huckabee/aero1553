@@ -38,6 +38,7 @@ from __future__ import annotations
 
 import functools
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -116,7 +117,21 @@ def check_long_paths(invocations: dict[str, list[str]], root: Path, temp: Path) 
 
     recording = read_hex(Path(__file__).resolve().parent / "inputs" / "errors-inline.hex")
 
-    deep = temp.resolve() / "long-paths"
+    top = temp.resolve() / "long-paths"
+    try:
+        _check(invocations, root, temp, top, recording)
+    finally:
+        # Removed here, through the extended-length spelling: with Windows
+        # long-path support off, the runner's own temporary-directory cleanup
+        # cannot delete a path this deep, and failed the run after every check
+        # had passed.
+        shutil.rmtree(_native(top), ignore_errors=True)
+
+
+def _check(
+    invocations: dict[str, list[str]], root: Path, temp: Path, top: Path, recording: bytes
+) -> None:
+    deep = top
     while len(str(deep / "input.mie")) < MIN_PATH_CHARS:
         deep = deep / SEGMENT
     Path(_native(deep)).mkdir(parents=True, exist_ok=True)
@@ -173,6 +188,20 @@ def check_long_paths(invocations: dict[str, list[str]], root: Path, temp: Path) 
                 failures.append(f"{impl}: dotted-path decode did not write {dotted_name}")
             elif _read(written) != _read(plain_out):
                 failures.append(f"{impl}: dotted-path output differs from the short-path run")
+
+        # A config file at a long path (`--config` is global: before the command).
+        config = (root / "config" / "default.toml").read_bytes()
+        short_config = short_dir / "site.toml"
+        short_config.write_bytes(config)
+        long_config = deep / "site.toml"
+        with Path(_native(long_config)).open("wb") as handle:
+            handle.write(config)
+        short_cfg = run(
+            ["--config", str(short_config), "count", str(short_input)], "short --config"
+        )
+        long_cfg = run(["--config", str(long_config), "count", str(short_input)], "long --config")
+        if short_cfg and long_cfg and long_cfg.stdout != short_cfg.stdout:
+            failures.append(f"{impl}: --config at a long path changed count's output")
 
         # The read side alone, through `count`.
         short_count = run(["count", str(short_input)], "short-path count")
