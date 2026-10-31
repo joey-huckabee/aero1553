@@ -163,8 +163,32 @@ at any implementation count, `--only` included:
   every other pair is spent on a run that decodes. The inputs include the
   golden recording ten times over (~7,200 records, so the rendering threads
   see several 2048-record batches) and a golden merge. Deterministic for a
-  seed; set `MIE_FLAG_PAIRS_SEED` to explore others. Each check was confirmed
-  to fail on a CLI broken on purpose before it was trusted.
+  seed; `MIE_FLAG_PAIRS_SEED` picks another and `MIE_FLAG_PAIRS_SEEDS=N` runs N
+  from there.
+
+  **Coverage floors** fail the check if it stops reaching what it claims: under
+  60% of combinations decoding, an input that never decodes, a big input under
+  two batches, or any property checked fewer than 3 times. Two refusals compare
+  equal, so without the floors a change that made every run fail early would
+  pass every comparison.
+
+## Checking the checks
+
+`selftest.py` proves each generated check can fail. `broken_cli.py` wraps the
+real CLI and breaks one rule per mode (thread-dependent output, a row lost from
+the errors file, a filter inventing a row, standard input decoding differently,
+stdout differing from the file, a second implementation disagreeing, a panic's
+exit code, and refusing everything). Each check must fail against the mode that
+breaks its rule, naming it. Then it sweeps `flag_pairs.py` over 20 seeds. It runs
+daily in `.github/workflows/fuzz.yml` on Linux and Windows:
+
+```bash
+(cd rust && cargo build)
+uv --directory python run python ../tests/conformance/selftest.py --seeds 20
+```
+
+A new property in `flag_pairs.py` needs a `broken_cli.py` mode that breaks it
+and an entry in `selftest.py`'s `FLAG_PAIRS_BITES`.
 
 ## Manifest schema
 

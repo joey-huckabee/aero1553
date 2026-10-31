@@ -102,10 +102,12 @@ generator changes.
 | 4 | Config-parser documents (TOML) | yes | yes | shared differential | per input |
 | 5 | Record stream, structure-aware | yes | yes | shared differential | per input, CSV bytes |
 | 6 | CLI argument vectors | no | no | — | — |
+| 7 | Decode-flag combinations, pairwise | yes | yes | shared differential + properties | per command line: all-pairs, then seven properties |
 
 Row 6 is listed to record that it is *absent everywhere*, which under the rule in
 the header means it is not a parity gap — it is a future item
-([section 6](#6-what-could-be-added)).
+([section 6](#6-what-could-be-added)). Row 7 generates *valid* combinations of
+flags, not arbitrary argument vectors, so it does not close row 6.
 
 Adjacent but **not fuzzing** — exhaustive rather than generated:
 `rust/examples/decode_digest.rs` sweeps every possible Type Word, every possible
@@ -124,6 +126,8 @@ before/after check for a word-decoder change.
 | In-process byte harnesses | `MIE_FUZZ_ITERATIONS` unset -> 256 (reader, dump) / 512 (merge) | `MIE_FUZZ_ITERATIONS` override | `ci.yml` (default), `differential.yml` (default, plus the cross-impl comparison), `fuzz.yml` (burn-in, four configurations) |
 | Config-parser fuzz | `MIE_CONFIG_FUZZ_ITERS` unset -> 100 | env override | `differential.yml` only |
 | Record-stream fuzz | `MIE_RECORD_FUZZ_ITERS` unset -> 60 | env override | `differential.yml` only |
+| Flag pairs (`flag_pairs.py`) | one seed, ~80 command lines | `MIE_FLAG_PAIRS_SEED` / `MIE_FLAG_PAIRS_SEEDS` | every conformance run (`ci.yml` on Linux, Windows and the glibc 2.22 binary; `differential.yml`); `fuzz.yml` sweeps 20 seeds |
+| Self-test (`selftest.py`): every check bites | — | `--seeds N` | `fuzz.yml` daily, Linux and Windows |
 
 The byte harnesses share three environment variables, and mean the same thing by
 each. That is load-bearing rather than tidy: a burn-in scoped differently per
@@ -288,6 +292,37 @@ the decoders.
 On a divergence it prints the input as a ready-to-commit `inputs/*.hex` fixture
 and names the first differing CSV line.
 
+### 4.6 Decode-flag combinations, and checking the checks
+
+`tests/conformance/flag_pairs.py` generates about 80 command lines covering
+**every pair** of 62 values over 19 decode settings, and holds each to all-pairs
+agreement plus six properties that must hold whatever the flags: thread count,
+destination and standard input change nothing, `--separate-errors` partitions
+the inline rows, filters only remove, and every outcome is sane. The full list
+and rationale are in `tests/conformance/README.md`.
+
+A generated check has two ways to rot that a passing CI run cannot show, and
+both are guarded:
+
+- **Hollowing out.** If a change made most combinations refuse early, every
+  comparison would still pass -- between two refusals. `flag_pairs.py`
+  therefore fails below **coverage floors**: at least 60% of combinations must
+  decode (measured 68-82% over 30 seeds), every input but the non-MIE one must
+  decode somewhere, the big input must produce more than two rendering batches
+  of rows, and each property must actually be checked at least 3 times.
+- **A dead check.** Normal CI only shows the checks a correct CLI, where a
+  working check and one that compares nothing both pass.
+  `tests/conformance/selftest.py` runs each check against
+  `tests/conformance/broken_cli.py`, a wrapper that breaks exactly one rule per
+  mode, and requires the check to fail naming that rule. `refuse-all` must trip
+  the coverage floors. It also runs `stdin_parity.py` against a broken stream,
+  then sweeps `flag_pairs.py` over 20 seeds against the real CLIs. It runs daily
+  in `fuzz.yml`, on Linux and Windows.
+
+Adding a property to `flag_pairs.py` means adding a mode to `broken_cli.py` that
+breaks it and an entry in `selftest.py`'s `FLAG_PAIRS_BITES`; otherwise nothing
+shows the new property can fail.
+
 ---
 
 ## 5. Parity gaps
@@ -355,6 +390,10 @@ MIE_FUZZ_ITERATIONS=256 MIE_FUZZ_STREAM_LOGS=1 cargo test --test integration fuz
 (cd rust && cargo build)
 MIE_RECORD_FUZZ_ITERS=500 MIE_CONFIG_FUZZ_ITERS=2000 \
     uv --directory python run python ../tests/conformance/run.py
+
+# Flag pairs over more seeds, and the self-test (every check must bite)
+MIE_FLAG_PAIRS_SEED=1 MIE_FLAG_PAIRS_SEEDS=20 uv --directory python run python ../tests/conformance/run.py
+uv --directory python run python ../tests/conformance/selftest.py --seeds 20
 
 # Reproduce the cross-implementation summary comparison locally: point every
 # harness at ONE file, then compare. The file is appended to, so order is free.

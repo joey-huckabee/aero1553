@@ -334,27 +334,103 @@ def check_flag_pairs(
     Raises:
         AssertionError: on any divergence or broken property.
     """
-    seed = int(os.environ.get("MIE_FLAG_PAIRS_SEED", _DEFAULT_SEED))
-    rows = pairwise(FACTORS, seed)
+    first = int(os.environ.get("MIE_FLAG_PAIRS_SEED", _DEFAULT_SEED))
+    seeds = range(first, first + int(os.environ.get("MIE_FLAG_PAIRS_SEEDS", "1")))
     pairs = Pairs(invocations, root, suite, temp)
-    findings: list[str] = []
-    checked: Counter[str] = Counter()
-    for row in rows:
-        settings = {name: FACTORS[name][index] for name, index in row.items()}
-        _check_row(pairs, settings, invocations, root, findings, checked)
+    for seed in seeds:
+        rows = pairwise(FACTORS, seed)
+        findings: list[str] = []
+        checked: Counter[str] = Counter()
+        coverage = Coverage()
+        for row in rows:
+            settings = {name: FACTORS[name][index] for name, index in row.items()}
+            base = _check_row(pairs, settings, invocations, root, findings, checked)
+            coverage.record(settings["input"][0], base)
+        findings += coverage.problems(checked)
 
-    if findings:
-        shown = findings[:10]
-        raise AssertionError(
-            f"flag-pairs: {len(findings)} finding(s) over {len(rows)} combinations "
-            f"(seed {seed}); the first {len(shown)}:\n\n" + "\n\n".join(shown)
+        if findings:
+            shown = findings[:10]
+            raise AssertionError(
+                f"flag-pairs: {len(findings)} finding(s) over {len(rows)} combinations "
+                f"(seed {seed}); the first {len(shown)}:\n\n" + "\n\n".join(shown)
+            )
+        detail = ", ".join(f"{label} x{n}" for label, n in checked.items())
+        print(
+            f"PASS flag-pairs ({len(rows)} combinations covering every pair of "
+            f"{sum(len(v) for v in FACTORS.values())} values over {len(FACTORS)} settings, "
+            f"seed {seed}; {coverage.summary()}; {detail})"
         )
-    detail = ", ".join(f"{label} x{n}" for label, n in checked.items())
-    print(
-        f"PASS flag-pairs ({len(rows)} combinations covering every pair of "
-        f"{sum(len(v) for v in FACTORS.values())} values over {len(FACTORS)} settings, "
-        f"seed {seed}; {pairs.count} runs: {detail})"
-    )
+
+
+#: Inputs refused whatever the flags: no floor asks them to decode.
+_ALWAYS_REFUSED = {"not-mie"}
+#: The share of combinations that must decode (exit 0). Measured at 68-82% over
+#: 30 seeds when the floors were set; below this, rows are being spent on
+#: refusals and the pairs they hold are covered in name only.
+_MIN_DECODED = 0.6
+#: Each property must actually be checked this often per seed. Measured at 7
+#: (--separate-errors, the rarest) to 201 over 30 seeds.
+_MIN_CHECKED = 3
+#: Rows the big input must produce in its largest decode: more than two
+#: rendering batches of 2048, or the thread-count check sees one batch and
+#: proves nothing. Filters and caps cut it below the 7,230 records it holds:
+#: measured at 5,430-7,230 over 30 seeds.
+_MIN_BIG_ROWS = 2 * 2048 + 1
+
+
+class Coverage:
+    """What the combinations actually reached. A check that passes because
+    every run was refused early tests nothing, and nothing else would notice:
+    these floors turn a hollowed-out run into a failure."""
+
+    def __init__(self) -> None:
+        self.runs = 0
+        self.decoded: Counter[str] = Counter()
+        self.big_rows = 0
+
+    def record(self, input_name: str, base: Run) -> None:
+        self.runs += 1
+        if base.code == 0:
+            self.decoded[input_name] += 1
+            if input_name == "golden-x10":
+                self.big_rows = max(self.big_rows, base.csv().count(b"\n") - 1)
+
+    def problems(self, checked: Counter[str]) -> list[str]:
+        found = []
+        share = sum(self.decoded.values()) / max(self.runs, 1)
+        if share < _MIN_DECODED:
+            found.append(
+                f"coverage: only {share:.0%} of combinations decoded (floor {_MIN_DECODED:.0%})"
+            )
+        never = sorted(set(INPUTS) - _ALWAYS_REFUSED - set(self.decoded))
+        if never:
+            found.append(f"coverage: these inputs never decoded under any combination: {never}")
+        if self.big_rows < _MIN_BIG_ROWS:
+            found.append(
+                f"coverage: the big input produced at most {self.big_rows} rows "
+                f"(floor {_MIN_BIG_ROWS}, more than two rendering batches)"
+            )
+        found += [
+            f"coverage: '{label}' was checked {checked[label]} time(s) (floor {_MIN_CHECKED})"
+            for label in _LABELS
+            if checked[label] < _MIN_CHECKED
+        ]
+        return found
+
+    def summary(self) -> str:
+        share = sum(self.decoded.values()) / max(self.runs, 1)
+        return f"{share:.0%} decoded, big input {self.big_rows} rows"
+
+
+_LABELS = (
+    "implementations agree",
+    "sane outcome",
+    "thread count is invisible",
+    "destination is invisible",
+    "--separate-errors partitions",
+    "standard input is a file",
+    "filters only remove",
+)
 
 
 def _check_row(
@@ -364,8 +440,9 @@ def _check_row(
     root: Path,
     findings: list[str],
     checked: Counter[str],
-) -> None:
-    """Every check for one combination, appending what it finds."""
+) -> Run:
+    """Every check for one combination, appending what it finds; returns the
+    first implementation's run."""
     first_impl, first_prefix = next(iter(invocations.items()))
 
     def finding(what: str, cmd: list[str]) -> None:
@@ -446,6 +523,7 @@ def _check_row(
         if unfiltered.code == 0:
             _check_subset(settings["filter"], base, unfiltered, cmd, unfiltered_cmd, root, finding)
             checked["filters only remove"] += 1
+    return base
 
 
 def _check_partition(
