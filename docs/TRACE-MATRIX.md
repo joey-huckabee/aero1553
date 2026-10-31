@@ -119,7 +119,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 
 | L1 ID | L2 Children | Test Artifacts | Status |
 |-------|-------------|----------------|--------|
-| L1-CLI-001 | L2-CLI-001, L2-CLI-002, L2-CLI-008, L2-CLI-009, L2-CLI-010, L2-CLI-013, L2-CLI-014, L2-CLI-015, L2-CLI-016, L2-CLI-017, L2-CLI-018, L2-CLI-019, L2-CLI-020, L2-CLI-021, L2-CLI-022, L2-CLI-023 | _(none)_ | Implemented |
+| L1-CLI-001 | L2-CLI-001, L2-CLI-002, L2-CLI-008, L2-CLI-009, L2-CLI-010, L2-CLI-013, L2-CLI-014, L2-CLI-015, L2-CLI-016, L2-CLI-017, L2-CLI-018, L2-CLI-019, L2-CLI-020, L2-CLI-021, L2-CLI-022, L2-CLI-023, L2-CLI-024 | _(none)_ | Implemented |
 | L1-CLI-002 | L2-CFG-004, L2-CFG-006, L2-CFG-007, L2-FLT-001, L2-FLT-002, L2-FLT-003 | _(none)_ | Implemented |
 
 **L2 -> L3 -> Verification Artifacts**
@@ -145,6 +145,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | L2-CLI-021 | _(none)_ | `python/tests/test_cli.py::test_a_file_name_that_is_not_utf8_is_used_as_given`<br>`python/tests/test_cli.py::test_a_non_path_value_that_is_not_utf8_is_a_usage_error`<br>`rust/src/cli.rs::stand_ins_are_ascii_unique_and_reversible`<br>`rust/tests/cli.rs::non_utf8_non_path_values_are_usage_errors`<br>`rust/tests/cli.rs::non_utf8_path_arguments_are_used_as_given` | Implemented |
 | L2-CLI-022 | _(none)_ | `python/tests/test_cli.py::test_usage`<br>`rust/src/config.rs::a_message_about_the_contents_names_the_file`<br>`rust/src/config.rs::diagnostics_repeat_what_was_written_in_ascii`<br>`rust/src/text.rs::quote_writes_every_byte_as_printable_ascii` | Implemented |
 | L2-CLI-023 | _(none)_ | `python/tests/test_cli.py::test_count_from_stdin`<br>`python/tests/test_cli.py::test_decode_from_stdin_matches_the_file`<br>`python/tests/test_cli.py::test_stdin_with_another_input_is_a_usage_error`<br>`rust/src/reader.rs::a_stream_decodes_exactly_as_the_same_bytes_in_a_file`<br>`rust/src/reader.rs::a_stream_has_no_mux_value`<br>`rust/src/reader.rs::a_stream_is_read_once_and_a_second_iteration_says_so`<br>`rust/src/reader.rs::an_empty_stream_is_refused_as_an_empty_file_is`<br>`rust/src/source.rs::a_stream_jump_reads_and_drops_the_bytes_in_between`<br>`rust/src/source.rs::a_stream_refuses_to_go_back_rather_than_answer_wrongly`<br>`rust/src/source.rs::a_stream_walks_forward_and_learns_its_length_at_the_end`<br>`rust/src/source.rs::an_interrupted_read_is_retried_not_reported`<br>`rust/tests/cli.rs::after_end_of_options_a_dash_is_a_file_named_dash`<br>`rust/tests/cli.rs::cmd_pipe_and_redirect_feed_stdin`<br>`rust/tests/cli.rs::count_stdin_counts_what_the_file_counts`<br>`rust/tests/cli.rs::decode_stdin_writes_the_same_csv_as_the_file`<br>`rust/tests/cli.rs::powershell_7_pipe_feeds_stdin`<br>`rust/tests/cli.rs::shell_pipe_and_redirect_feed_stdin`<br>`rust/tests/cli.rs::stdin_errors_match_the_file_errors`<br>`rust/tests/cli.rs::stdin_is_not_checked_for_an_input_output_collision`<br>`rust/tests/cli.rs::stdin_must_be_the_only_input_and_dump_refuses_it` | Implemented |
+| L2-CLI-024 | _(none)_ | `python/tests/test_long_paths.py::test_dumps_of_a_long_path`<br>`python/tests/test_long_paths.py::test_load_config_from_a_long_path`<br>`python/tests/test_long_paths.py::test_load_config_missing_long_path_is_still_not_found`<br>`python/tests/test_long_paths.py::test_manifest_glob_and_merge_with_long_paths`<br>`python/tests/test_long_paths.py::test_reader_reads_a_long_path`<br>`python/tests/test_long_paths.py::test_write_csv_split_to_a_long_path`<br>`python/tests/test_long_paths.py::test_write_csv_to_a_long_path` | Implemented |
 | L2-FLT-001 | L3-PY-013, L3-RS-010 | `python/tests/test_config.py::test_continuation_shares_its_parents_filter_fate`<br>`python/tests/test_config.py::test_end_to_end_with_reader`<br>`python/tests/test_config.py::test_exclude_all`<br>`python/tests/test_config.py::test_exclude_by_bus`<br>`python/tests/test_config.py::test_exclude_by_rt`<br>`python/tests/test_config.py::test_exclude_by_type`<br>`python/tests/test_config.py::test_exclude_takes_precedence_over_include`<br>`python/tests/test_config.py::test_include_by_bus`<br>`python/tests/test_config.py::test_include_by_rt_drops_non_matches`<br>`python/tests/test_config.py::test_include_by_type`<br>`python/tests/test_config.py::test_include_comma_separated_values`<br>`python/tests/test_config.py::test_include_repeated_flag_accumulates`<br>`python/tests/test_config.py::test_include_rts_no_match_yields_header_only`<br>`python/tests/test_config.py::test_include_subaddress_drops_spurious_without_command_word`<br>`python/tests/test_config.py::test_include_subaddresses_cli`<br>`python/tests/test_config.py::test_multiple_include_sets_all_must_match`<br>`python/tests/test_config.py::test_no_filters_active`<br>`python/tests/test_config.py::test_no_filters_passes_all`<br>`python/tests/test_config.py::test_spurious_without_command_word_survives_rt_filter`<br>`python/tests/test_e2e_golden.py::test_every_filter_matches_the_cli_and_its_own_predicate`<br>`rust/src/filter.rs::continuation_shares_its_parents_filter_fate`<br>`rust/src/filter.rs::empty_config_is_inactive`<br>`rust/src/filter.rs::inactive_filters_pass_every_item_through_in_order`<br>`rust/src/filter.rs::include_filters_drop_non_matches`<br>`rust/src/filter.rs::iterator_adapter`<br>`rust/tests/cli.rs::active_filters_and_tally_are_logged_at_info`<br>`rust/tests/cli.rs::exclude_rts_filter_drops_matching_records`<br>`rust/tests/cli.rs::include_rts_filter_keeps_only_matching_records`<br>`rust/tests/integration.rs::filtering_drops_excluded_rts` | Implemented |
 | L2-FLT-002 | _(none)_ | `python/tests/test_config.py::test_or_logic`<br>`python/tests/test_e2e_golden.py::test_every_filter_matches_the_cli_and_its_own_predicate` | Implemented |
 | L2-FLT-003 | _(none)_ | `python/tests/test_config.py::test_continuation_shares_its_parents_filter_fate`<br>`python/tests/test_e2e_golden.py::test_every_filter_matches_the_cli_and_its_own_predicate`<br>`rust/src/filter.rs::continuation_shares_its_parents_filter_fate`<br>`rust/src/filter.rs::continuation_without_a_parent_is_judged_on_its_own`<br>`rust/src/filter.rs::standalone_spurious_is_judged_on_its_own` | Implemented |
@@ -366,7 +367,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | DEC | 5 | 15 | 0 | 15 | 0 | 15 | 0 |
 | OUT | 4 | 0 | 0 | 0 | 0 | 0 | 0 |
 | DLT | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
-| CLI | 2 | 21 | 0 | 21 | 0 | 21 | 0 |
+| CLI | 2 | 22 | 0 | 22 | 0 | 22 | 0 |
 | LOG | 1 | 3 | 0 | 3 | 0 | 3 | 0 |
 | MODE | 1 | 0 | 0 | 0 | 0 | 0 | 0 |
 | SYN | 2 | 28 | 0 | 28 | 0 | 28 | 0 |
@@ -382,13 +383,13 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | FLT | 0 | 3 | 0 | 3 | 0 | 3 | 0 |
 | PY | 0 | 0 | 22 | 0 | 17 | 0 | 17 |
 | RS | 0 | 0 | 18 | 0 | 13 | 0 | 13 |
-| **Total** | **33** | **148** | **46** | **144** | **36** | **146** | **36** |
+| **Total** | **33** | **149** | **46** | **145** | **36** | **147** | **36** |
 
 The countable requirement set is every L2 and L3 requirement plus the 6 Test-verifiable L1 *leaf* requirement(s) (L1s with no L2 decomposition, e.g. `L1-ROB-001`, where the test markers attach directly). Composite L1s are verified transitively through their L2/L3 children, which are counted individually above.
 
-**Tested by at least one test marker**: 186 of 200 (93.0%).
+**Tested by at least one test marker**: 187 of 201 (93.0%).
 
-**Verified (Test or declared Inspection/Analysis/Demonstration)**: 188 of 200 (94.0%).
+**Verified (Test or declared Inspection/Analysis/Demonstration)**: 189 of 201 (94.0%).
 
 ### Orphan check
 
