@@ -19,6 +19,68 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **`decode -` and `count -` read the recording from standard input**
+  (`L2-CLI-023`), so a decode can run straight from a pipe -- an SSH stream,
+  a decompressor, a capture tool -- with no temporary file:
+  `ssh rec 'cat r.mie' | aero1553 decode - -o r.csv`. The result is exactly
+  what the same bytes give from a file -- rows, errors files, `.partial`
+  commits, exit code and warnings -- with `<stdin>` where the file's name would
+  appear, and memory stays constant however long the stream. What follows
+  from a stream having no name and being readable once:
+  - `-` must be the only input (a merge reads files), and `MUX` is empty.
+  - There is no input/output collision check; `--no-clobber` still applies.
+  - A terminal on standard input is refused (exit `4`) rather than waited on.
+  - `dump -` is refused (exit `4`): the dump states the input's size first.
+  - `-` is special only as the positional input before `--`: `decode -- -`
+    still decodes a file named `-`, and `-o -` still writes one. Before this,
+    `decode -` was a usage error (an unknown option), so no command that
+    worked changes meaning.
+
+  The read window that fills from positional reads (`L3-RS-003`) fills from
+  the stream instead; nothing else in the decode changed. The conformance
+  runner replays every single-input case through standard input, for both
+  CLIs, and requires the same exit code, output files, stdout and stderr as
+  from the file (151 cases). On Windows, pipe from `cmd`, redirect with `<`,
+  or use PowerShell 7.4 or later: Windows PowerShell 5.1 corrupts binary data
+  in a pipe.
+
+  Measured on 256 MiB in a Linux arm64 sandbox, 11 shuffled paired rounds,
+  output identical: decoding from standard input took 0.999 of the time of the
+  same file by path, and this build against 5.5.0 took 0.985 (decode), 0.983
+  (merge) and 0.965 (corrupt-split) -- the file path did not slow down.
+
+- **`perf/profile.py`: user and system CPU per thread for one CLI run**
+  (Linux), read from `/proc/<pid>/task/*/stat`, with `--perf` for `perf`'s
+  top symbols. `perf` at the default `perf_event_paranoid=2` does not show
+  kernel time, which the 5.5.0 profile had to read by hand.
+- **Performance cases for standard input**: `rust.cli_stdin`, `py.cli_stdin`
+  and `rust.cli_no_mux`, and a gate holding `decode -` to 1.10 of the same file
+  decoded with `--no-mux` (a stream has no name, so no `MUX` to render).
+- **The performance suite runs on Windows**, report only: outputs are checked
+  against the golden pins, and the times go to the job summary.
+- **A weekly baseline run against `main`**, and a `decode-stdin` case in
+  `perf/baseline.py` (the candidate's standard input against the same file).
+  `--scratch` moves its output off a small `/dev/shm`.
+
+### Changed
+
+- **Performance gates are the median of interleaved paired rounds**, not a
+  ratio of best-of-5 times. A case's five runs used to happen together,
+  minutes from the other case's, so a runner slowing down during one block
+  could decide a gate; two gates failed by a hair that way and passed on
+  re-run. Each gate now times its two cases again, one run of each per round
+  in shuffled order (`--gate-rounds`, default 7) -- the method
+  `perf/baseline.py` already used. The report shows the median, the range and
+  the old best/best ratio, and records the runner's CPU count.
+
+### Fixed
+
+- **A read interrupted by a signal is retried** instead of failing the decode.
+  `Interrupted` says nothing about the input. Found by reading the read loop
+  while adding standard input, where it is likelier; a file read retries too.
+
 ## [5.5.0] — 2026-10-23
 
 ### Changed

@@ -12,10 +12,15 @@ name: Performance baseline
 # was measured).
 #
 # It runs on release pull requests (head branch release/*), on any pull
-# request labelled perf-baseline, and by hand -- not on every pull request:
-# it builds twice and decodes about 12 GB, a few minutes per run.
+# request labelled perf-baseline, by hand, and weekly against main -- not on
+# every pull request: it builds twice and decodes about 12 GB, a few minutes
+# per run. The weekly run places a slowdown near the commit that caused it,
+# rather than at the next release; it reports to the job summary like any run.
 
 on:
+  schedule:
+    # Mondays 06:17 UTC: off the hour, when scheduled jobs queue longest.
+    - cron: "17 6 * * 1"
   pull_request:
     types: [opened, synchronize, reopened, labeled]
   workflow_dispatch:
@@ -37,6 +42,7 @@ jobs:
     name: Baseline against candidate
     if: >-
       github.event_name == 'workflow_dispatch' ||
+      github.event_name == 'schedule' ||
       startsWith(github.head_ref, 'release/') ||
       contains(github.event.pull_request.labels.*.name, 'perf-baseline')
     runs-on: ubuntu-24.04

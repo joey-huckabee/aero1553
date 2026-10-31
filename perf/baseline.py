@@ -17,6 +17,12 @@ The inputs are tiled from the golden recording ``a-large`` by
 every 5000 records (sync loss and recovery throughout, decoded with
 ``--separate-errors``), and eight smaller ones merged.
 
+One case compares the candidate with itself: ``decode-stdin`` decodes the
+large recording from standard input (``decode -``, L2-CLI-023) against the same
+file by path. The baseline release cannot read standard input, and the
+question is whether a stream costs more than a file -- not whether either got
+slower since the release, which the ``decode`` case answers.
+
 Each case first runs both binaries once and requires identical exit code,
 stdout, stderr and output files: timing two programs that give different
 answers measures nothing. Then the two run in shuffled order, round by round,
@@ -41,6 +47,7 @@ import sys
 import tempfile
 import time
 from pathlib import Path
+from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
 MIB = 1 << 20
@@ -70,9 +77,14 @@ def synth(tool: Path, template: Path, out: Path, size: int, *extra: str) -> Path
     return out
 
 
-def inputs(tool: Path, data: Path, mib: int) -> dict[str, list[str]]:
-    """The cases: name -> CLI arguments after the binary. ``{out}`` is the
-    output directory."""
+#: One side of a case: the binary ("base" or "cand"), its arguments after the
+#: binary, and a file to read as standard input (or None).
+Side = tuple[str, list[str], Path | None]
+
+
+def inputs(tool: Path, data: Path, mib: int) -> dict[str, dict[str, Side]]:
+    """The cases: name -> the two sides to compare. ``{out}`` in an argument
+    is the output directory."""
     data.mkdir(parents=True, exist_ok=True)
     template = golden.write("a-large", data)
     size = mib * MIB
@@ -83,11 +95,21 @@ def inputs(tool: Path, data: Path, mib: int) -> dict[str, list[str]]:
         str(synth(tool, template, data / f"m{i:02d}.mie", part, "--shift-us", str(13 * i)))
         for i in range(MERGE_FILES)
     ]
-    return {
+    plain: dict[str, list[str]] = {
         "decode": ["decode", str(big)],
         "merge": ["decode", *merged],
         "corrupt-split": ["decode", str(corrupt), "--separate-errors", "-o", "{out}/c.csv"],
     }
+    cases = {
+        name: {"base": ("base", a, None), "cand": ("cand", a, None)} for name, a in plain.items()
+    }
+    # The synthetic names carry no MUX field, so the file and the stream
+    # decode to the same bytes.
+    cases["decode-stdin"] = {
+        "base": ("cand", ["decode", str(big)], None),
+        "cand": ("cand", ["decode", "-"], big),
+    }
+    return cases
 
 
 def digest_file(path: Path) -> str:
@@ -98,13 +120,19 @@ def digest_file(path: Path) -> str:
     return h.hexdigest()
 
 
-def outcome(binary: Path, args: list[str], out: Path) -> tuple[object, ...]:
+def _stdin(path: Path | None) -> Any:
+    return path.open("rb") if path else Path(os.devnull).open("rb")
+
+
+def outcome(binary: Path, args: list[str], out: Path, stdin: Path | None) -> tuple[object, ...]:
     """Exit code and SHA-256 of stdout, stderr and every output file."""
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
     h = hashlib.sha256()
-    with tempfile.TemporaryFile() as err:
-        proc = subprocess.Popen([str(binary), *args], stdout=subprocess.PIPE, stderr=err)
+    with tempfile.TemporaryFile() as err, _stdin(stdin) as feed:
+        proc = subprocess.Popen(
+            [str(binary), *args], stdin=feed, stdout=subprocess.PIPE, stderr=err
+        )
         assert proc.stdout is not None
         while chunk := proc.stdout.read(MIB):
             h.update(chunk)
@@ -115,12 +143,17 @@ def outcome(binary: Path, args: list[str], out: Path) -> tuple[object, ...]:
     return code, h.hexdigest(), stderr, files
 
 
-def timed(binary: Path, args: list[str]) -> float:
-    start = time.perf_counter()
-    subprocess.run(
-        [str(binary), *args], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False
-    )
-    return time.perf_counter() - start
+def timed(binary: Path, args: list[str], stdin: Path | None) -> float:
+    with _stdin(stdin) as feed:
+        start = time.perf_counter()
+        subprocess.run(
+            [str(binary), *args],
+            stdin=feed,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            check=False,
+        )
+        return time.perf_counter() - start
 
 
 def scratch_dir() -> str | None:
@@ -146,19 +179,36 @@ def main() -> int:
     )
     parser.add_argument("--only", action="append", help="Run only this case (repeatable).")
     parser.add_argument("--out", type=Path, help="Write baseline-report.json and .md here.")
+    parser.add_argument(
+        "--scratch",
+        type=Path,
+        help="Where the cases write their output (default: /dev/shm when present). "
+        "Needs room for about one input's worth of CSV.",
+    )
     a = parser.parse_args()
 
-    with tempfile.TemporaryDirectory(dir=scratch_dir()) as tmp:
+    with tempfile.TemporaryDirectory(dir=a.scratch or scratch_dir()) as tmp:
         data = a.data or Path(tmp) / "data"
         out = Path(tmp) / "out"
+        binaries = {"base": a.base, "cand": a.cand}
         cases = {
-            name: [arg.replace("{out}", str(out)) for arg in args]
-            for name, args in inputs(a.synth, data, a.mib).items()
+            name: {
+                side: (
+                    binaries[which],
+                    [arg.replace("{out}", str(out)) for arg in args],
+                    stdin,
+                )
+                for side, (which, args, stdin) in sides.items()
+            }
+            for name, sides in inputs(a.synth, data, a.mib).items()
             if not a.only or name in a.only
         }
 
-        for name, args in cases.items():
-            base, cand = outcome(a.base, args, out), outcome(a.cand, args, out)
+        for name, sides in cases.items():
+            base, cand = (
+                outcome(*sides["base"][:2], out, sides["base"][2]),
+                outcome(*sides["cand"][:2], out, sides["cand"][2]),
+            )
             if base != cand:
                 print(f"{name}: OUTPUT DIFFERS\n  base {base}\n  cand {cand}", flush=True)
                 return 1
@@ -166,13 +216,13 @@ def main() -> int:
 
         rng = random.Random(17)
         results = []
-        for name, args in cases.items():
+        for name, sides in cases.items():
             runs: dict[str, list[float]] = {"base": [], "cand": []}
             for _ in range(a.rounds):
                 order = ["base", "cand"]
                 rng.shuffle(order)
                 for side in order:
-                    runs[side].append(timed(a.base if side == "base" else a.cand, args))
+                    runs[side].append(timed(*sides[side]))
             ratios = [c / b for b, c in zip(runs["base"], runs["cand"], strict=True)]
             ratio = statistics.median(ratios)
             results.append(
@@ -209,7 +259,12 @@ def main() -> int:
         f"| {'ok' if r['pass'] else '**regression**'} |"
         for r in results
     ]
-    lines += ["", "Every case's output was identical between the two binaries."]
+    lines += [
+        "",
+        "Every case's output was identical between its two sides. `decode-stdin` "
+        "compares the candidate with itself: standard input (`decode -`) against "
+        "the same file by path.",
+    ]
     report = "\n".join(lines) + "\n"
     if a.out:
         a.out.mkdir(parents=True, exist_ok=True)

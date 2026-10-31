@@ -31,6 +31,8 @@ pinned hash by `tests/golden/golden.py`.
 | `rust.decode_csv` | ... to CSV, in canonical order (what `aero1553 decode` does) |
 | `rust.merge_csv` | two recordings merged with duplicate collapsing, to CSV |
 | `rust.cli_process` / `py.cli_process` | `aero1553 decode` as a whole process: the Rust binary, and `python -m aero1553` (start-up and imports included) |
+| `rust.cli_no_mux` | the Rust binary with `--no-mux`: what the `MUX` column costs, and the reference for the stdin cases |
+| `rust.cli_stdin` / `py.cli_stdin` | `aero1553 decode -` with the recording as standard input (`L2-CLI-023`). A stream has no file name, so its `MUX` is empty and its output is checked against `rust.cli_no_mux`'s |
 | `py.iterate` / `py.filter_order` / `py.decode_csv` / `py.merge_csv` | the Python library doing what the matching `rust.*` case does |
 | `py.cli_decode` | `aero1553.cli.main(["decode", ...])` in-process |
 | `py.columns_numpy` | `aero1553.columns()`, then `np.asarray` on each column |
@@ -69,7 +71,8 @@ is split into phases where that tells you something -- `columns` then
 1. **A wrong answer.** Every case's output is checked against the golden
    pins: the CSV's SHA-256 where it writes one, otherwise the row count and
    the sum of the RT column. A fast wrong answer is a failure, not a result.
-2. **A gate.** `gates.json` holds ratios between two cases of the *same run*.
+2. **A gate.** `gates.json` holds ratios between two cases of the *same run*,
+   measured in interleaved pairs (below).
 
 Why ratios: a shared CI runner's speed varies by more from run to run than
 any regression worth catching, so "decode must take under N seconds" would
@@ -80,6 +83,19 @@ that `columns()` stays far ahead of building per-record objects. The first
 gate paid for itself before it existed: while calibrating it, the Python
 library decode ran 17% behind the Rust library, which traced to stages
 iterating a reader through Python rather than taking its native stream over.
+
+**How a gate is measured.** After the table's runs, each gate times its two
+cases again, `--gate-rounds` times (default 7): one run of each per round, in
+shuffled order, and the gate is the **median of the per-round ratios**. Until
+5.6.0 a gate divided the two cases' best-of-5 times, and the five runs of one
+case happened together, minutes from the other's -- so a runner that slowed
+down during one case's block decided the gate. Gates failed by a hair that way
+on the 5.2.0 and 5.3.0 changes and passed on re-run (1.173 against a 1.15 limit,
+from 1.013-1.088 on the same code). Pairing each run with the one beside it is
+the method `baseline.py` already used; its A/A calibration (below) put the
+median of paired ratios at 0.947-1.075 across runners, on 256 MiB inputs. The report shows the
+median, the range of the rounds, and the old best/best ratio for comparison,
+and the runner's CPU count -- the default thread count depends on it.
 
 Everything else is reported, not gated. To compare two builds directly,
 run the suite on each on the same machine and compare the JSON reports.
@@ -106,8 +122,16 @@ candidate / baseline: pairing each run with the one beside it cancels a runner
 that drifts during the job.
 
 CI runs it (`.github/workflows/perf-baseline.yml`) on release pull requests
-(`release/*`), on any pull request labelled `perf-baseline`, and by hand, with
-the latest `v*` tag as the baseline. It is not run on every pull request: it
+(`release/*`), on any pull request labelled `perf-baseline`, by hand, and every
+Monday against `main`, with the latest `v*` tag as the baseline. The weekly run
+places a slowdown near the commit that caused it instead of at the next release.
+
+One case, `decode-stdin`, compares the candidate with itself: the large
+recording decoded from standard input (`decode -`) against the same file by
+path, with identical output required first. The previous release cannot read
+standard input, and the question there is whether a stream costs more than a
+file. `--scratch DIR` moves the cases' output off `/dev/shm`, for a machine
+where that is small. It is not run on every pull request: it
 builds twice and takes a few minutes.
 
 **The margin, 15%, is measured, not chosen.** Calibration ran the candidate
@@ -128,6 +152,32 @@ A release that changes output on purpose fails the identity check, because
 timing two different answers measures nothing. Compare against a baseline
 that produces the new output (`workflow_dispatch` takes a `baseline` input),
 or say in the release pull request why the check is skipped.
+
+## Windows
+
+`.github/workflows/perf.yml` runs the same suite on `windows-latest` with
+`--no-gates`: outputs are still checked against the pins, so a wrong answer
+fails, and the times are reported in the job summary and the
+`perf-report-windows` artifact. Its gates can be enforced once a few runs have
+shown where its ratios sit.
+
+## Where a decode spends its CPU
+
+`perf/profile.py` (Linux) runs one CLI invocation and reports user and system
+CPU seconds per thread, read from `/proc/<pid>/task/*/stat` -- the calling
+thread (read, decode, order, write) apart from the rendering threads:
+
+```bash
+python3 perf/profile.py -- decode BIG.mie -o /dev/shm/out.csv
+python3 perf/profile.py --stdin BIG.mie -- decode - -o /dev/shm/out.csv
+python3 perf/profile.py --perf -- decode BIG.mie -o out.csv   # + perf's top symbols
+```
+
+It measures and changes nothing. `perf` at the default `perf_event_paranoid=2`
+does not show kernel time, which is why the per-thread system time comes from
+`/proc`: the 5.5.0 profile found the calling thread spending about as long in
+the kernel writing CSV as decoding, and this is the tool for checking that
+before choosing what to optimise next.
 
 ## Changing a gate
 
