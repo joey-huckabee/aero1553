@@ -300,7 +300,8 @@ and made a decode 0.70x-0.80x the time of 5.3.0. 5.5.0 removed false sharing
 on the per-file `MUX` string (a `MUX`-populated decode 6-12% faster) and kept
 records out of the merge heap (a merge 10-19% faster). 5.6.0 changed no
 decode speed; it added `decode -` (measured at the same cost as a file),
-steadier gates and a per-thread profiler. Beyond that, in the
+steadier gates and a per-thread profiler. 5.6.1 fixed a Python config-loading
+bug on long Windows paths and changed no decode code. Beyond that, in the
 order they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
@@ -338,6 +339,16 @@ order they are expected to pay:
   different-input rule and the `max_collapse_survivors` cap (L2-MRG-008). Only
   merges with collapsing enabled are affected; a single-file decode never
   reaches this code.
+- **Gates that differ by runner, not within one.** Since 5.6.0 each gate is
+  the median of interleaved rounds, which cancels a runner slowing down during
+  the job. It cannot cancel a runner whose machine type shifts the ratio
+  itself: on the 5.6.1 fix's pull request (#205) one runner put
+  `py.decode_csv / rust.decode_csv` at 1.226 (rounds 1.07-1.36) and
+  `py.columns_pandas_numeric / rust.iterate` at 3.144 (rounds 3.10-3.19, tight,
+  so not noise within the run) against limits of 1.15 and 3.0; a re-run read
+  1.033 and 2.669, as usual, and the change touched neither timed path. Record
+  the CPU model in the report, and if one machine type keeps doing this,
+  calibrate per type or widen those two limits.
 - **Multi-gigabyte benchmark cases.** Release pull requests and a weekly run
   against `main` time the candidate against the previous release on 256 MiB
   generated recordings (`perf/baseline.py`, 15% margin from A/A runs). The

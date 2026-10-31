@@ -19,6 +19,8 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+## [5.6.1] — 2026-10-31
+
 ### Added
 
 - **Pairwise flag-combination checks** (`tests/conformance/flag_pairs.py`,
@@ -6538,7 +6540,8 @@ Both implementations ship from the same commit at v1.0.0.
 - The CHANGELOG starts here. Earlier history exists in `git log` but is
   not retroactively documented as separate entries.
 
-[Unreleased]: https://github.com/joey-huckabee/aero1553/compare/v5.6.0...HEAD
+[Unreleased]: https://github.com/joey-huckabee/aero1553/compare/v5.6.1...HEAD
+[5.6.1]: https://github.com/joey-huckabee/aero1553/compare/v5.6.0...v5.6.1
 [5.6.0]: https://github.com/joey-huckabee/aero1553/compare/v5.5.0...v5.6.0
 [5.5.0]: https://github.com/joey-huckabee/aero1553/compare/v5.4.0...v5.5.0
 [5.4.0]: https://github.com/joey-huckabee/aero1553/compare/v5.3.0...v5.4.0
