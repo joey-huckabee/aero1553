@@ -25,8 +25,8 @@
       "name": "Reading standard input costs no more than reading the file",
       "numerator": "rust.cli_stdin",
       "denominator": "rust.cli_no_mux",
-      "max": 1.1,
-      "why": "decode - reads the same bytes through the same window, filled by read() instead of positional reads (L2-CLI-023). The file is decoded with --no-mux because a stream has no name to take MUX from. Anything over a few percent means the stream path does work the file path does not."
+      "max": 1.25,
+      "why": "decode - reads the same bytes through the same window, filled by read() instead of positional reads (L2-CLI-023). The file is decoded with --no-mux because a stream has no name to take MUX from. Loose on purpose: each case is a ~0.09 s process, and on the 5.6.0 pull request CI's rounds spread 0.98-1.22 (median 1.095), so this catches only a gross regression; perf/baseline.py's decode-stdin case measures it at 256 MiB with a calibrated margin (0.939 on the same CI run)."
     },
     {
       "name": "Python record iteration stays cheap",

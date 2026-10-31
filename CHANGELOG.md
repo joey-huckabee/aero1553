@@ -58,8 +58,10 @@ shared behavior) holds at any compatible version pair. See
   top symbols. `perf` at the default `perf_event_paranoid=2` does not show
   kernel time, which the 5.5.0 profile had to read by hand.
 - **Performance cases for standard input**: `rust.cli_stdin`, `py.cli_stdin`
-  and `rust.cli_no_mux`, and a gate holding `decode -` to 1.10 of the same file
-  decoded with `--no-mux` (a stream has no name, so no `MUX` to render).
+  and `rust.cli_no_mux`, and a gate holding `decode -` to 1.25 of the same file
+  decoded with `--no-mux` (a stream has no name, so no `MUX` to render). The
+  limit is loose because each case is a short process; `perf/baseline.py`'s
+  `decode-stdin` case measures it precisely at 256 MiB.
 - **The performance suite runs on Windows**, report only: outputs are checked
   against the golden pins, and the times go to the job summary.
 - **A weekly baseline run against `main`**, and a `decode-stdin` case in
