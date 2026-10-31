@@ -41,6 +41,9 @@ COMMANDS:
   count  <INPUT>    Print message count (no CSV)
   dump   <INPUT>    Hex dump (raw or record-aware)
 
+  An INPUT of - reads the recording from standard input (decode and count;
+  the only input). After --, - is a file named -.
+
 GLOBAL OPTIONS:
   --log-level LEVEL                     DEBUG|INFO|WARNING|WARN|ERROR|
                                         CRITICAL|OFF (default WARNING;
@@ -174,8 +177,16 @@ enum Command {
     // (clippy::large_enum_variant). Heap-allocating the rare path keeps
     // the common variants cheap.
     Decode(Box<DecodeArgs>),
-    Count(PathBuf),
+    Count(InputArg),
     Dump(Box<DumpArgs>),
+}
+
+/// A subcommand's input: a path, or standard input, spelled as a lone `-`
+/// before any `--` (L2-CLI-023). After `--`, `-` is a file of that name.
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum InputArg {
+    Path(PathBuf),
+    Stdin,
 }
 
 #[derive(Debug, Default)]
@@ -183,6 +194,10 @@ struct DecodeArgs {
     /// One or more positional input paths. Mutually exclusive with
     /// `manifest` / `glob` (L2-MRG-001). More than one resolved input ⇒ merge.
     inputs: Vec<PathBuf>,
+    /// A lone `-` among the positionals: read standard input (L2-CLI-023).
+    /// It is also in `inputs`, so it counts as an input -- and a second input
+    /// alongside it is refused, since a stream cannot join a merge.
+    stdin: bool,
     /// `--manifest <file>`: read input paths from a file (one per line).
     manifest: Option<PathBuf>,
     /// `--glob <pattern>`: expand a single-directory `*`/`?` filename glob.
@@ -1232,6 +1247,10 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
                 |v| parse_rt_sa_value(v, "--include-subaddresses").map_err(Into::into),
             )?,
             "-h" | "--help" if a.bare() => return Err(ParseError::HelpRequested),
+            "-" => {
+                args.stdin = true;
+                args.inputs.push(PathBuf::from("-"));
+            }
             // `raw`, not `name`: the message quotes what was typed, so
             // `--no-mux=true` reports itself in full.
             _ if a.name.starts_with('-') => {
@@ -1264,8 +1283,8 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
     Ok(args)
 }
 
-fn parse_count(iter: &mut ArgIter<'_>) -> Result<PathBuf, ParseError> {
-    let mut path: Option<PathBuf> = None;
+fn parse_count(iter: &mut ArgIter<'_>) -> Result<InputArg, ParseError> {
+    let mut path: Option<InputArg> = None;
     let mut end_of_options = false;
     for token in iter.by_ref() {
         if !end_of_options && token == "--" {
@@ -1276,7 +1295,7 @@ fn parse_count(iter: &mut ArgIter<'_>) -> Result<PathBuf, ParseError> {
             if path.is_some() {
                 return Err(format!("unexpected positional argument: {token}").into());
             }
-            path = Some(path_arg(token));
+            path = Some(InputArg::Path(path_arg(token)));
             continue;
         }
         // `count` has no value-taking flag today, but it goes through the same
@@ -1284,14 +1303,15 @@ fn parse_count(iter: &mut ArgIter<'_>) -> Result<PathBuf, ParseError> {
         let a = Arg::split(token);
         match a.name.as_str() {
             "-h" | "--help" if a.bare() => return Err(ParseError::HelpRequested),
-            _ if a.name.starts_with('-') => {
+            "-" if path.is_none() => path = Some(InputArg::Stdin),
+            _ if a.name.starts_with('-') && a.name != "-" => {
                 return Err(unknown_option("count", &a.raw).into());
             }
             _ => {
                 if path.is_some() {
                     return Err(format!("unexpected positional argument: {}", a.raw).into());
                 }
-                path = Some(path_arg(a.raw));
+                path = Some(InputArg::Path(path_arg(a.raw)));
             }
         }
     }
@@ -1330,6 +1350,14 @@ fn parse_dump(iter: &mut ArgIter<'_>) -> Result<DumpArgs, ParseError> {
                     Some(parse_int_value(&a.value("--records", iter)?, "--records")? as u64);
             }
             "-h" | "--help" if a.bare() => return Err(ParseError::HelpRequested),
+            // L2-CLI-023: `dump` prints the input's size before its first
+            // line, which a stream does not know until it ends.
+            "-" => {
+                return Err("dump cannot read standard input (-): it reports the \
+                            input's size first; save the input to a file and dump that"
+                    .to_string()
+                    .into());
+            }
             _ if a.name.starts_with('-') => {
                 return Err(unknown_option("dump", &a.raw).into());
             }
@@ -1634,28 +1662,45 @@ fn resolve_time_render(cfg: &DecoderConfig) -> Result<TimeRender, CliError> {
 }
 
 fn open_reader(path: &Path, cfg: &DecoderConfig) -> Result<MieFileReader, CliError> {
-    MieFileReader::with_options(
-        path,
-        ReaderOptions {
-            strict: cfg.strict,
-            input_time_format: cfg.input_time_format,
-            detect_records: cfg.detect_records,
-            lookahead_records: cfg.lookahead_records,
-            standard_tick_rate_hz: cfg.standard_tick_rate_hz,
-            mux_enabled: cfg.mux_enabled,
-            mux_delimiter: cfg.mux_delimiter.clone(),
-            mux_field: cfg.mux_field,
-            // `Some(_)` only when a calendar rendering is actually in force, so
-            // a `year` left in a site config does not change the reader's
-            // diagnostics for a `doy` run (L2-WRT-026 clause 5).
-            calendar_year: if cfg.output_time_format.needs_calendar() {
-                cfg.year
-            } else {
-                None
-            },
+    MieFileReader::with_options(path, reader_options(cfg))
+        .map_err(|e| CliError::runtime(format_mie_error(e)))
+}
+
+/// A reader over standard input (L2-CLI-023). A terminal is refused rather
+/// than waited on: an operator who typed `decode -` without a pipe would see a
+/// hang, and a recording cannot be typed in.
+fn open_stdin_reader(cfg: &DecoderConfig) -> Result<MieFileReader, CliError> {
+    use std::io::IsTerminal as _;
+    if std::io::stdin().is_terminal() {
+        return Err(CliError::usage(
+            "standard input (-) is a terminal; pipe or redirect a recording into it, \
+             e.g. aero1553 decode - < rec.mie"
+                .to_string(),
+        ));
+    }
+    MieFileReader::from_stdin(&reader_options(cfg))
+        .map_err(|e| CliError::runtime(format_mie_error(e)))
+}
+
+fn reader_options(cfg: &DecoderConfig) -> ReaderOptions {
+    ReaderOptions {
+        strict: cfg.strict,
+        input_time_format: cfg.input_time_format,
+        detect_records: cfg.detect_records,
+        lookahead_records: cfg.lookahead_records,
+        standard_tick_rate_hz: cfg.standard_tick_rate_hz,
+        mux_enabled: cfg.mux_enabled,
+        mux_delimiter: cfg.mux_delimiter.clone(),
+        mux_field: cfg.mux_field,
+        // `Some(_)` only when a calendar rendering is actually in force, so
+        // a `year` left in a site config does not change the reader's
+        // diagnostics for a `doy` run (L2-WRT-026 clause 5).
+        calendar_year: if cfg.output_time_format.needs_calendar() {
+            cfg.year
+        } else {
+            None
         },
-    )
-    .map_err(|e| CliError::runtime(format_mie_error(e)))
+    }
 }
 
 /// Assemble the CLI `ConfigOverrides` from parsed decode args (CLI > config >
@@ -1884,7 +1929,16 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
     // commits the batch as `.partial` (L2-MRG-004), mirroring how a priming-time
     // or mid-file failure is handled. A single-input decode is unaffected.
     let merge_requested = input_paths.len() > 1;
-    let mut opened = open_all_readers(&input_paths, &cfg, merge_requested)?;
+    let mut opened = if args.stdin {
+        OpenedInputs {
+            readers: vec![open_stdin_reader(&cfg)?],
+            positions: vec![0],
+            first_failure: None,
+            left_out: 0,
+        }
+    } else {
+        open_all_readers(&input_paths, &cfg, merge_requested)?
+    };
     // L2-MRG-004: when NO input could be opened there is nothing to keep, so
     // --allow-partial does not apply -- report the first input's own error.
     if opened.readers.is_empty()
@@ -1893,7 +1947,11 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
         return Err(e);
     }
     for r in &opened.readers {
-        log_info!("opened {} ({} bytes)", r.path().display(), r.file_size());
+        if r.is_stream() {
+            log_info!("opened {} (standard input)", r.path().display());
+        } else {
+            log_info!("opened {} ({} bytes)", r.path().display(), r.file_size());
+        }
     }
 
     // WriteOptions: file-output safety checks (collision per L2-WRT-014,
@@ -1916,7 +1974,8 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
     let time_render = resolve_time_render(&cfg)?;
 
     let write_opts = WriteOptions {
-        input_path: if merge_requested {
+        // A stream has no path for an output to collide with (L2-WRT-014).
+        input_path: if merge_requested || args.stdin {
             None
         } else {
             input_paths.first().cloned()
@@ -1986,6 +2045,14 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
     } else {
         args.inputs.clone()
     };
+
+    // L2-CLI-023: a stream is read once, in order, so it cannot be one of a
+    // merge's inputs -- which also covers `-` given twice.
+    if args.stdin && paths.len() > 1 {
+        return Err(CliError::usage(
+            "standard input (-) must be the only input; a merge reads files".to_string(),
+        ));
+    }
 
     if paths.is_empty() {
         return Err(CliError::usage(match (&args.manifest, &args.glob) {
@@ -2212,9 +2279,12 @@ fn classify_decode_exit(
     }
 }
 
-fn run_count(globals: GlobalArgs, input: PathBuf) -> Result<(), CliError> {
+fn run_count(globals: GlobalArgs, input: InputArg) -> Result<(), CliError> {
     let cfg = resolve_config(&globals)?;
-    let reader = open_reader(&input, &cfg)?;
+    let reader = match &input {
+        InputArg::Path(path) => open_reader(path, &cfg)?,
+        InputArg::Stdin => open_stdin_reader(&cfg)?,
+    };
 
     // Apply config's filters to the count, matching decode's behavior.
     // A user who wants raw counts can omit [filter] from their config.
@@ -2735,7 +2805,7 @@ mod tests {
     #[test]
     fn end_of_options_applies_to_count_and_dump() {
         let path = parse_count(&mut args(&["--", "-weird.mie"])).unwrap();
-        assert_eq!(path, PathBuf::from("-weird.mie"));
+        assert_eq!(path, InputArg::Path(PathBuf::from("-weird.mie")));
 
         let err = parse_count(&mut args(&["--", "a.mie", "b.mie"])).unwrap_err();
         let ParseError::Other(msg) = err else {
@@ -3248,8 +3318,12 @@ mod tests {
             config: Some(bad.clone()),
         };
         // Input doesn't matter: config error fires before the file is opened.
-        let result =
-            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
+        let result = log::with_cli_scope(|| {
+            run_count(
+                globals,
+                InputArg::Path(PathBuf::from("/no/such/recording.mie")),
+            )
+        });
         let _ = std::fs::remove_file(&bad);
         match result {
             Err(e) => {
@@ -3324,8 +3398,12 @@ mod tests {
             irig_day_advisory: None,
             config: Some(PathBuf::from("/no/such/config.toml")),
         };
-        let result =
-            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
+        let result = log::with_cli_scope(|| {
+            run_count(
+                globals,
+                InputArg::Path(PathBuf::from("/no/such/recording.mie")),
+            )
+        });
         match result {
             Err(e) => {
                 assert_eq!(
@@ -3396,8 +3474,12 @@ mod tests {
             irig_day_advisory: None,
             config: Some(bad.clone()),
         };
-        let result =
-            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
+        let result = log::with_cli_scope(|| {
+            run_count(
+                globals,
+                InputArg::Path(PathBuf::from("/no/such/recording.mie")),
+            )
+        });
         let _ = std::fs::remove_file(&bad);
         match result {
             Err(e) => {
@@ -3428,8 +3510,12 @@ mod tests {
             irig_day_advisory: None,
             config: None,
         };
-        let result =
-            log::with_cli_scope(|| run_count(globals, PathBuf::from("/no/such/recording.mie")));
+        let result = log::with_cli_scope(|| {
+            run_count(
+                globals,
+                InputArg::Path(PathBuf::from("/no/such/recording.mie")),
+            )
+        });
         match result {
             Err(e) => {
                 assert_eq!(e.code, exit_code::USAGE, "bad --log-level should exit 4");

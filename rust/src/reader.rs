@@ -10,10 +10,11 @@
 //! mode opt-ins) surface as `Err` items from the iterator.
 
 use std::fs::File;
+use std::io::Read;
 use std::marker::PhantomData;
 use std::path::Path;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, PoisonError};
 
 use crate::decode::{
     DEFAULT_DETECT_RECORDS, DEFAULT_MUX_DELIMITER, DEFAULT_MUX_ENABLED, DEFAULT_MUX_FIELD,
@@ -51,8 +52,9 @@ const STREAM_RECORD_NEED: usize = crate::sync::MAX_RECORD_BYTES + 2;
 /// or using `IntoIterator`.
 pub struct MieFileReader {
     path: Arc<Path>,
-    /// Shared by every iterator; each reads it through a window of its own.
-    file: Arc<File>,
+    /// What iterators read: a file shared by every iterator, each through a
+    /// window of its own, or standard input, which only one can read.
+    input: Input,
     file_size: u64,
     strict: bool,
     input_time_format: TimestampFormat,
@@ -95,6 +97,16 @@ pub struct MieFileReader {
     /// under the `doy` rendering. See `ReaderOptions::calendar_year`.
     calendar_year: Option<u16>,
 }
+
+/// The source of a reader's bytes.
+enum Input {
+    File(Arc<File>),
+    /// A forward-only stream (L2-CLI-023): taken by the first iteration.
+    Stream(Mutex<Option<Box<dyn Read + Send + Sync>>>),
+}
+
+/// The name standard input goes by wherever a reader names its input.
+pub(crate) const STDIN_NAME: &str = "<stdin>";
 
 /// Builder-style options. `strict=false`, `input_time_format=Auto`,
 /// `detect_records=DEFAULT_DETECT_RECORDS` by default.
@@ -193,7 +205,7 @@ impl MieFileReader {
 
         Ok(Self {
             path: Arc::from(path),
-            file: Arc::new(file),
+            input: Input::File(Arc::new(file)),
             file_size,
             strict: opts.strict,
             input_time_format: opts.input_time_format,
@@ -205,6 +217,74 @@ impl MieFileReader {
             empty_recording: AtomicBool::new(false),
             calendar_year: opts.calendar_year,
         })
+    }
+
+    /// A reader over standard input, for `decode -` and `count -`
+    /// (L2-CLI-023). Crate-internal: the stream can be read once, which the
+    /// public reader -- iterable any number of times -- does not promise.
+    ///
+    /// # Errors
+    ///
+    /// [`MieError::FileEmpty`] if the stream ends before its first byte, the
+    /// same class an empty file gets; [`MieError::FileIo`] if reading fails.
+    pub(crate) fn from_stdin(opts: &ReaderOptions) -> MieResult<Self> {
+        Self::from_stream(Box::new(std::io::stdin()), opts)
+    }
+
+    /// [`Self::from_stdin`] over any stream, so tests can supply one.
+    pub(crate) fn from_stream(
+        mut stream: Box<dyn Read + Send + Sync>,
+        opts: &ReaderOptions,
+    ) -> MieResult<Self> {
+        let path = Path::new(STDIN_NAME).to_path_buf();
+        // Read the first bytes now, so an empty input is refused when it is
+        // opened -- as an empty file is -- not at the first record.
+        let mut first = vec![0u8; DEFAULT_CHUNK];
+        let n = loop {
+            match stream.read(&mut first) {
+                Err(e) if e.kind() == std::io::ErrorKind::Interrupted => {}
+                other => {
+                    break other.map_err(|source| MieError::FileIo {
+                        path: path.clone(),
+                        source,
+                    })?;
+                }
+            }
+        };
+        if n == 0 {
+            return Err(MieError::FileEmpty { path });
+        }
+        first.truncate(n);
+        let stream: Box<dyn Read + Send + Sync> =
+            Box::new(std::io::Cursor::new(first).chain(stream));
+        log_debug!(
+            "reader opened {} (stream, strict={}, input_time_format={:?}, detect_records={})",
+            STDIN_NAME,
+            opts.strict,
+            opts.input_time_format,
+            opts.detect_records
+        );
+        Ok(Self {
+            path: Arc::from(path),
+            input: Input::Stream(Mutex::new(Some(stream))),
+            // Unknown until the stream ends; see `file_size`.
+            file_size: 0,
+            strict: opts.strict,
+            input_time_format: opts.input_time_format,
+            detect_records: opts.detect_records.max(1),
+            lookahead_records: opts.lookahead_records.max(1),
+            standard_tick_rate_hz: opts.standard_tick_rate_hz,
+            // No file name to take a MUX value from.
+            mux: None,
+            sync_losses: Arc::new(AtomicU64::new(0)),
+            empty_recording: AtomicBool::new(false),
+            calendar_year: opts.calendar_year,
+        })
+    }
+
+    /// Whether this reader reads a stream (standard input) rather than a file.
+    pub(crate) fn is_stream(&self) -> bool {
+        matches!(self.input, Input::Stream(_))
     }
 
     pub fn path(&self) -> &Path {
@@ -522,15 +602,32 @@ impl MieFileReader {
             Some(self.input_time_format)
         };
 
-        let mut file_len = usize::try_from(self.file_size).unwrap_or(usize::MAX);
-        let mut window = Window::new(Arc::clone(&self.file), DEFAULT_CHUNK);
-        let open_error = window
-            .ensure(0, STREAM_REACH, &mut file_len)
-            .err()
-            .map(|source| MieError::FileIo {
-                path: self.path.to_path_buf(),
-                source,
-            });
+        let (mut window, mut file_len, reused_stream) = match &self.input {
+            Input::File(file) => (
+                Window::new(Arc::clone(file), DEFAULT_CHUNK),
+                usize::try_from(self.file_size).unwrap_or(usize::MAX),
+                false,
+            ),
+            // The length is learnt when the stream ends. A second iteration
+            // finds the stream taken and reads nothing.
+            Input::Stream(slot) => {
+                let taken = slot.lock().unwrap_or_else(PoisonError::into_inner).take();
+                let reused = taken.is_none();
+                let stream = taken.unwrap_or_else(|| Box::new(std::io::empty()));
+                (Window::stream(stream, DEFAULT_CHUNK), usize::MAX, reused)
+            }
+        };
+        let open_error = if reused_stream {
+            Some(std::io::Error::other(
+                "standard input can be read only once",
+            ))
+        } else {
+            window.ensure(0, STREAM_REACH, &mut file_len).err()
+        }
+        .map(|source| MieError::FileIo {
+            path: self.path.to_path_buf(),
+            source,
+        });
         // The window starts at 0 and reaches STREAM_REACH or EOF, so the
         // start-up helpers see what they would see in the whole file.
         let data: &[u8] = window.bytes();
@@ -2540,5 +2637,166 @@ mod tests {
         let msgs: Vec<_> = reader.iter().collect::<Result<_, _>>().unwrap();
         assert_eq!(msgs.len(), 1);
         assert!(!reader.empty_recording());
+    }
+
+    // ── Standard input (L2-CLI-023) ───────────────────────────────────────
+
+    /// A stream that hands out its bytes in uneven pieces, and is interrupted
+    /// by a signal now and then -- what a pipe does that a file never does.
+    struct ChoppyStream {
+        data: Vec<u8>,
+        pos: usize,
+        calls: usize,
+    }
+
+    impl Read for ChoppyStream {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.calls += 1;
+            if self.calls.is_multiple_of(7) {
+                return Err(std::io::ErrorKind::Interrupted.into());
+            }
+            // 1, 2, ... 4099 bytes: odd sizes that split records anywhere.
+            let piece = 1 + (self.calls * 613) % 4099;
+            let n = piece.min(buf.len()).min(self.data.len() - self.pos);
+            buf[..n].copy_from_slice(&self.data[self.pos..self.pos + n]);
+            self.pos += n;
+            Ok(n)
+        }
+    }
+
+    fn choppy(data: &[u8]) -> Box<dyn Read + Send + Sync> {
+        Box::new(ChoppyStream {
+            data: data.to_vec(),
+            pos: 0,
+            calls: 0,
+        })
+    }
+
+    /// Everything one iteration reports, as text, so the file and the stream
+    /// can be compared whole -- records, errors and the counters.
+    fn transcript(reader: &MieFileReader) -> String {
+        use std::fmt::Write as _;
+        let mut out = String::new();
+        for item in reader {
+            let _ = writeln!(out, "{item:?}");
+        }
+        let _ = writeln!(
+            out,
+            "sync_losses={} empty={}",
+            reader.sync_losses(),
+            reader.empty_recording()
+        );
+        out.replace(&format!("{:?}", reader.path()), "<PATH>")
+            .replace(&reader.path().display().to_string(), "<PATH>")
+    }
+
+    /// A recording that crosses several 256 KiB windows: a header, then
+    /// clean records broken by junk of growing size -- the last gap wider
+    /// than the 64 KiB resync scan, so recovery gives up mid-stream.
+    fn long_recording(with_unrecoverable_gap: bool, tail: &[u8]) -> Vec<u8> {
+        let rec = rt15_sa11_rcv();
+        let mut data = vec![0xA5; 38]; // a header to skip
+        for i in 0..12_000u32 {
+            // Vary a data word: identical records are refused as pathological.
+            let mut r = rec.clone();
+            r[10..14].copy_from_slice(&i.to_le_bytes());
+            data.extend_from_slice(&r);
+            if i % 997 == 0 {
+                let junk = 4 + (i as usize % 5) * 402; // even: records are word-aligned
+                data.extend(std::iter::repeat_n(0xFF, junk));
+            }
+        }
+        if with_unrecoverable_gap {
+            data.extend(std::iter::repeat_n(0xFF, MAX_SCAN_BYTES + 4096));
+            for i in 0..50u32 {
+                let mut r = rec.clone();
+                r[10..14].copy_from_slice(&i.to_le_bytes());
+                data.extend_from_slice(&r);
+            }
+        }
+        data.extend_from_slice(tail);
+        data
+    }
+
+    fn same_from_file_and_stream(data: &[u8], strict: bool) {
+        let opts = ReaderOptions {
+            strict,
+            ..ReaderOptions::default()
+        };
+        let tmp = write_temp(data);
+        let file = MieFileReader::with_options(tmp.path(), opts.clone()).unwrap();
+        let stream = MieFileReader::from_stream(choppy(data), &opts).unwrap();
+        let (a, b) = (transcript(&file), transcript(&stream));
+        if a != b {
+            let first = a.lines().zip(b.lines()).position(|(x, y)| x != y);
+            panic!("file and stream differ (strict={strict}) at line {first:?}");
+        }
+    }
+
+    /// Requirements: L2-CLI-023
+    #[test]
+    fn a_stream_decodes_exactly_as_the_same_bytes_in_a_file() {
+        let rec = rt15_sa11_rcv();
+        for strict in [false, true] {
+            let long = long_recording(false, &[]);
+            assert!(long.len() > 3 * DEFAULT_CHUNK, "must cross several windows");
+            same_from_file_and_stream(&long, strict);
+            if !strict {
+                // The case must exercise recovery, not just clean records.
+                let tmp = write_temp(&long);
+                let reader = MieFileReader::new(tmp.path()).unwrap();
+                let decoded = reader.iter().flatten().count();
+                assert!(decoded > 11_900, "{decoded}");
+                assert!(reader.sync_losses() >= 12, "{}", reader.sync_losses());
+                // And the wide gap must end the decode with an error.
+                let tmp = write_temp(&long_recording(true, &[]));
+                let reader = MieFileReader::new(tmp.path()).unwrap();
+                let last = reader.iter().last().unwrap();
+                assert!(last.is_err(), "{last:?}");
+            }
+            same_from_file_and_stream(&long_recording(true, &[]), strict);
+            // A truncated last record, and a tail too short for any record.
+            same_from_file_and_stream(&long_recording(false, &rec[..40]), strict);
+            same_from_file_and_stream(&long_recording(false, &rec[..5]), strict);
+            // Short inputs, inside one window and inside one piece.
+            same_from_file_and_stream(&rec, strict);
+            same_from_file_and_stream(&rec[..30], strict);
+            same_from_file_and_stream(&[0u8, 0, 0, 0], strict);
+            same_from_file_and_stream(b"not a recording at all", strict);
+        }
+    }
+
+    /// Requirements: L2-CLI-023
+    #[test]
+    fn an_empty_stream_is_refused_as_an_empty_file_is() {
+        let err = MieFileReader::from_stream(Box::new(std::io::empty()), &ReaderOptions::default())
+            .err()
+            .unwrap();
+        assert_eq!(err.kind(), crate::error::MieErrorKind::FileEmpty);
+        assert!(err.to_string().contains(STDIN_NAME), "{err}");
+    }
+
+    /// Requirements: L2-CLI-023
+    #[test]
+    fn a_stream_is_read_once_and_a_second_iteration_says_so() {
+        let reader =
+            MieFileReader::from_stream(choppy(&rt15_sa11_rcv()), &ReaderOptions::default())
+                .unwrap();
+        assert!(reader.is_stream());
+        assert_eq!(reader.iter().flatten().count(), 1);
+        let second: Vec<_> = reader.iter().collect();
+        assert_eq!(second.len(), 1);
+        let err = second[0].as_ref().unwrap_err().to_string();
+        assert!(err.contains("only once"), "{err}");
+    }
+
+    /// Requirements: L2-CLI-023
+    #[test]
+    fn a_stream_has_no_mux_value() {
+        let reader =
+            MieFileReader::from_stream(choppy(&rt15_sa11_rcv()), &ReaderOptions::default())
+                .unwrap();
+        let msg = reader.iter().next().unwrap().unwrap();
+        assert!(msg.mux.is_none());
     }
 }

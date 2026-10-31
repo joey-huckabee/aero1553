@@ -1195,6 +1195,23 @@ The usage layer had drifted further, and in its shape as well as its words. When
 The decoder's own warnings and errors were brought under the rule last, because the conformance runner checked them by substring: three cases in four asserted nothing about stderr, and the rest matched one phrase each. When every case's stderr was first compared whole, on Windows and on Linux, the three implementations already agreed on all of it but one message, where C++ named the message format `format 1` and Rust and Python `Receive`; that case's substring stopped a word short of the difference. Agreement that nothing holds is agreement by accident, so the runner now compares every case's stderr exactly and against a committed oracle (L2-CONF-002, L2-CONF-003). `INFO` and `DEBUG` lines stay outside it: they narrate the run for whoever is debugging it, and holding their text to a contract would make every change to them a cross-implementation change.
 **Verification Method**: Test (T)
 
+#### L2-CLI-023
+
+**Parent**: L1-CLI-001
+**Statement**: `decode` and `count` SHALL read the recording from standard input when their one input is a lone `-` given before any `--` (L2-CLI-016). After `--`, `-` SHALL remain a file of that name; `-` in a manifest or matched by `--glob` SHALL remain a path; and a flag value of `-`, `-o -` included, SHALL remain a path (L2-CLI-002). Read from standard input, a recording SHALL decode exactly as the same bytes read from a file: the same rows, errors files, `.partial` commits, exit code, and diagnostics at `WARN` and above, with `<stdin>` wherever the file's path would appear. In particular:
+
+1. Standard input SHALL be read once, forwards, in constant memory, whatever its length.
+2. An input that ends before its first byte SHALL be refused as an empty file is (`FileEmpty`).
+3. `-` SHALL be the only input. `-` together with any other input, a second `-` included, SHALL be a usage error (exit `4`): a merge reads files.
+4. A standard input that is a terminal SHALL be a usage error (exit `4`) rather than wait for input.
+5. The `MUX` column SHALL be empty: there is no file name to take it from (L2-WRT-020).
+6. There SHALL be no input/output collision check (L2-WRT-014): there is no input path to collide with. `--no-clobber` SHALL still apply to the destination.
+7. `dump -` SHALL be a usage error (exit `4`): the dump reports the input's size before its first line.
+8. A read interrupted by a signal before any byte arrives SHALL be retried, for a file as for a stream.
+
+**Rationale**: A recording often arrives through a pipe -- an SSH stream, a decompressor, a capture tool -- and writing it to a temporary file first costs disk and time for nothing. Every stage of a decode already walks forwards, so a stream needs no new decoding path: the read window that fills from positional file reads (L3-RS-003) fills from the stream instead, discards what a forward jump skips, and learns the length when the stream ends. A request behind the window, which no consumer makes, is refused as an internal error rather than answered wrongly. The rule that a stream decodes exactly as a file is what makes the feature safe to add: the conformance runner replays every single-input case through standard input and compares the two runs byte for byte, so each corner case pinned for files is pinned for streams too. `-` is recognised only as the positional, before `--`, because `-o -` was settled long ago as a file name (L2-CLI-002) and `--` exists to name any file, `-` included. The terminal check exists because `decode -` typed without a pipe would otherwise wait silently for input that cannot be typed. `dump` is refused rather than given a second header format, because its first line states the file's size.
+**Verification Method**: Test (T)
+
 ---
 
 ## L2-MRG: Multi-file time-sorted merge

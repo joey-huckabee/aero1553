@@ -25,6 +25,7 @@ from glob_parity import check_glob_parity
 from long_paths import check_long_paths
 from output_mode import check_output_mode
 from record_fuzz import check_record_stream_fuzz
+from stdin_parity import check_stdin_parity
 from symlinks import check_symlinks
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -828,6 +829,17 @@ def main() -> int:
         check_long_paths(contract, ROOT, temp)
         check_output_mode(contract, ROOT, temp)
         check_symlinks(contract, ROOT, temp)
+        # The whole corpus again, the recording piped to stdin as `-`: every
+        # implementation must give the same result as from the file (L2-CLI-023).
+        check_stdin_parity(
+            contract,
+            ROOT,
+            manifest["cases"],
+            lambda spec: read_hex(SUITE / spec),
+            _build_command,
+            _STDOUT_MODES,
+            temp,
+        )
 
         # Differential config-parser checks, over EVERY implementation under
         # test rather than a fixed pair. The comparison is all-pairs: any two
