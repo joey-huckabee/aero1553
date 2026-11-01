@@ -279,6 +279,40 @@ reference no symbol newer than `GLIBC_2.22`, and run against the whole
 conformance suite (`L3-RS-018`). Releases 5.0.0 to 5.2.0 attach it as
 `aero1553-x86_64-linux-glibc2.22`, with its SHA-256 in the release notes.
 
+**Replace cargo-zigbuild with cargo-libc (queued, after the current list).**
+[cargo-libc](https://github.com/rustcommons/cargo-libc) (0.2, from the
+maintainer's [rustcommons](https://github.com/rustcommons) organisation) builds
+for a chosen glibc release the way the `rust-glibc-2-22` job uses zigbuild, and
+adds what that job does by hand:
+- **Build:** `cargo libc build --distro sles-12-sp5` targets glibc 2.22 and
+  kernel 4.12 together, in place of
+  `cargo zigbuild --target x86_64-unknown-linux-gnu.2.22`.
+- **Check:** `cargo libc inspect --max-glibc 2.22` replaces the job's
+  `objdump -T` grep for the newest `GLIBC_` symbol.
+- **Kernel simulation:** `cargo libc test --distro sles-12-sp5` runs the tests
+  with the syscalls kernel 4.12 lacks returning `ENOSYS` (its tier 2). Nothing
+  covers that today. It narrows, but does not close, the real-SLES-host item
+  below: cargo-libc's own documentation says it does not replace a real host
+  (tier 3).
+- **No Zig.** It needs Clang (with `--gcc-install-dir`), GCC and GNU binutils on
+  the build host, and Rust 1.90+ for the tool itself. The crate's MSRV (1.88)
+  is unaffected: the tool runs only in CI.
+
+To settle when it is taken up:
+- **Pinning:** install a pinned version in CI (`cargo install cargo-libc
+  --version ... --locked`). It is a build tool, not a crate dependency, so
+  `cargo-deny` does not see it.
+- **Proving the switch:** for one release, build with both tools and compare the
+  binaries' required `GLIBC_*` versions and the conformance results before
+  dropping zigbuild.
+- **Licensing:** cargo-libc compiles glibc's startup sources (LGPL-2.1+) into
+  the objects it links. Confirm from its `NOTICE.md` what that means for the
+  shipped binary before the first release built with it.
+- **Docs:** `CLAUDE.md`, `MAINTAINER-GUIDE.md` section 11 and the job's comments
+  name zigbuild.
+- **Wheels, possibly:** it can also target an older glibc for a PyO3 extension
+  through maturin. Today's wheels are built separately.
+
 **Still to do:**
 
 - **Test on a real SLES 12 SP5 host.** The glibc-2.22 link target proves which
@@ -455,53 +489,6 @@ against the current code. Known follow-ups:
   extension change alone was neutral. The local perf gate failed on it; CI's
   passed (0.992). To do: find which loop or buffer in the merge hot path is
   alignment-sensitive.
-
-## Non-ASCII text in output (deferred, needs direction)
-
-Found while fixing non-UTF-8 command-line arguments (#153). `L2-CLI-014` says
-every byte written to stdout or stderr is ASCII, and that holds for the
-program's own text -- but text taken from outside (file names, operating-system
-error messages) is written as it comes.
-
-**What is wrong today**
-
-| | Where | Rust (and the Python CLI, which is Rust) | Effect |
-|---|---|---|---|
-| A | File names in diagnostics and log lines ("MIE file not found: ...", "opened ...", writer and merge messages) | about 47 `path.display()` sites: UTF-8 as-is, invalid bytes as U+FFFD | non-ASCII on stderr; `café.mie` reads as `cafÃ©.mie` on a code-page-437 Windows console |
-| B | `dump`'s `File:` line (stdout payload) | `to_string_lossy` (U+FFFD) | not ASCII, as `L2-CLI-014` requires |
-| C | Operating-system error text inside messages | localized by Windows | non-ASCII on any non-English Windows |
-| D | The `_errors` file name under `--separate-errors` | **fixed**: built from the OS name, byte-exact (was a lossy stem: `out<FF>.csv` yielded `out<U+FFFD>_errors.csv`) | none now (was a wrong file name, reachable since #153) |
-| E | The `MUX` column, derived from the input file name | lossy | a name that is not UTF-8 is not reproduced exactly |
-
-**Proposed fix (not started)**
-
-1. One ASCII rendering rule for anything printed: printable ASCII as-is (backslash included, so Windows paths
-   read normally); any other valid character as `\u{e9}`; a byte that is not
-   UTF-8 as `\xFF`; an unpaired surrogate as `\u{d800}`; control characters
-   escaped, so a file name holding a newline cannot forge log lines. The #153
-   argument stand-ins move to it (they use Rust's `Debug` form today, which
-   doubles every backslash in a Windows path).
-2. Apply it at every site in A and B. (D, building the `_errors` name from the
-   raw OS name, is done.)
-3. Tests: one table of names and expected renderings; conformance cases for `dump` and a "not found" message on a
-   non-ASCII name (the runner needs a field to name a case's input file).
-
-**Open decisions**
-
-- **`MUX` data (E).** *Always escaped*: the column, stdout and the Python
-  library all show `caf\u{e9}`; the CSV becomes pure ASCII and byte-identical
-  across implementations for any name, and Excel or Windows PowerShell 5.1
-  cannot mangle it -- but an analyst matching on `MUX` must use the escaped
-  form, the escape is not strictly reversible, and it changes output for anyone
-  already using non-ASCII names. *Verbatim UTF-8*: natural to match on, but the
-  CSV is no longer guaranteed ASCII. The vendor diff is unaffected either way
-  (the vendor tool leaves `MUX` empty; `--no-mux` is the vendor-exact mode).
-- **Printed text (A-C).** *ASCII plus escaping* keeps `L2-CLI-014`, with a final
-  ASCII guard on diagnostics and log lines to catch localized OS text: correct
-  on every console, pipe and server. *Unicode output* replaces the rule with
-  UTF-8 and `WriteConsoleW` for Windows consoles; Rust's standard library
-  already writes to a console that way, but Windows pipes and non-UTF-8 server
-  locales would still garble.
 
 ## Housekeeping
 

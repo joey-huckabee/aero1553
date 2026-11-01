@@ -111,9 +111,33 @@ def normalized_stderr(stderr: bytes, paths: Mapping[str, str]) -> str:
     stderr in text mode, ending every line CRLF where Rust and Python write LF.
     """
     text = stderr.decode("utf-8", "surrogateescape")
-    for path, placeholder in sorted(paths.items(), key=lambda item: -len(item[0])):
+    # A path is printed by the L2-CLI-025 rule, so a non-ASCII one appears in
+    # its escaped form: replace both spellings.
+    spellings = {**paths, **{printed(path): placeholder for path, placeholder in paths.items()}}
+    for path, placeholder in sorted(spellings.items(), key=lambda item: -len(item[0])):
         text = text.replace(path, placeholder)
     return text
+
+
+def printed(text: str) -> str:
+    """``text`` as the decoder prints it (L2-CLI-025): printable ASCII as
+    itself, every other character ``\\u{hex}``, and a byte that was not UTF-8
+    (carried here as a surrogate escape) ``\\xNN``.
+
+    A second copy of the rule, on purpose: this runner also runs where the
+    Python package is not installed (``--only rust``), and a check that
+    borrowed the implementation under test could not catch it drifting.
+    """
+    out = []
+    for ch in text:
+        code = ord(ch)
+        if 0x20 <= code <= 0x7E:
+            out.append(ch)
+        elif 0xDC80 <= code <= 0xDCFF:
+            out.append(f"\\x{code - 0xDC00:02X}")
+        else:
+            out.append(f"\\u{{{code:x}}}")
+    return "".join(out)
 
 
 def _shown(text: str) -> str:

@@ -531,7 +531,7 @@ impl<'a> MergedRecordIter<'a> {
                             "merge: input #{} ({}) could not be read; truncating it \
                              from the merge (--allow-partial): {}",
                             idx,
-                            paths[idx].display(),
+                            crate::text::show(&paths[idx]),
                             e
                         );
                         // Counted, not armed: the terminal is chosen when the
@@ -712,7 +712,7 @@ impl<'a> MergedRecordIter<'a> {
                                  output may be out of order for this input \
                                  (further occurrences suppressed)",
                             file_index,
-                            self.paths[file_index].display(),
+                            crate::text::show(&self.paths[file_index]),
                             prev,
                             us
                         );

@@ -132,6 +132,16 @@ given wherever a file is named -- an input, `--output`, `--config`,
 that is not valid Unicode is a usage error (exit `4`), and a message that
 quotes one shows it escaped in ASCII (`in\xFF.mie`). (`L2-CLI-021`)
 
+### How names and values are printed
+
+A file name, argument, config value or operating-system message in a message is
+printed by one rule (`L2-CLI-025`): printable ASCII as itself, every other
+character as `\u{hex}` (`caf\u{e9}.mie`; a newline is `\u{a}`), and a byte
+of a file name that is not UTF-8 as `\xNN`. Every line on stdout and stderr is
+therefore ASCII, reads the same on any console, and a newline in a file name
+cannot start a line of its own. The CSV is not affected: `MUX` keeps the
+characters it was given.
+
 ### What a usage error prints
 
 A command line the CLI cannot accept exits `4` and says what is wrong, then

@@ -51,7 +51,7 @@ from collections import Counter
 from collections.abc import Callable
 from pathlib import Path
 
-from differential import describe_stderr_problems
+from differential import describe_stderr_problems, printed
 
 _DEFAULT_SEED = 20261031
 #: The exit codes the CLI documents (L2-CLI-011). 101 is a Rust panic.
@@ -278,7 +278,9 @@ class Pairs:
         for name, fixtures in INPUTS.items():
             paths = []
             for k, fixture in enumerate(fixtures):
-                path = self.inputs_dir / f"{name}.rec.a.b.R{k + 7}.mie"
+                # A non-ASCII character in every name, so each combination's
+                # diagnostics exercise path escaping (L2-CLI-025).
+                path = self.inputs_dir / f"\u00e9{name}.rec.a.b.R{k + 7}.mie"
                 data = load(fixture)
                 path.write_bytes(data)
                 self.data[path.name] = data
@@ -520,7 +522,7 @@ def _check_row(
             stream, stream_cmd = again(source=("stdin",))
             from_file, file_cmd = again(mux=file_mux)
         name = pairs.files[settings["input"][0]][0]
-        want = from_file.stderr.replace(f"<IN>{os.sep}{name.name}", "<stdin>")
+        want = from_file.stderr.replace(f"<IN>{os.sep}{printed(name.name)}", "<stdin>")
         got = (stream.code, stream.csv(), stream.files.keys(), stream.stderr)
         if got != (from_file.code, from_file.csv(), from_file.files.keys(), want):
             shown = _shown(file_cmd, root)

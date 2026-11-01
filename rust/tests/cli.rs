@@ -2807,3 +2807,99 @@ fn zero_padding_or_data_past_the_scan_limit_is_not_reported() {
     assert_eq!(exit_code(&far), 0);
     assert!(!String::from_utf8_lossy(&far.stderr).contains(AFTER_TERMINATOR));
 }
+
+// ── Printing text from outside (L2-CLI-025) ──────────────────────────
+
+/// `s` with a non-ASCII character built at run time: a source literal holding
+/// one would trip the shipped-literal ASCII gate.
+fn e_acute() -> String {
+    char::from_u32(0xE9).unwrap().to_string()
+}
+
+fn all_ascii_printable_lines(bytes: &[u8]) -> bool {
+    bytes
+        .iter()
+        .all(|&b| b == b'\n' || (0x20..=0x7E).contains(&b))
+}
+
+/// Requirements: L2-CLI-014, L2-CLI-025
+#[test]
+fn a_non_ascii_file_name_is_escaped_in_every_message() {
+    let tmp = TempDir::new();
+    let missing = tmp.path().join(format!("caf{}.mie", e_acute()));
+    let out = run([std::ffi::OsStr::new("decode"), missing.as_os_str()]);
+    assert_eq!(exit_code(&out), 1);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("caf\\u{e9}.mie"), "{err}");
+    assert!(all_ascii_printable_lines(&out.stderr), "{err}");
+
+    // A warning naming the file (data after the terminator, L2-RDR-022).
+    let mut joined = one_valid_record();
+    joined.extend_from_slice(&[0, 0, 0x41, 0x41]);
+    let warned = tmp.write(&format!("joined {}.mie", e_acute()), &joined);
+    let out = run([std::ffi::OsStr::new("decode"), warned.as_os_str()]);
+    assert_eq!(exit_code(&out), 0);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains("joined \\u{e9}.mie: data after"), "{err}");
+    assert!(all_ascii_printable_lines(&out.stderr), "{err}");
+
+    // dump's File line is on stdout, which is ASCII too.
+    let named = tmp.write(&format!("caf{}.mie", e_acute()), &one_valid_record());
+    let out = run([std::ffi::OsStr::new("dump"), named.as_os_str()]);
+    assert_eq!(exit_code(&out), 0);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.starts_with("File: caf\\u{e9}.mie ("), "{text}");
+    assert!(all_ascii_printable_lines(&out.stdout), "{text}");
+}
+
+/// Requirements: L2-CLI-025
+#[cfg(unix)]
+#[test]
+fn a_newline_in_a_file_name_cannot_forge_a_log_line() {
+    let tmp = TempDir::new();
+    let forged = tmp.path().join("a\nERROR [aero1553::cli] forged line.mie");
+    let out = run([std::ffi::OsStr::new("decode"), forged.as_os_str()]);
+    assert_eq!(exit_code(&out), 1);
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        !err.lines()
+            .any(|l| l.starts_with("ERROR [aero1553::cli] forged")),
+        "a file name started a line of its own:\n{err}"
+    );
+    assert!(
+        err.contains("a\\u{a}ERROR [aero1553::cli] forged line.mie"),
+        "{err}"
+    );
+}
+
+/// Requirements: L2-CLI-025
+#[cfg(unix)]
+#[test]
+fn a_file_name_byte_that_is_not_utf8_is_shown_as_itself() {
+    use std::os::unix::ffi::OsStrExt;
+    let tmp = TempDir::new();
+    let name = std::ffi::OsStr::from_bytes(b"bad\xFFname.mie");
+    let path = tmp.path().join(name);
+    std::fs::write(&path, one_valid_record()).unwrap();
+    let out = run([std::ffi::OsStr::new("dump"), path.as_os_str()]);
+    assert_eq!(exit_code(&out), 0);
+    let text = String::from_utf8_lossy(&out.stdout);
+    assert!(text.starts_with("File: bad\\xFFname.mie ("), "{text}");
+}
+
+/// The terminator in the last few bytes, where fewer than a record's worth
+/// remain: the short-tail path once stopped there without looking past it.
+/// Requirements: L2-RDR-022
+#[test]
+fn data_after_a_terminator_in_the_short_tail_is_reported() {
+    let mut short = clean_recording(3);
+    short.extend_from_slice(&[0, 0, 0x41, 0x41]); // terminator, then 2 bytes
+    let out = run_with_stdin(["decode", "-"], &short);
+    assert_eq!(exit_code(&out), 0);
+    assert!(String::from_utf8_lossy(&out.stderr).contains(AFTER_TERMINATOR));
+
+    let mut padded = clean_recording(3);
+    padded.extend_from_slice(&[0, 0, 0, 0]); // terminator, then zeros
+    let out = run_with_stdin(["decode", "-"], &padded);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains(AFTER_TERMINATOR));
+}

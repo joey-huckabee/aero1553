@@ -1874,6 +1874,38 @@
       "name": "data-after-terminator-warns",
       "input": "inputs/data-after-terminator.hex",
       "expected": "expected/data-after-terminator-warns.csv"
+    },
+    {
+      "name": "not-found-non-ascii-name",
+      "inputs": [
+        "<missing>"
+      ],
+      "input_names": [
+        "caf\u00e9.mie"
+      ],
+      "expected_exit": 1
+    },
+    {
+      "name": "dump-non-ascii-name",
+      "mode": "dump",
+      "input": "inputs/basic-multi-record.hex",
+      "input_names": [
+        "caf\u00e9.mie"
+      ],
+      "expected": "expected/dump-non-ascii-name.txt"
+    },
+    {
+      "name": "warning-names-a-non-ascii-file",
+      "input": "inputs/data-after-terminator.hex",
+      "input_names": [
+        "joined \u00e9.mie"
+      ],
+      "expected": "expected/warning-names-a-non-ascii-file.csv"
+    },
+    {
+      "name": "data-after-terminator-short-tail",
+      "input": "inputs/data-after-terminator-short-tail.hex",
+      "expected": "expected/data-after-terminator-short-tail.csv"
     }
   ]
 }

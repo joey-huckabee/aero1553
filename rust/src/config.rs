@@ -377,27 +377,32 @@ pub fn load_config(path: Option<&Path>) -> Result<DecoderConfig, ConfigError> {
     if !path.exists() {
         return Err(ConfigError(format!(
             "Config file not found: {}",
-            path.display()
+            crate::text::show(&path)
         )));
     }
     if !path.is_file() {
         return Err(ConfigError(format!(
             "Config path is not a regular file: {}",
-            path.display()
+            crate::text::show(&path)
         )));
     }
-    let bytes = fs::read(path)
-        .map_err(|e| ConfigError(format!("Cannot read config file: {}: {e}", path.display())))?;
+    let bytes = fs::read(path).map_err(|e| {
+        ConfigError(format!(
+            "Cannot read config file: {}: {e}",
+            crate::text::show(&path)
+        ))
+    })?;
     // TOML is UTF-8 (TOML 1.0), and checked as such before parsing rather than
     // left to `read_to_string`, whose refusal read as an I/O failure. C++ read
     // the bytes and accepted them, so the two disagreed on whether such a file
     // was a config at all (L2-CFG-010).
     let text = String::from_utf8(bytes)
-        .map_err(|_| ConfigError(format!("{}: not valid UTF-8", path.display())))?;
+        .map_err(|_| ConfigError(format!("{}: not valid UTF-8", crate::text::show(&path))))?;
     // Every message about the contents names the file: a schema message names
     // the key, and an operator with several config files needs to know which
     // one (L2-CLI-022).
-    parse_into_config(&text).map_err(|e| ConfigError(format!("{}: {}", path.display(), e.0)))
+    parse_into_config(&text)
+        .map_err(|e| ConfigError(format!("{}: {}", crate::text::show(&path), e.0)))
 }
 
 /// # Errors
@@ -1336,14 +1341,13 @@ fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
                 Some('\\') => out.push('\\'),
                 Some('n') => out.push('\n'),
                 Some('t') => out.push('\t'),
-                // The byte after the backslash, as the former C++ loader
-                // reported it: one byte, so a non-ASCII character shows as its lead byte.
+                // The character after the backslash, by the one rule for
+                // printed text (L2-CLI-025): a non-ASCII one is `\u{hex}`.
                 Some(o) => {
-                    let mut lead = [0u8; 4];
-                    let lead = o.encode_utf8(&mut lead).as_bytes()[0];
+                    let mut buf = [0u8; 4];
                     return Err(format!(
                         "line {lineno}: bad escape \\{}",
-                        escape_bytes(&[lead])
+                        escape_bytes(o.encode_utf8(&mut buf).as_bytes())
                     ));
                 }
                 None => return Err(format!("line {lineno}: trailing backslash")),
@@ -2424,18 +2428,18 @@ exclude_types = ["UNICORN"]
             ),
             (
                 format!("[decode]\nstr{e_acute}ct = true\n"),
-                "line 2: unsupported key \"str\\xC3\\xA9ct\"; keys must be simple identifiers"
+                "line 2: unsupported key \"str\\u{e9}ct\"; keys must be simple identifiers"
                     .to_string(),
             ),
             (
                 format!("[d{e_acute}code]\n"),
-                "line 1: unsupported section header [d\\xC3\\xA9code]; use a flat [section] \
+                "line 1: unsupported section header [d\\u{e9}code]; use a flat [section] \
                  name (letters, digits, underscore)"
                     .to_string(),
             ),
             (
                 format!("[mux]\ndelimiter = \"\\{e_acute}\"\n"),
-                "line 2: bad escape \\\\xC3".to_string(),
+                "line 2: bad escape \\\\u{e9}".to_string(),
             ),
             (
                 "[mux]\ndelimiter = \"a\"b\"\n".to_string(),

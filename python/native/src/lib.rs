@@ -51,6 +51,15 @@ fn run_cli(py: Python<'_>, argv: Vec<std::ffi::OsString>) -> u8 {
     })
 }
 
+/// `text` by the one rule for printed text (L2-CLI-025): printable ASCII as
+/// itself, every other character `\u{hex}`, a byte that is not UTF-8 `\xNN`.
+/// Taken as an OS string so a file name's undecodable bytes -- which Python
+/// carries as surrogate escapes -- are shown as the bytes they are.
+#[pyfunction]
+fn escape_text(text: std::ffi::OsString) -> String {
+    aero1553::escape_os(&text)
+}
+
 #[pymodule]
 fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
@@ -75,6 +84,7 @@ fn _native(m: &Bound<'_, PyModule>) -> PyResult<()> {
         aero1553::decode::TERMINATOR_TYPE_WORD,
     )?;
     m.add_function(wrap_pyfunction!(run_cli, m)?)?;
+    m.add_function(wrap_pyfunction!(escape_text, m)?)?;
     m.add_class::<models::PyTypeWord>()?;
     m.add_class::<models::PyCommandWord>()?;
     m.add_class::<models::PyIrigTimestamp>()?;

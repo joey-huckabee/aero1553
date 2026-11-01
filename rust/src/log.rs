@@ -258,13 +258,21 @@ fn deliver(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
     if !FORCE_STDERR.with(Cell::get) {
         let sink = *SINK.read().unwrap_or_else(PoisonError::into_inner);
         if let Some(sink) = sink {
-            sink(level, module, &args.to_string());
+            sink(level, module, &crate::text::escape_text(&args.to_string()));
             return;
         }
     }
+    // L2-CLI-025: one line, printable ASCII, whatever file name or OS message
+    // the arguments carry -- so a newline in a name cannot forge a log line.
+    let line = args.to_string();
     let _ = std::io::Write::write_fmt(
         &mut std::io::stderr().lock(),
-        format_args!("{} [{}] {}\n", level.label(), module, args),
+        format_args!(
+            "{} [{}] {}\n",
+            level.label(),
+            module,
+            crate::text::escape_text(&line)
+        ),
     );
 }
 

@@ -28,6 +28,16 @@ use crate::text::{escape_bytes, quote};
 use crate::writer::{WriteOptions, write_csv_split_threaded, write_csv_threaded};
 use crate::{log_error, log_info, log_warn};
 
+/// Write one line to stderr by the L2-CLI-025 rule: every line the CLI writes
+/// there itself -- `Error:`, the usage hint, `count`'s status -- goes out as
+/// printable ASCII, whatever file name or OS message it carries. Log lines
+/// get the same treatment in `log::deliver`.
+macro_rules! eprint_line {
+    ($($arg:tt)*) => {
+        eprintln!("{}", $crate::text::escape_text(&format!($($arg)*)))
+    };
+}
+
 const VERSION: &str = env!("CARGO_PKG_VERSION");
 
 const HELP: &str = "\
@@ -357,33 +367,6 @@ thread_local! {
     static NON_UTF8_ARGS: RefCell<HashMap<String, OsString>> = RefCell::new(HashMap::new());
 }
 
-/// An OS string rendered as ASCII: printable ASCII as-is, everything else
-/// escaped -- `\xFF` for a byte that is not UTF-8 (POSIX), `\u{d800}` for an
-/// unpaired surrogate (Windows), and `\u{e9}` for any other non-ASCII
-/// character. Every message that quotes such an argument therefore stays ASCII
-/// (L2-CLI-014).
-#[allow(
-    clippy::unnecessary_debug_formatting,
-    reason = "Debug is the escaping: it renders a non-UTF-8 byte as an escape where Display substitutes U+FFFD"
-)]
-fn escape_os(os: &OsStr) -> String {
-    use std::fmt::Write as _;
-    let debug = format!("{os:?}");
-    let inner = debug
-        .strip_prefix('"')
-        .and_then(|s| s.strip_suffix('"'))
-        .unwrap_or(&debug);
-    let mut out = String::with_capacity(inner.len());
-    for c in inner.chars() {
-        if c.is_ascii() {
-            out.push(c);
-        } else {
-            let _ = write!(out, "\\u{{{:x}}}", u32::from(c));
-        }
-    }
-    out
-}
-
 /// Split `--flag=<value>` whose value is not UTF-8 into the ASCII `--flag=`
 /// and the value's own OS string. `None` when the token is not of that shape.
 fn split_inline_os(os: &OsStr) -> Option<(String, OsString)> {
@@ -430,7 +413,7 @@ fn stand_in_args(argv: Vec<OsString>) -> (Vec<String>, HashMap<String, OsString>
         // The escaped form is what a message shows. In the absurd case that a
         // valid argument spells the same text, or two different originals
         // escape alike, a suffix keeps every stand-in unique.
-        let mut key = escape_os(&os);
+        let mut key = crate::text::escape_os(&os);
         while valid.contains(&key) || table.get(&key).is_some_and(|o| *o != os) {
             key.push('~');
         }
@@ -566,7 +549,7 @@ fn run_command(argv: Vec<String>) -> u8 {
         Err(e) if e.code == exit_code::USAGE => die(&e.message),
         Err(e) => {
             log_error!("{}", e.message);
-            eprintln!("Error: {}", e.message);
+            eprint_line!("Error: {}", e.message);
             e.code
         }
     }
@@ -589,8 +572,8 @@ const USAGE_HINT: &str = "Run 'aero1553 --help' for usage.";
 /// not after the rest, and C++ printed it after all of them.
 fn die(msg: &str) -> u8 {
     log_error!("{msg}");
-    eprintln!("Error: {msg}");
-    eprintln!("{USAGE_HINT}");
+    eprint_line!("Error: {msg}");
+    eprint_line!("{USAGE_HINT}");
     exit_code::USAGE
 }
 
@@ -1833,7 +1816,7 @@ fn open_all_readers(
                 log_warn!(
                     "merge: input {} could not be opened; truncating it from the \
                      merge (--allow-partial): {}",
-                    p.display(),
+                    crate::text::show(&p),
                     e.message
                 );
                 opened.left_out += 1;
@@ -2001,9 +1984,13 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
     }
     for r in &opened.readers {
         if r.is_stream() {
-            log_info!("opened {} (standard input)", r.path().display());
+            log_info!("opened {} (standard input)", crate::text::show(&r.path()));
         } else {
-            log_info!("opened {} ({} bytes)", r.path().display(), r.file_size());
+            log_info!(
+                "opened {} ({} bytes)",
+                crate::text::show(&r.path()),
+                r.file_size()
+            );
         }
     }
 
@@ -2080,7 +2067,7 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
         crate::merge::read_manifest(manifest).map_err(|e| {
             CliError::runtime(format!(
                 "failed to read manifest {}: {e}",
-                manifest.display()
+                crate::text::show(&manifest)
             ))
         })?
     } else if let Some(pattern) = &args.glob {
@@ -2109,7 +2096,7 @@ fn resolve_inputs(args: &DecodeArgs) -> Result<Vec<PathBuf>, CliError> {
 
     if paths.is_empty() {
         return Err(CliError::usage(match (&args.manifest, &args.glob) {
-            (Some(m), _) => format!("manifest {} contains no input paths", m.display()),
+            (Some(m), _) => format!("manifest {} contains no input paths", crate::text::show(&m)),
             (_, Some(g)) => format!("--glob \"{g}\" matched no files"),
             _ => "decode requires at least one input file".to_string(),
         }));
@@ -2159,8 +2146,8 @@ fn check_output_collision(
                 };
                 return Err(CliError::runtime(format!(
                     "{role} {} resolves to merge input {}; choose a different output path",
-                    target.display(),
-                    inp.display()
+                    crate::text::show(&target),
+                    crate::text::show(&inp)
                 )));
             }
         }
@@ -2200,7 +2187,7 @@ where
                         "wrote {} messages + {} errors to {}",
                         outcome.normal_count,
                         outcome.error_count,
-                        out.display()
+                        crate::text::show(&out)
                     );
                 })
             }
@@ -2247,7 +2234,7 @@ fn classify_decode_exit(
         }
         Err(e @ MieError::NoValidRecords { .. }) => {
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!("decode exit class: no-records");
             exit_code::NO_RECORDS
         }
@@ -2257,7 +2244,7 @@ fn classify_decode_exit(
             // than an MIE recording), same exit-code class as
             // NoValidRecords.
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!("decode exit class: no-records");
             exit_code::NO_RECORDS
         }
@@ -2269,7 +2256,7 @@ fn classify_decode_exit(
             // an unrecognized stream. Same exit class (2) as
             // NoValidRecords / HomogeneousPayload.
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!("decode exit class: no-records (timestamp-format-mismatch)");
             exit_code::NO_RECORDS
         }
@@ -2281,13 +2268,13 @@ fn classify_decode_exit(
             // says the configured year is wrong, which makes every date in the
             // run suspect, not just the one record.
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!("decode exit class: no-records (calendar-unavailable)");
             exit_code::NO_RECORDS
         }
         Err(e @ MieError::UnrecoverableSyncLoss { .. }) => {
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!(
                 "decode exit class: partial-unrecoverable (sync_losses={sync_losses}); \
                  pass --allow-partial with an output file (-o) to preserve the rows decoded so far"
@@ -2300,7 +2287,7 @@ fn classify_decode_exit(
             // never reached; it is reached on stdout, which cannot hold one --
             // the same exit class a sync loss gets there.
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!(
                 "decode exit class: partial-unrecoverable (merge inputs left out); \
                  write to a file with -o to keep the rows as a .partial"
@@ -2311,7 +2298,7 @@ fn classify_decode_exit(
             // L1-EXIT-009 / L2-MRG-003: inputs cannot be ordered on a common
             // absolute timeline. Rejected before any output was written.
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!("decode exit class: merge-incompatible");
             exit_code::MERGE_INCOMPATIBLE
         }
@@ -2320,13 +2307,13 @@ fn classify_decode_exit(
             // not in chronological capture order. Same record-error class as
             // other strict-mode record failures (exit 1).
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             log_info!("decode exit class: non-monotonic-input (strict)");
             exit_code::RUNTIME
         }
         Err(e) => {
             log_error!("{e}");
-            eprintln!("Error: {e}");
+            eprint_line!("Error: {e}");
             exit_code::RUNTIME
         }
     }
@@ -2359,12 +2346,15 @@ fn run_count(globals: GlobalArgs, input: InputArg) -> Result<(), CliError> {
     // without having to opt into INFO logging).
     println!("{count}");
     if reader.empty_recording() {
-        eprintln!(
+        eprint_line!(
             "no records in {} (empty recording -- opens on the end-of-records terminator)",
-            reader.path().display()
+            crate::text::show(&reader.path())
         );
     } else {
-        eprintln!("counted {count} messages in {}", reader.path().display());
+        eprint_line!(
+            "counted {count} messages in {}",
+            crate::text::show(&reader.path())
+        );
     }
     Ok(())
 }
@@ -2476,7 +2466,7 @@ mod tests {
     #[test]
     fn stand_ins_are_ascii_unique_and_reversible() {
         let bad = not_unicode("in");
-        let escaped = escape_os(&bad);
+        let escaped = crate::text::escape_os(&bad);
         assert!(escaped.is_ascii(), "{escaped}");
         assert!(escaped.starts_with("in\\"), "{escaped}");
 

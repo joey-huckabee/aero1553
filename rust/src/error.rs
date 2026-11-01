@@ -284,13 +284,23 @@ impl fmt::Display for MieError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::FileNotFound { path } => {
-                write!(f, "MIE file not found: {}", path.display())
+                write!(f, "MIE file not found: {}", crate::text::show(&path))
             }
             Self::FileEmpty { path } => {
-                write!(f, "MIE file is empty (0 bytes): {}", path.display())
+                write!(
+                    f,
+                    "MIE file is empty (0 bytes): {}",
+                    crate::text::show(&path)
+                )
             }
             Self::FileIo { path, source } => {
-                write!(f, "I/O error on {}: {}", path.display(), source)
+                // The OS's text can be localised: same rule (L2-CLI-025).
+                write!(
+                    f,
+                    "I/O error on {}: {}",
+                    crate::text::show(&path),
+                    crate::text::escape_text(&source.to_string())
+                )
             }
             Self::InvalidTypeWord {
                 offset,
@@ -345,7 +355,7 @@ impl fmt::Display for MieError {
                 f,
                 "No valid MIE records found in {} (scanned first {scan_bytes} bytes). \
                  The file may not be an MIE recording, or the records may begin past the scan window.",
-                path.display()
+                crate::text::show(&path)
             ),
             Self::HomogeneousPayload {
                 path,
@@ -358,25 +368,30 @@ impl fmt::Display for MieError {
                  offset 0x{offset:X} are byte-identical, timestamps \
                  included. The file is most likely a single-byte pad \
                  (e.g. 0x20-fill), not an MIE recording.",
-                path.display()
+                crate::text::show(&path)
             ),
             Self::WriterError {
                 destination,
                 source,
-            } => write!(f, "Failed to write to {destination}: {source}"),
+            } => write!(
+                f,
+                "Failed to write to {}: {}",
+                crate::text::escape_text(destination),
+                crate::text::escape_text(&source.to_string())
+            ),
             Self::InputOutputCollision { path } => write!(
                 f,
                 "Output path resolves to the same file as the input ({}); \
                  decoding in place would overwrite the recording while it is read. \
                  Choose a different output path.",
-                path.display()
+                crate::text::show(&path)
             ),
             Self::ClobberRefused { path } => write!(
                 f,
                 "Refusing to overwrite existing file {} \
                  (--no-clobber or output.no_clobber is set). \
                  Remove the file or unset the flag to proceed.",
-                path.display()
+                crate::text::show(&path)
             ),
             Self::UnrecoverableSyncLoss {
                 offset,
@@ -437,7 +452,7 @@ impl fmt::Display for MieError {
                  Multi-file merge requires every input to be calendar-locked IRIG \
                  (Standard-format, freerun IRIG, and mixed-format sets cannot be \
                  ordered on a common absolute timeline).",
-                path.display()
+                crate::text::show(&path)
             ),
             Self::NonMonotonicInput {
                 file_index,
@@ -449,7 +464,7 @@ impl fmt::Display for MieError {
                 "merge: input #{file_index} ({}) is not internally time-sorted: \
                  timestamp stepped backward (prev_us={prev_us} curr_us={curr_us}). \
                  The time-merge assumes each input is in chronological capture order.",
-                path.display()
+                crate::text::show(&path)
             ),
         }
     }
