@@ -19,6 +19,8 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+## [5.8.0] — 2026-11-01
+
 ### Changed
 
 - **Text the tool did not write itself is printed by one rule, everywhere**
@@ -6668,7 +6670,8 @@ Both implementations ship from the same commit at v1.0.0.
 - The CHANGELOG starts here. Earlier history exists in `git log` but is
   not retroactively documented as separate entries.
 
-[Unreleased]: https://github.com/joey-huckabee/aero1553/compare/v5.7.0...HEAD
+[Unreleased]: https://github.com/joey-huckabee/aero1553/compare/v5.8.0...HEAD
+[5.8.0]: https://github.com/joey-huckabee/aero1553/compare/v5.7.0...v5.8.0
 [5.7.0]: https://github.com/joey-huckabee/aero1553/compare/v5.6.1...v5.7.0
 [5.6.1]: https://github.com/joey-huckabee/aero1553/compare/v5.6.0...v5.6.1
 [5.6.0]: https://github.com/joey-huckabee/aero1553/compare/v5.5.0...v5.6.0
