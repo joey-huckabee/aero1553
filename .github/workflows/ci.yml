@@ -137,14 +137,20 @@ jobs:
         run: cargo doc --no-deps --locked
 
   rust-glibc-2-22:
-    # SLES 12 SP5 ships glibc 2.22 (L3-RS-018). zig's linker targets an
-    # exact glibc version, so the binary references no symbol newer than
-    # the one requested -- checked below, not assumed -- and the conformance
-    # suite runs against this binary, the one that ships, not a dev build.
+    # SLES 12 SP5 ships glibc 2.22 and kernel 4.12 (L3-RS-018). cargo-libc
+    # links against exactly what glibc 2.22 defines, so the binary references
+    # no symbol newer than the one requested -- checked below, not assumed --
+    # and the conformance suite runs against this binary, the one that ships,
+    # not a dev build. The tests also run with every syscall kernel 4.12
+    # lacks returning ENOSYS (cargo-libc's tier 2: a simulation, not a real
+    # SLES host).
     name: Rust Linux binary for glibc 2.22 (SLES 12 SP5)
-    runs-on: ubuntu-latest
+    # Pinned, not ubuntu-latest: the image's Clang, GCC and binutils build the
+    # shipping binary, so an image update must not change them silently.
+    runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
+      CARGO_LIBC_VERSION: 0.2.4
 
     steps:
       - name: Check out repository
@@ -156,29 +162,60 @@ jobs:
           rustup update stable --no-self-update
           rustup default stable
 
-      - name: Install zig and cargo-zigbuild
-        # Both pinned, so a new release of either cannot change the binary
-        # between two runs of the same commit.
-        run: |
-          python3 -m pip install --user ziglang==0.17.0
-          cargo install --locked cargo-zigbuild@0.23.4
+      - name: Cache cargo-libc
+        id: cargo-libc-cache
+        uses: actions/cache@v5
+        with:
+          # The five executables must stay together in one directory.
+          path: |
+            ~/.cargo/bin/cargo-libc
+            ~/.cargo/bin/libc-linker
+            ~/.cargo/bin/libc-runner
+            ~/.cargo/bin/libc-cc
+            ~/.cargo/bin/libc-cxx
+          key: cargo-libc-${{ env.CARGO_LIBC_VERSION }}-ubuntu-24.04
+
+      - name: Install cargo-libc
+        # Pinned to one exact version, so a new release of the tool cannot
+        # change the binary between two runs of the same commit.
+        if: steps.cargo-libc-cache.outputs.cache-hit != 'true'
+        run: cargo install --locked cargo-libc@${{ env.CARGO_LIBC_VERSION }}
 
       - name: Build against glibc 2.22
         working-directory: rust
-        run: cargo zigbuild --locked --release --target x86_64-unknown-linux-gnu.2.22
+        run: >
+          cargo libc build --distro sles-12-sp5
+          --artifact target/x86_64-unknown-linux-gnu/release/aero1553
+          -- --release --locked
 
       - name: No symbol newer than GLIBC_2.22
-        shell: bash
-        run: |
-          bin=rust/target/x86_64-unknown-linux-gnu/release/aero1553
-          newest=$(objdump -T "$bin" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
-          echo "newest glibc symbol version: $newest"
-          test "$(printf '%s\nGLIBC_2.22\n' "$newest" | sort -V | tail -1)" = GLIBC_2.22
+        run: cargo libc inspect rust/target/x86_64-unknown-linux-gnu/release/aero1553 --max-glibc 2.22
+
+      - name: Tests under a simulated kernel 4.12
+        working-directory: rust
+        run: cargo libc test --distro sles-12-sp5 --runner local -- --release --locked
 
       - name: Conformance suite against the shipping binary
         run: >
           python3 tests/conformance/run.py --only rust
           --rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553
+
+      # One-time proof for the switch from cargo-zigbuild (5.9.0): build the
+      # same commit with the old tool and require the same program.
+      - name: "Switch check: build with cargo-zigbuild"
+        working-directory: rust
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rust/target-zig
+        run: |
+          python3 -m pip install --user ziglang==0.17.0
+          cargo install --locked cargo-zigbuild@0.23.4
+          cargo zigbuild --locked --release --target x86_64-unknown-linux-gnu.2.22
+
+      - name: "Switch check: same program"
+        run: >
+          python3 scripts/compare-binaries.py
+          rust/target-zig/x86_64-unknown-linux-gnu/release/aero1553
+          rust/target/x86_64-unknown-linux-gnu/release/aero1553
 
       - name: Upload binary
         uses: actions/upload-artifact@v6
