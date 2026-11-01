@@ -44,6 +44,11 @@ pub mod writer;
 
 pub use reader::{MieFileReader, ReaderOptions};
 pub use sync::ValidationFailure;
+/// How the crate prints text it did not write itself (L2-CLI-025). Public for
+/// the Python binding, so its exception messages follow the one rule; not part
+/// of the supported API.
+#[doc(hidden)]
+pub use text::escape_os;
 
 pub use error::{MieError, MieErrorKind, MieResult};
 pub use models::{

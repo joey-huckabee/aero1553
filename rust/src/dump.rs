@@ -186,8 +186,10 @@ fn write_hex_dump_raw<W: Write>(
 
     let name = path
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+        .map(crate::text::escape_os)
         .unwrap_or_default();
+    // L2-CLI-025: the name as every diagnostic shows one -- this line is on
+    // stdout, which is ASCII like stderr (L2-CLI-014).
     writeln!(out, "File: {name} ({file_len} bytes)")?;
     writeln!(out, "Range: 0x{chunk_start:08X}-0x{end:08X}")?;
     writeln!(out)?;
@@ -241,8 +243,10 @@ fn write_hex_dump_records<W: Write>(
 
     let name = path
         .file_name()
-        .map(|n| n.to_string_lossy().into_owned())
+        .map(crate::text::escape_os)
         .unwrap_or_default();
+    // L2-CLI-025: the name as every diagnostic shows one -- this line is on
+    // stdout, which is ASCII like stderr (L2-CLI-014).
     writeln!(out, "File: {name} ({file_len} bytes)")?;
     writeln!(out, "Record dump starting at offset 0x{start_offset:08X}")?;
     writeln!(out)?;

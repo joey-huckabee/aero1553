@@ -19,8 +19,11 @@ pub fn to_py(py: Python<'_>, err: MieError) -> PyErr {
     build(py, err).unwrap_or_else(|failure| failure)
 }
 
-fn path(p: &Path) -> String {
-    p.to_string_lossy().into_owned()
+/// The path as Python's own file functions spell it: exact, with any byte that
+/// is not UTF-8 as a surrogate escape (``os.fsdecode``), so ``exc.path`` names
+/// the real file. Messages built from it are escaped (L2-CLI-025).
+fn path(p: &Path) -> std::ffi::OsString {
+    p.as_os_str().to_os_string()
 }
 
 /// The Python `OSError` for an I/O error, as the instance a constructor takes.

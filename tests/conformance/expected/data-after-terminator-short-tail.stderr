@@ -1,0 +1,1 @@
+WARN [aero1553::reader] <INPUT0>: data after the end-of-records terminator at 0xB2 was not decoded (first non-zero byte at 0xB4). A recording ends at its terminator, so recordings joined end to end decode as the first one only: to combine recordings, pass them as separate inputs

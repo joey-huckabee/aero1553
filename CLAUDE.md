@@ -239,7 +239,10 @@ All fallible APIs return `Result<T, MieError>`. `MieError` is a single enum (not
   errors and help text too. A Windows console runs at the OEM code page (437 in
   a US install), not UTF-8, so a single em dash reaches the operator as `ΓÇö`;
   mojibake in a decoder's own diagnostics gets reported as memory corruption.
-  Use `--`, `->`, `section`. The rule once exempted stderr prose, and that
+  Use `--`, `->`, `section`. Text the program did not write -- a path, an
+  argument, a config value, an OS message -- follows `L2-CLI-025`: print a
+  path with `crate::text::show(&p)`, never `p.display()`, and anything else
+  through `text::escape_text`. The rule once exempted stderr prose, and that
   carve-out is exactly how 46 sites accumulated across the source trees. Never
   fix a rendering problem with `SetConsoleOutputCP` or by reconfiguring a
   stream's encoding — that is per-platform, leaves redirected output wrong, and

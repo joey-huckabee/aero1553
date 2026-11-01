@@ -1054,7 +1054,7 @@ where
             match partial_info {
                 None => {
                     atomic.commit()?;
-                    log_info!("wrote {} rows to {}", count, path.display());
+                    log_info!("wrote {} rows to {}", count, crate::text::show(&path));
                     Ok(WriteOutcome {
                         normal_count: count,
                         error_count: 0,
@@ -1067,7 +1067,7 @@ where
                         "{}; wrote {} rows to {} (--allow-partial)",
                         stop.reason,
                         count,
-                        partial_path.display()
+                        crate::text::show(&partial_path)
                     );
                     let PartialStop {
                         offset,
@@ -1285,7 +1285,11 @@ fn commit_split_outputs(
         // the main commit fails, the errors temp is still un-renamed (unlinked
         // on Drop), so neither file appears. See ARCHITECTURE.md §8.
         main_atomic.commit()?;
-        log_info!("wrote {} normal rows to {}", normal_count, output.display());
+        log_info!(
+            "wrote {} normal rows to {}",
+            normal_count,
+            crate::text::show(&output)
+        );
         if normal_count == 0 {
             log_warn!("main CSV is empty (header only)");
         }
@@ -1294,7 +1298,7 @@ fn commit_split_outputs(
             log_info!(
                 "wrote {} error/spurious rows to {}",
                 error_count,
-                error_path.display()
+                crate::text::show(&error_path)
             );
         } else {
             log_info!("no error/spurious records -- error file not created");
@@ -1327,7 +1331,7 @@ fn commit_split_outputs(
         stop.reason,
         normal_count,
         error_count,
-        main_partial_path.display()
+        crate::text::show(&main_partial_path)
     );
 
     Ok(WriteOutcome {

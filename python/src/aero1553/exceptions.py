@@ -39,6 +39,20 @@ if TYPE_CHECKING:
     from typing_extensions import Self
 
 
+def _printable(text: str) -> str:
+    """``text`` by the L2-CLI-025 rule, from the decoder's one implementation.
+
+    Returns:
+        ``text`` itself when it is printable ASCII already, else its escaped form.
+    """
+    if text.isascii() and text.isprintable():
+        return text
+    # Imported here: the extension imports this module to raise its errors.
+    from aero1553 import _native
+
+    return _native.escape_text(text)
+
+
 class Aero1553Error(Exception):
     """Base exception for every error the decoder *converts*.
 
@@ -77,6 +91,13 @@ class Aero1553Error(Exception):
         self._init_args = args
         self._init_kwargs = kwargs
         return self
+
+    def __init__(self, *args: Any) -> None:
+        # L2-CLI-025: a message follows the one rule for printed text, as the
+        # CLI's do -- printable ASCII, everything else ``\u{hex}`` (``\xNN``
+        # for a byte of a file name that is not UTF-8). Attributes such as
+        # ``path`` keep the exact value, for a program to use.
+        super().__init__(*(_printable(a) if isinstance(a, str) else a for a in args))
 
     def __reduce__(self) -> tuple[Any, ...]:
         state = {k: v for k, v in vars(self).items() if k not in ("_init_args", "_init_kwargs")}

@@ -19,6 +19,52 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **Text the tool did not write itself is printed by one rule, everywhere**
+  (`L2-CLI-025`). This covers file names, arguments, config values and keys,
+  and operating-system messages, in:
+  - log lines, `Error:` lines and `count`'s status;
+  - `dump`'s `File:` line;
+  - `MieError` text and Python exception messages;
+  - log records handed to Python's `logging`.
+
+  The rule:
+  - **Printable ASCII is printed as itself**, backslash included, so Windows
+    paths read normally.
+  - **Every other character is `\u{hex}`.** `caf\u{e9}.mie`, a newline is
+    `\u{a}`, a tab is `\u{9}`.
+  - **A byte of a file name that is not UTF-8 is `\xNN`**, and an unpaired
+    Windows surrogate is `\u{d800}`.
+
+  It fixes three things:
+  - **Mojibake:** `caf\u{e9}.mie` used to print as `cafÃ©.mie` on a Windows
+    console.
+  - **Localised Windows error text** breaking the ASCII-output rule
+    (`L2-CLI-014`).
+  - **Forged log lines:** a file name holding a newline could start a line
+    of its own and pass for a decoder `ERROR`.
+
+  Messages about ASCII names are unchanged.
+
+  **The one visible change:** a non-ASCII character in a quoted config value
+  or argument used to be written byte by byte (`"\xC3\xA9"`) and is now
+  `"\u{e9}"`, like everything else. One conformance oracle changed for it.
+
+  **Not escaped, because they are data:**
+  - the CSV's `MUX` cell;
+  - Python's `exc.path`, which now carries the exact name, with any byte that
+    is not UTF-8 as a surrogate escape (`os.fsencode` gets it back);
+  - a Rust `MieError`'s fields.
+
+### Fixed
+
+- **Data after a terminator in the last few bytes was not reported.** When
+  fewer than a record's worth of bytes remained at the end-of-records
+  terminator, the reader's short-tail path stopped without looking past it,
+  so `record, 00 00, 41 41` decoded without the 5.7.0 warning (`L2-RDR-022`).
+  Found by this change's tests; a conformance case now pins it.
+
 ## [5.7.0] — 2026-11-01
 
 ### Added

@@ -1,0 +1,29 @@
+# L2-RDR-022, the short tail: three records, the 0x0000 end-of-records
+# terminator, and just two non-zero bytes after it -- fewer than a record's
+# worth. The reader's short-tail path once stopped there without looking past
+# the terminator, so this case WARNs where it used to say nothing.
+
+02240F1826DB21F6
+7E79
+0004 0000 0000 2F00 22CA 2F00 22CA
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0000 0000 0000 0000
+71C7 0078
+
+02110F1826DB38F7
+CB7A
+0010 0000 0700 0008 0000 0000 0000 0000 0000 C880 E803
+0078
+
+04240F1826DBE3F9
+DE7E 0078
+2010 8241 0000 0815 0000 0000 0000 0000
+00FE 0000 0000 0000 0000 0000 0000 0000
+0000 0000 0300 0000 0000 0000 0000 0000
+0000 0020 0000 0000 0000 0000
+
+0000
+
+# Two bytes after the terminator: not decoded, and reported.
+4141

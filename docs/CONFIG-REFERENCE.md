@@ -616,7 +616,7 @@ When a load-time validation fails, the CLI exits `5` (the configuration-error cl
 Error: /etc/aero1553/site.toml: Invalid decode.detect_records: 0. Valid range: [1, 32]
 ```
 
-A value the message repeats is quoted in double quotes, with any byte outside printable ASCII written as `\xNN` -- so `strïct = true` is reported as `unsupported key "str\xC3\xAFct"` -- and a rejected decimal is repeated exactly as you wrote it.
+A value the message repeats is quoted in double quotes, with any character outside printable ASCII written as `\u{hex}` -- so `strïct = true` is reported as `unsupported key "str\u{ef}ct"`, by the same rule as every printed text (L2-CLI-025) -- and a rejected decimal is repeated exactly as you wrote it.
 
 ---
 

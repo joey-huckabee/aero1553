@@ -190,7 +190,7 @@ impl MieFileReader {
 
         log_debug!(
             "reader opened {} ({} bytes, strict={}, input_time_format={:?}, detect_records={})",
-            path.display(),
+            crate::text::show(&path),
             file_size,
             opts.strict,
             opts.input_time_format,
@@ -354,7 +354,7 @@ impl MieFileReader {
                 "pathological homogeneous-payload input at offset 0x{:X} \
                  in {}: {} consecutive candidate records are byte-identical",
                 hit.offset,
-                self.path.display(),
+                crate::text::show(&self.path),
                 crate::sync::HOMOGENEITY_SAMPLE_RECORDS,
             );
             return (
@@ -413,7 +413,7 @@ impl MieFileReader {
                      starting at offset 0x{:X}: IRIG={} STD={} over {} \
                      record(s) -- strict mode rejects ambiguous files; \
                      pass --input-time-format to force the choice",
-                    self.path.display(),
+                    crate::text::show(&self.path),
                     hit.offset,
                     outcome.irig_score,
                     outcome.std_score,
@@ -463,7 +463,7 @@ impl MieFileReader {
                  STD={} over {} record(s)) -- strict mode rejects the mismatch; \
                  drop --input-time-format to auto-detect",
                 self.input_time_format,
-                self.path.display(),
+                crate::text::show(&self.path),
                 hit.offset,
                 outcome.format,
                 outcome.irig_score,
@@ -514,7 +514,7 @@ impl MieFileReader {
                 "{}: recording contains no records -- the stream opens on \
                  the end-of-records terminator (empty capture); writing \
                  header-only output",
-                self.path.display()
+                crate::text::show(&self.path)
             );
             self.empty_recording.store(true, Ordering::Relaxed);
             // L2-RDR-022, for a terminator at offset 0. The start-up window
@@ -528,7 +528,7 @@ impl MieFileReader {
                      decoded (first non-zero byte at 0x{:X}). A recording ends at its \
                      terminator, so recordings joined end to end decode as the first \
                      one only: to combine recordings, pass them as separate inputs",
-                    self.path.display(),
+                    crate::text::show(&self.path),
                     i + 2
                 );
             }
@@ -582,7 +582,7 @@ impl MieFileReader {
                 log_error!(
                     "no valid records found in first {} bytes of {}",
                     scan_bytes,
-                    self.path.display()
+                    crate::text::show(&self.path)
                 );
                 (
                     false,
@@ -704,7 +704,7 @@ impl MieFileReader {
 
         let pending_error = open_error.or(pending_error);
 
-        log_info!("beginning decode of {}", self.path.display());
+        log_info!("beginning decode of {}", crate::text::show(&self.path));
 
         RecordIter {
             src: window,
@@ -923,6 +923,10 @@ impl RecordIter<'_> {
             if !(self.strict && tail.is_some()) {
                 if let Some(raw) = tail {
                     self.warn_truncated_tail(raw);
+                } else if remaining >= 2 {
+                    // The tail opens on the terminator: anything after it was
+                    // not decoded (L2-RDR-022), however few bytes it is.
+                    self.warn_data_after_terminator(self.offset);
                 }
                 self.done = true;
                 self.log_complete();
@@ -1530,7 +1534,7 @@ impl RecordIter<'_> {
              (first non-zero byte at 0x{:X}). A recording ends at its terminator, so \
              recordings joined end to end decode as the first one only: to combine \
              recordings, pass them as separate inputs",
-            self.path_for_log.display(),
+            crate::text::show(&self.path_for_log),
             terminator,
             at
         );
@@ -1542,7 +1546,7 @@ impl RecordIter<'_> {
             self.msg_count,
             self.sync_losses,
             self.resolved_format,
-            self.path_for_log.display()
+            crate::text::show(&self.path_for_log)
         );
     }
 
