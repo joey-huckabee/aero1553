@@ -315,7 +315,9 @@ on the per-file `MUX` string (a `MUX`-populated decode 6-12% faster) and kept
 records out of the merge heap (a merge 10-19% faster). 5.6.0 changed no
 decode speed; it added `decode -` (measured at the same cost as a file),
 steadier gates and a per-thread profiler. 5.6.1 fixed a Python config-loading
-bug on long Windows paths and changed no decode code. Beyond that, in the
+bug on long Windows paths and changed no decode code. 5.7.0 cut the decoding
+thread's instructions per record by 11% (decode 0.911 of 5.6.1's time on arm64,
+within noise on the x86 CI runners). Beyond that, in the
 order they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
