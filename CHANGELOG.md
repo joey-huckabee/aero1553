@@ -21,10 +21,10 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
-- **Decoding is about 8-9% faster: the decoding thread runs 11% fewer
-  instructions per record.** That thread is what a decode waits on (5.2.0
-  onward). Three changes, each kept only after it measured at least 2% on
-  its own:
+- **The decoding thread runs 11% fewer instructions per record**, measured as
+  8-9% less decode time on Linux arm64. That thread is what a decode waits on
+  (5.2.0 onward). Three changes, each kept only after it measured at least 2%
+  on its own:
   - Each record's data words are read straight into `DataWords`, not into a
     zeroed buffer and then copied (-6.3%).
   - The `log_*!` macros test the level before building a line's arguments.
@@ -36,9 +36,17 @@ shared behavior) holds at any compatible version pair. See
   Calling thread: 1,037 to 919 instructions per record
   (`perf/instructions.py`). On 256 MiB in a Linux arm64 sandbox, 21 shuffled
   paired rounds, output identical to 5.6.1, the candidate took this fraction
-  of 5.6.1's time: decode **0.911**, merge **0.925**, corrupt with
-  `--separate-errors` **0.920**. Decoding from standard input is unchanged
-  relative to the file (0.999).
+  of 5.6.1's time: decode **0.911** (rounds 0.845-0.929), merge **0.925**,
+  corrupt with `--separate-errors` **0.920**. Decoding from standard input is
+  unchanged relative to the file (0.999).
+
+  On the x86 CI runners the effect is inside their noise. Four baseline runs
+  of the whole change read decode 1.069, 0.963 and 1.128 (7 rounds each) and
+  0.939 (21 rounds); merge 0.962, 0.962 and 0.946; corrupt-split 0.921, 0.875
+  and 0.981. A 21-round run at each step found no step slower than a control
+  with no Rust change (0.970), and single rounds there spread +-25%. So x86
+  shows no regression and no measured gain: a few percent either way cannot
+  be resolved on those runners.
 
 ### Added
 
