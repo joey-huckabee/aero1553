@@ -1,0 +1,814 @@
+{
+  "environment": {
+    "aero1553": "5.8.0",
+    "python": "3.14.7",
+    "platform": "Linux aarch64",
+    "cpu": "Arm implementer 0x41 part 0xd4f",
+    "cpu_count": 4,
+    "recording": {
+      "a": {
+        "file": "golden-large.draw.data.1553.aa.unused.mie_irig",
+        "sha256": "c5963d0eefa02e259fac6726809f6daf825bc1abff7570587ef0e1645b06e068",
+        "bytes": 20796698,
+        "rows": 460575,
+        "rt_sum": 6839973,
+        "csv_sha256": "0a457c1e60357740b37e0563bb7a351ee0a44311361008b10fa09cf0c558a88c"
+      },
+      "b": {
+        "file": "golden-large.draw.data.1553.bb.unused.mie_irig",
+        "sha256": "536a34db8e93ef35255c45c998483173edcb6be1340bd141851ed64871e90b02",
+        "bytes": 14448268,
+        "rows": 319736,
+        "rt_sum": 4743036,
+        "csv_sha256": "06056a5de1e8e929ab9d2fe08ecc393fb499e1dd7520d1b3994380deb80331f8"
+      }
+    },
+    "repeat": 3,
+    "gate_rounds": 7
+  },
+  "cases": {
+    "python.startup": {
+      "runs": [
+        {
+          "start": 0.012829344719648361
+        },
+        {
+          "start": 0.012929903343319893
+        },
+        {
+          "start": 0.012484433129429817
+        }
+      ],
+      "best": 0.012484433129429817,
+      "median": 0.012829344719648361,
+      "imports": {},
+      "total_with_imports": 0.012484433129429817,
+      "rows_per_s": null
+    },
+    "import.aero1553": {
+      "runs": [
+        {
+          "import": 0.0386769725009799
+        },
+        {
+          "import": 0.03697888646274805
+        },
+        {
+          "import": 0.03670711815357208
+        }
+      ],
+      "best": 0.03670711815357208,
+      "median": 0.03697888646274805,
+      "imports": {},
+      "total_with_imports": 0.03670711815357208,
+      "rows_per_s": null
+    },
+    "import.numpy": {
+      "runs": [
+        {
+          "import": 0.05252316687256098
+        },
+        {
+          "import": 0.04767598956823349
+        },
+        {
+          "import": 0.052399735897779465
+        }
+      ],
+      "best": 0.04767598956823349,
+      "median": 0.052399735897779465,
+      "imports": {},
+      "total_with_imports": 0.04767598956823349,
+      "rows_per_s": null
+    },
+    "import.pandas": {
+      "runs": [
+        {
+          "import": 0.20460901502519846
+        },
+        {
+          "import": 0.20193537138402462
+        },
+        {
+          "import": 0.19906291086226702
+        }
+      ],
+      "best": 0.19906291086226702,
+      "median": 0.20193537138402462,
+      "imports": {},
+      "total_with_imports": 0.19906291086226702,
+      "rows_per_s": null
+    },
+    "rust.iterate": {
+      "runs": [
+        {
+          "run": 0.050855
+        },
+        {
+          "run": 0.050712
+        },
+        {
+          "run": 0.050666
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 2293760,
+      "best": 0.050666,
+      "median": 0.050712,
+      "imports": {},
+      "total_with_imports": 0.050666,
+      "rows_per_s": 9090415.663363991
+    },
+    "rust.filter_order": {
+      "runs": [
+        {
+          "run": 0.077052
+        },
+        {
+          "run": 0.07701
+        },
+        {
+          "run": 0.076772
+        }
+      ],
+      "fingerprint": {
+        "rows": 444649,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 2301952,
+      "best": 0.076772,
+      "median": 0.07701,
+      "imports": {},
+      "total_with_imports": 0.076772,
+      "rows_per_s": 5791812.119001719
+    },
+    "rust.decode_csv": {
+      "runs": [
+        {
+          "run": 0.082565
+        },
+        {
+          "run": 0.085922
+        },
+        {
+          "run": 0.085554
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 0
+      },
+      "peak_bytes": 5230592,
+      "best": 0.082565,
+      "median": 0.085554,
+      "imports": {},
+      "total_with_imports": 0.082565,
+      "rows_per_s": 5578332.223096954
+    },
+    "rust.merge_csv": {
+      "runs": [
+        {
+          "run": 0.187258
+        },
+        {
+          "run": 0.198343
+        },
+        {
+          "run": 0.196175
+        }
+      ],
+      "fingerprint": {
+        "rows": 716149,
+        "rt_sum": 0
+      },
+      "peak_bytes": 6311936,
+      "best": 0.187258,
+      "median": 0.196175,
+      "imports": {},
+      "total_with_imports": 0.187258,
+      "rows_per_s": 3824397.355520191
+    },
+    "rust.cli_process": {
+      "runs": [
+        {
+          "process": 0.08438799064606428
+        },
+        {
+          "process": 0.08982676640152931
+        },
+        {
+          "process": 0.08979996386915445
+        }
+      ],
+      "peak_bytes": 14843904,
+      "best": 0.08438799064606428,
+      "median": 0.08979996386915445,
+      "imports": {},
+      "total_with_imports": 0.08438799064606428,
+      "rows_per_s": 5457826.362186057
+    },
+    "rust.cli_no_mux": {
+      "runs": [
+        {
+          "process": 0.07926133926957846
+        },
+        {
+          "process": 0.08491894416511059
+        },
+        {
+          "process": 0.0849743951112032
+        }
+      ],
+      "peak_bytes": 14843904,
+      "best": 0.07926133926957846,
+      "median": 0.08491894416511059,
+      "imports": {},
+      "total_with_imports": 0.07926133926957846,
+      "rows_per_s": 5810840.496064829
+    },
+    "rust.cli_stdin": {
+      "runs": [
+        {
+          "process": 0.07996714115142822
+        },
+        {
+          "process": 0.08615897875279188
+        },
+        {
+          "process": 0.08748098183423281
+        }
+      ],
+      "peak_bytes": 14843904,
+      "best": 0.07996714115142822,
+      "median": 0.08615897875279188,
+      "imports": {},
+      "total_with_imports": 0.07996714115142822,
+      "rows_per_s": 5759553.153561424
+    },
+    "py.cli_process": {
+      "runs": [
+        {
+          "process": 0.14384674839675426
+        },
+        {
+          "process": 0.14764563646167517
+        },
+        {
+          "process": 0.14662551321089268
+        }
+      ],
+      "peak_bytes": 24408064,
+      "best": 0.14384674839675426,
+      "median": 0.14662551321089268,
+      "imports": {},
+      "total_with_imports": 0.14384674839675426,
+      "rows_per_s": 3201845.0547777023
+    },
+    "py.cli_stdin": {
+      "runs": [
+        {
+          "process": 0.14018779806792736
+        },
+        {
+          "process": 0.16057653818279505
+        },
+        {
+          "process": 0.14110346138477325
+        }
+      ],
+      "peak_bytes": 25145344,
+      "best": 0.14018779806792736,
+      "median": 0.14110346138477325,
+      "imports": {},
+      "total_with_imports": 0.14018779806792736,
+      "rows_per_s": 3285414.3252669573
+    },
+    "py.iterate": {
+      "case": "py.iterate",
+      "needs": [],
+      "runs": [
+        {
+          "decode": 0.10650751926004887
+        },
+        {
+          "decode": 0.10707377456128597
+        },
+        {
+          "decode": 0.1068215286359191
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 184221696,
+      "best": 0.10650751926004887,
+      "median": 0.1068215286359191,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.14348640572279692,
+      "rows_per_s": 4324342.574118731
+    },
+    "py.filter_order": {
+      "case": "py.filter_order",
+      "needs": [],
+      "runs": [
+        {
+          "decode": 0.1310770222917199
+        },
+        {
+          "decode": 0.1308163795620203
+        },
+        {
+          "decode": 0.1308222282677889
+        }
+      ],
+      "fingerprint": {
+        "rows": 444649,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 184221696,
+      "best": 0.1308163795620203,
+      "median": 0.1308222282677889,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.16779526602476835,
+      "rows_per_s": 3399031.5393890794
+    },
+    "py.decode_csv": {
+      "case": "py.decode_csv",
+      "needs": [],
+      "runs": [
+        {
+          "decode+write": 0.08521345816552639
+        },
+        {
+          "decode+write": 0.09188455995172262
+        },
+        {
+          "decode+write": 0.090539226308465
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575
+      },
+      "peak_bytes": 184221696,
+      "best": 0.08521345816552639,
+      "median": 0.090539226308465,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.12219234462827444,
+      "rows_per_s": 5404956.093969771
+    },
+    "py.cli_decode": {
+      "case": "py.cli_decode",
+      "needs": [],
+      "runs": [
+        {
+          "decode+write": 0.08384332712739706
+        },
+        {
+          "decode+write": 0.08730177395045757
+        },
+        {
+          "decode+write": 0.08741684351116419
+        }
+      ],
+      "fingerprint": {
+        "exit": 0
+      },
+      "peak_bytes": 184221696,
+      "best": 0.08384332712739706,
+      "median": 0.08730177395045757,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.12082221359014511,
+      "rows_per_s": 5493281.526151414
+    },
+    "py.merge_csv": {
+      "case": "py.merge_csv",
+      "needs": [],
+      "runs": [
+        {
+          "merge+write": 0.19558499660342932
+        },
+        {
+          "merge+write": 0.21262172982096672
+        },
+        {
+          "merge+write": 0.20878169499337673
+        }
+      ],
+      "fingerprint": {
+        "rows": 716149
+      },
+      "peak_bytes": 184221696,
+      "best": 0.19558499660342932,
+      "median": 0.20878169499337673,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.23256388306617737,
+      "rows_per_s": 3661574.31519184
+    },
+    "py.columns_numpy": {
+      "case": "py.columns_numpy",
+      "needs": [
+        "numpy"
+      ],
+      "runs": [
+        {
+          "columns": 0.33317558839917183,
+          "numpy": 4.7519803047180176e-05
+        },
+        {
+          "columns": 0.31805724650621414,
+          "numpy": 4.375353455543518e-05
+        },
+        {
+          "columns": 0.3005297156050801,
+          "numpy": 5.170051008462906e-05
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 306782208,
+      "best": 0.30058141611516476,
+      "median": 0.3181010000407696,
+      "imports": {
+        "aero1553": 0.03697888646274805,
+        "numpy": 0.052399735897779465
+      },
+      "total_with_imports": 0.38996003847569227,
+      "rows_per_s": 1532280.3583556719
+    },
+    "py.columns_pandas": {
+      "case": "py.columns_pandas",
+      "needs": [
+        "numpy",
+        "pandas"
+      ],
+      "runs": [
+        {
+          "columns": 0.3377273716032505,
+          "dataframe": 0.039141214452683926
+        },
+        {
+          "columns": 0.3147680778056383,
+          "dataframe": 0.03412663470953703
+        },
+        {
+          "columns": 0.2931775953620672,
+          "dataframe": 0.03468046523630619
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 351281152,
+      "best": 0.3278580605983734,
+      "median": 0.34889471251517534,
+      "imports": {
+        "aero1553": 0.03697888646274805,
+        "numpy": 0.052399735897779465,
+        "pandas": 0.20193537138402462
+      },
+      "total_with_imports": 0.6191720543429255,
+      "rows_per_s": 1404799.989237431
+    },
+    "py.columns_pandas_numeric": {
+      "case": "py.columns_pandas_numeric",
+      "needs": [
+        "numpy",
+        "pandas"
+      ],
+      "runs": [
+        {
+          "columns": 0.08687780983746052,
+          "dataframe": 0.010866942815482616
+        },
+        {
+          "columns": 0.07947964314371347,
+          "dataframe": 0.0074709681794047356
+        },
+        {
+          "columns": 0.07915570680052042,
+          "dataframe": 0.007361569441854954
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 184672256,
+      "best": 0.08651727624237537,
+      "median": 0.08695061132311821,
+      "imports": {
+        "aero1553": 0.03697888646274805,
+        "numpy": 0.052399735897779465,
+        "pandas": 0.20193537138402462
+      },
+      "total_with_imports": 0.3778312699869275,
+      "rows_per_s": 5323503.235466104
+    },
+    "py.to_dict_dataclass": {
+      "case": "py.to_dict_dataclass",
+      "needs": [],
+      "runs": [
+        {
+          "to_dict+dataclass": 0.7987590041011572
+        },
+        {
+          "to_dict+dataclass": 0.775981230661273
+        },
+        {
+          "to_dict+dataclass": 0.8032218236476183
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 287088640,
+      "best": 0.775981230661273,
+      "median": 0.7987590041011572,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.812960117124021,
+      "rows_per_s": 593538.8406334375
+    },
+    "py.attrs_dataclass": {
+      "case": "py.attrs_dataclass",
+      "needs": [],
+      "runs": [
+        {
+          "attributes+dataclass": 0.7790917893871665
+        },
+        {
+          "attributes+dataclass": 0.7546937745064497
+        },
+        {
+          "attributes+dataclass": 0.7860592557117343
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 287092736,
+      "best": 0.7546937745064497,
+      "median": 0.7790917893871665,
+      "imports": {
+        "aero1553": 0.03697888646274805
+      },
+      "total_with_imports": 0.7916726609691978,
+      "rows_per_s": 610280.6403845112
+    },
+    "py.to_dict_pandas": {
+      "case": "py.to_dict_pandas",
+      "needs": [
+        "pandas"
+      ],
+      "runs": [
+        {
+          "to_dict": 1.0707709845155478,
+          "dataframe": 0.9434134867042303
+        },
+        {
+          "to_dict": 1.0514314826577902,
+          "dataframe": 0.9458201369270682
+        },
+        {
+          "to_dict": 1.0100902980193496,
+          "dataframe": 0.9377969838678837
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 1085448192,
+      "best": 1.9478872818872333,
+      "median": 1.9972516195848584,
+      "imports": {
+        "aero1553": 0.03697888646274805,
+        "pandas": 0.20193537138402462
+      },
+      "total_with_imports": 2.186801539734006,
+      "rows_per_s": 236448.48666693206
+    },
+    "py.attrs_pandas": {
+      "case": "py.attrs_pandas",
+      "needs": [
+        "pandas"
+      ],
+      "runs": [
+        {
+          "attributes": 0.8336909366771579,
+          "dataframe": 0.31923325825482607
+        },
+        {
+          "attributes": 0.8666940173134208,
+          "dataframe": 0.31041246093809605
+        },
+        {
+          "attributes": 0.8345856918022037,
+          "dataframe": 0.31131551787257195
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 563154944,
+      "best": 1.1459012096747756,
+      "median": 1.152924194931984,
+      "imports": {
+        "aero1553": 0.03697888646274805,
+        "pandas": 0.20193537138402462
+      },
+      "total_with_imports": 1.3848154675215483,
+      "rows_per_s": 401932.55414288136
+    },
+    "py.csv_pandas": {
+      "case": "py.csv_pandas",
+      "needs": [
+        "pandas"
+      ],
+      "runs": [
+        {
+          "decode+write": 0.08696860540658236,
+          "read_csv": 1.1739035360515118
+        },
+        {
+          "decode+write": 0.09082638379186392,
+          "read_csv": 1.1555202519521117
+        },
+        {
+          "decode+write": 0.09139739163219929,
+          "read_csv": 1.155931767076254
+        }
+      ],
+      "fingerprint": {
+        "rows": 460575,
+        "rt_sum": 6839973
+      },
+      "peak_bytes": 394723328,
+      "best": 1.2463466357439756,
+      "median": 1.2473291587084532,
+      "imports": {
+        "aero1553": 0.03697888646274805,
+        "pandas": 0.20193537138402462
+      },
+      "total_with_imports": 1.4852608935907483,
+      "rows_per_s": 369540.05153235013
+    }
+  },
+  "gates": [
+    {
+      "name": "Python library decode keeps pace with the Rust library",
+      "numerator": "py.decode_csv",
+      "denominator": "rust.decode_csv",
+      "max": 1.15,
+      "why": "write_csv(order_rows(reader)) should be the Rust chain with a thin Python entry; a stage reading the stream through Python instead once cost 17%.",
+      "ratio": 1.031236858732416,
+      "rounds": [
+        0.9901884412543492,
+        1.0465802879396064,
+        0.9922284369516855,
+        1.0059879968461698,
+        1.031236858732416,
+        1.0350077675116214,
+        1.052774342791735
+      ],
+      "best_ratio": 1.0320772502334692,
+      "ok": true
+    },
+    {
+      "name": "Python CLI keeps pace with the Rust library",
+      "numerator": "py.cli_decode",
+      "denominator": "rust.decode_csv",
+      "max": 1.15,
+      "why": "aero1553.cli.main runs the Rust CLI in-process; only the call into it is Python.",
+      "ratio": 1.0128725263973088,
+      "rounds": [
+        1.0408458122285804,
+        1.0348041774807317,
+        1.008509387565904,
+        0.9966872371870111,
+        1.0128725263973088,
+        1.0285246479782977,
+        0.9815037769307918
+      ],
+      "best_ratio": 1.0154826757996374,
+      "ok": true
+    },
+    {
+      "name": "Python merge keeps pace with the Rust merge",
+      "numerator": "py.merge_csv",
+      "denominator": "rust.merge_csv",
+      "max": 1.15,
+      "why": "merge_readers hands the Rust merge its readers; the merged stream never leaves Rust.",
+      "ratio": 1.0388754406856902,
+      "rounds": [
+        1.038110452677337,
+        1.0497046906616154,
+        1.038108336593595,
+        1.0535691260949902,
+        1.0388754406856902,
+        1.0393087523055546,
+        1.0378453316273375
+      ],
+      "best_ratio": 1.044468041971127,
+      "ok": true
+    },
+    {
+      "name": "Reading standard input costs no more than reading the file",
+      "numerator": "rust.cli_stdin",
+      "denominator": "rust.cli_no_mux",
+      "max": 1.25,
+      "why": "decode - reads the same bytes through the same window, filled by read() instead of positional reads (L2-CLI-023). The file is decoded with --no-mux because a stream has no name to take MUX from. Loose on purpose: each case is a ~0.09 s process, and on the 5.6.0 pull request CI's rounds spread 0.98-1.22 (median 1.095), so this catches only a gross regression; perf/baseline.py's decode-stdin case measures it at 256 MiB with a calibrated margin (0.939 on the same CI run).",
+      "ratio": 1.0003228515776377,
+      "rounds": [
+        1.002984767596061,
+        1.0003228515776377,
+        1.0047631606067047,
+        0.9941568925291484,
+        1.018239746642559,
+        0.994514488808648,
+        0.9660550429568847
+      ],
+      "best_ratio": 1.0089047433257372,
+      "ok": true
+    },
+    {
+      "name": "Python record iteration stays cheap",
+      "numerator": "py.iterate",
+      "denominator": "rust.iterate",
+      "max": 3.0,
+      "why": "Iterating in Python builds one record object per record, lazily: it should cost a small multiple of the Rust read, not an order of magnitude.",
+      "ratio": 2.105468576553896,
+      "rounds": [
+        2.105468576553896,
+        2.1033733032091537,
+        2.1237959111358675,
+        2.1156577329073603,
+        2.100449155059771,
+        2.1332355970486043,
+        2.064010094494319
+      ],
+      "best_ratio": 2.1021497505239974,
+      "ok": true
+    },
+    {
+      "name": "columns() stays far ahead of per-record dicts",
+      "numerator": "py.to_dict_pandas",
+      "denominator": "py.columns_pandas",
+      "min": 4.0,
+      "why": "The point of columns(): a table with no Python object per record. If building one from to_dict() dicts gets close, columns() has regressed.",
+      "ratio": 5.351276664790539,
+      "rounds": [
+        5.365308616261092,
+        5.17576921908104,
+        5.380166981878464,
+        5.312381195895378,
+        5.393747195572538,
+        5.351276664790539,
+        5.171463759040321
+      ],
+      "best_ratio": 5.941251767097463,
+      "ok": true
+    },
+    {
+      "name": "numeric columns cost a small multiple of a bare Rust read",
+      "numerator": "py.columns_pandas_numeric",
+      "denominator": "rust.iterate",
+      "max": 3.5,
+      "why": "Without the text fields, columns() builds no per-record Python object, so a DataFrame of them should cost little over reading the file. Calibrated at 3.5 on 2026-11-01 from the 22 reports since gates became paired medians: Windows read 2.09-2.84 and Linux 2.59-3.14, so 3.0 left 5% headroom on Windows and failed one Linux runner type.",
+      "ratio": 1.956063814061137,
+      "rounds": [
+        1.9311131128603765,
+        1.951498978503742,
+        1.8732619875059584,
+        1.9782155992714898,
+        1.956063814061137,
+        2.0280233234834633,
+        1.9749083878208498
+      ],
+      "best_ratio": 1.7076002889980533,
+      "ok": true
+    }
+  ],
+  "problems": []
+}

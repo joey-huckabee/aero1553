@@ -1304,24 +1304,11 @@ fn parse_scalar(s: &str, lineno: usize) -> Result<TomlValue, String> {
     }
     match s.as_bytes()[0] {
         b'"' => parse_string(s, lineno).map(TomlValue::String),
-        // A numeric literal containing a decimal point or exponent is a
-        // float; otherwise an integer. Validate against the TOML number grammar
-        // FIRST — `i64`/`f64::from_str` are more permissive than TOML (they
-        // accept leading zeros like `08`, a bare trailing dot like `1.`, etc.),
-        // which would silently diverge from Python's strict `tomllib`.
-        b'-' | b'+' | b'0'..=b'9' => {
-            if !is_toml_number_literal(s) {
-                return Err(format!(
-                    "line {lineno}: invalid number literal {}",
-                    quote(s)
-                ));
-            }
-            if s.contains('.') || s.contains('e') || s.contains('E') {
-                parse_float(s, lineno).map(TomlValue::Float)
-            } else {
-                parse_int(s, lineno).map(TomlValue::Int)
-            }
-        }
+        // Validate against the TOML number grammar FIRST -- `i64`/`f64::from_str`
+        // are more permissive than TOML (they accept leading zeros like `08`, a
+        // bare trailing dot like `1.`, etc.), which would silently diverge from
+        // TOML 1.0 (L2-CFG-014).
+        b'-' | b'+' | b'0'..=b'9' => parse_number(s, lineno),
         _ => Err(format!("line {lineno}: cannot parse value {}", quote(s))),
     }
 }
@@ -1361,19 +1348,31 @@ fn parse_string(s: &str, lineno: usize) -> Result<String, String> {
     Ok(out)
 }
 
-/// Validate a numeric literal against the flat schema's TOML number grammar:
-/// `[+-]? ( 0 | [1-9][0-9]* ) ( . [0-9]+ )? ( [eE] [+-]? [0-9]+ )?`. Rejects the
-/// non-TOML forms Rust's native `i64`/`f64` parsing would otherwise accept —
-/// leading zeros (`08`, `01`), a bare trailing dot (`1.`), and `0x`/`0o`/`0b` /
-/// underscore forms — keeping the two implementations aligned. Hand-rolled (no
-/// regex dependency).
-/// Consume a run of ASCII digits starting at `i`, returning the index after it
-/// (which is `i` itself when there are none).
-fn scan_digits(b: &[u8], mut i: usize) -> usize {
-    while i < b.len() && b[i].is_ascii_digit() {
-        i += 1;
+/// What a well-formed number literal is (L2-CFG-014).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum NumberKind {
+    /// An integer in this radix: 10, or 16 / 8 / 2 after `0x` / `0o` / `0b`.
+    Int(u32),
+    /// A decimal with a fraction, an exponent or both.
+    Float,
+}
+
+/// A run of digits in which one underscore may stand between two digits,
+/// `D (_? D)*` -- TOML's rule, so `_1`, `1_` and `1__0` are not runs (a
+/// trailing underscore is left unconsumed, which fails the whole literal).
+/// Returns the index after the run, or `None` when no digit starts at `i`.
+fn scan_digit_run(b: &[u8], mut i: usize, is_digit: fn(u8) -> bool) -> Option<usize> {
+    if !b.get(i).is_some_and(|&c| is_digit(c)) {
+        return None;
     }
-    i
+    i += 1;
+    loop {
+        match b.get(i) {
+            Some(&c) if is_digit(c) => i += 1,
+            Some(b'_') if b.get(i + 1).is_some_and(|&c| is_digit(c)) => i += 2,
+            _ => return Some(i),
+        }
+    }
 }
 
 /// Consume an optional leading `+` or `-`.
@@ -1385,71 +1384,111 @@ fn scan_sign(b: &[u8], i: usize) -> usize {
     }
 }
 
-/// Integer part: a lone `0`, or a non-zero digit followed by more digits.
+/// Integer part: a lone `0`, or a non-zero digit followed by a digit run.
 /// `None` when absent or malformed.
 ///
-/// A leading zero consumes exactly one byte, so `01` leaves the `1` unconsumed
-/// and the whole literal is ultimately rejected — TOML forbids leading zeros.
+/// A leading zero consumes exactly one byte, so `01` and `0_1` leave the rest
+/// unconsumed and the whole literal is rejected -- TOML forbids leading zeros.
 fn scan_integer_part(b: &[u8], i: usize) -> Option<usize> {
     match b.get(i) {
-        None => None,
         Some(b'0') => Some(i + 1),
-        Some(&c) if c.is_ascii_digit() => Some(scan_digits(b, i)),
-        Some(_) => None,
+        Some(c) if c.is_ascii_digit() => scan_digit_run(b, i, is_decimal_digit),
+        _ => None,
     }
 }
 
-/// Optional fractional part. A `.` MUST be followed by at least one digit, so a
-/// bare trailing dot yields `None`.
+/// Optional fractional part. A `.` MUST be followed by a digit run, so a bare
+/// trailing dot yields `None`.
 fn scan_fraction(b: &[u8], i: usize) -> Option<usize> {
-    if i >= b.len() || b[i] != b'.' {
+    if b.get(i) != Some(&b'.') {
         return Some(i);
     }
-    let start = i + 1;
-    let end = scan_digits(b, start);
-    (end > start).then_some(end)
+    scan_digit_run(b, i + 1, is_decimal_digit)
 }
 
-/// Optional exponent `[eE] [+-]? [0-9]+`. An exponent marker with no digits
-/// after it yields `None`.
+/// Optional exponent `[eE] [+-]? <digit run>`. A marker with no digits after
+/// it yields `None`.
 fn scan_exponent(b: &[u8], i: usize) -> Option<usize> {
-    if i >= b.len() || (b[i] != b'e' && b[i] != b'E') {
+    if !matches!(b.get(i), Some(b'e' | b'E')) {
         return Some(i);
     }
-    let start = scan_sign(b, i + 1);
-    let end = scan_digits(b, start);
-    (end > start).then_some(end)
+    scan_digit_run(b, scan_sign(b, i + 1), is_decimal_digit)
 }
 
-/// True when `s` is a well-formed TOML number literal.
+fn is_decimal_digit(c: u8) -> bool {
+    c.is_ascii_digit()
+}
+
+fn is_hex_digit(c: u8) -> bool {
+    c.is_ascii_hexdigit()
+}
+
+fn is_octal_digit(c: u8) -> bool {
+    matches!(c, b'0'..=b'7')
+}
+
+fn is_binary_digit(c: u8) -> bool {
+    matches!(c, b'0' | b'1')
+}
+
+/// The kind of `s` when it is a well-formed TOML 1.0 number literal, else
+/// `None`. The grammar is TOML's own, `inf` / `nan` aside (no key accepts a
+/// non-finite value):
 ///
-/// Written as the grammar's own productions — sign, integer part, optional
-/// fraction, optional exponent — so each rule is named, independently testable,
-/// and readable on its own. The literal is valid only if the productions
-/// together consume the entire string.
-fn is_toml_number_literal(s: &str) -> bool {
+/// - `0x` / `0o` / `0b`, lowercase, no sign, then a digit run of that radix
+///   (`0xFF`, `0x0008`, `0xdead_beef`);
+/// - otherwise `[+-]? ( 0 | [1-9] run ) ( . run )? ( [eE] [+-]? run )?`.
+///
+/// Prefixes are tried first: `0xE` is a hex digit, not an exponent.
+fn number_kind(s: &str) -> Option<NumberKind> {
     let b = s.as_bytes();
-    let i = scan_sign(b, 0);
-    let Some(i) = scan_integer_part(b, i) else {
-        return false;
+    let prefixed = match b {
+        [b'0', b'x', ..] => Some((16, is_hex_digit as fn(u8) -> bool)),
+        [b'0', b'o', ..] => Some((8, is_octal_digit as fn(u8) -> bool)),
+        [b'0', b'b', ..] => Some((2, is_binary_digit as fn(u8) -> bool)),
+        _ => None,
     };
-    let Some(i) = scan_fraction(b, i) else {
-        return false;
-    };
-    let Some(i) = scan_exponent(b, i) else {
-        return false;
-    };
-    i == b.len()
+    if let Some((radix, is_digit)) = prefixed {
+        return (scan_digit_run(b, 2, is_digit)? == b.len()).then_some(NumberKind::Int(radix));
+    }
+    let int_end = scan_integer_part(b, scan_sign(b, 0))?;
+    let end = scan_exponent(b, scan_fraction(b, int_end)?)?;
+    (end == b.len()).then_some(if end == int_end {
+        NumberKind::Int(10)
+    } else {
+        NumberKind::Float
+    })
 }
 
-fn parse_int(s: &str, lineno: usize) -> Result<i64, String> {
-    s.parse::<i64>()
-        .map_err(|_| format!("line {lineno}: invalid integer {}", quote(s)))
-}
-
-fn parse_float(s: &str, lineno: usize) -> Result<f64, String> {
-    s.parse::<f64>()
-        .map_err(|_| format!("line {lineno}: invalid float {}", quote(s)))
+/// A number literal (L2-CFG-014). One the grammar refuses, or one past 64
+/// bits, is repeated as written (L2-CLI-022). A value in range goes on to its
+/// key's own range check, which names it in decimal like any other value.
+fn parse_number(s: &str, lineno: usize) -> Result<TomlValue, String> {
+    let Some(kind) = number_kind(s) else {
+        return Err(format!(
+            "line {lineno}: invalid number literal {}",
+            quote(s)
+        ));
+    };
+    // The grammar admits only ASCII, so dropping the separators is safe.
+    let digits = s.replace('_', "");
+    match kind {
+        NumberKind::Int(10) => digits.parse::<i64>().ok().map(TomlValue::Int),
+        // The prefix is unsigned, and `from_str_radix` sees only the digits,
+        // so its own tolerance of a sign is never reached.
+        NumberKind::Int(radix) => i64::from_str_radix(&digits[2..], radix)
+            .ok()
+            .map(TomlValue::Int),
+        NumberKind::Float => digits.parse::<f64>().ok().map(TomlValue::Float),
+    }
+    .ok_or_else(|| {
+        let what = if kind == NumberKind::Float {
+            "float"
+        } else {
+            "integer"
+        };
+        format!("line {lineno}: invalid {what} {}", quote(s))
+    })
 }
 
 fn parse_array(s: &str, lineno: usize) -> Result<TomlValue, String> {
@@ -1760,35 +1799,111 @@ format = "csv#weird"
         assert!(parse_toml("[decode]\nstandard_tick_rate_hz = 1.0\n").is_ok());
     }
 
-    /// The number grammar accepts plain decimal integers/floats but rejects the
-    /// non-TOML forms Rust's native `i64`/`f64` parsing would otherwise take
-    /// (leading zeros, a bare trailing dot), keeping numeric acceptance aligned
-    /// with Python's `tomllib`.
-    /// Requirements: L2-CFG-010
+    /// The number grammar is TOML 1.0's: plain decimals, underscores between
+    /// digits, and `0x` / `0o` / `0b` integers -- and none of the looser forms
+    /// Rust's own `i64` / `f64` parsing would take (leading zeros, a bare
+    /// trailing dot, a signed prefix).
+    /// Requirements: L2-CFG-014
     #[test]
     fn number_literal_grammar() {
-        for ok in [
-            "0",
-            "8",
-            "-1",
-            "+8",
-            "100",
-            "1.5",
-            "0.5",
-            "1e6",
-            "1000000.0",
-            "1.5e-3",
+        use NumberKind::{Float, Int};
+        for (ok, kind) in [
+            ("0", Int(10)),
+            ("8", Int(10)),
+            ("-1", Int(10)),
+            ("+8", Int(10)),
+            ("-0", Int(10)),
+            ("1_000_000", Int(10)),
+            ("1_0", Int(10)),
+            ("0x08", Int(16)),
+            ("0xFF", Int(16)),
+            ("0xff", Int(16)),
+            ("0xE", Int(16)),
+            ("0x1e3", Int(16)),
+            ("0xdead_beef", Int(16)),
+            ("0o10", Int(8)),
+            ("0o7_7", Int(8)),
+            ("0b1000", Int(2)),
+            ("0b1_0", Int(2)),
+            ("1.5", Float),
+            ("0.5", Float),
+            ("1e6", Float),
+            ("1E6", Float),
+            ("1e06", Float),
+            ("1000000.0", Float),
+            ("1_000_000.0", Float),
+            ("1.000_1", Float),
+            ("1.5e-3", Float),
+            ("1e1_0", Float),
+            ("0e0", Float),
         ] {
-            assert!(is_toml_number_literal(ok), "{ok:?} should be accepted");
+            assert_eq!(number_kind(ok), Some(kind), "{ok:?}");
         }
         for bad in [
-            "08", "01", "00", "1.", ".5", "1.e3", "0x08", "1_0", "", "+", "1..2",
+            "", "+", "-", "08", "01", "00", "0_1", "1.", ".5", "1.e3", "1..2", "_1", "1_", "1__0",
+            "1_.0", "1._0", "1e_1", "1e1_", "1_e1", "0x", "0x_8", "0x8_", "0x__8", "0X8", "0O7",
+            "0B1", "-0x1", "+0x1", "0xG", "0o8", "0b2", "0x1.0", "0b1e1", "0x 1", "1 0", "inf",
+            "nan", "+inf", "1e", "1e+", "1.5.1",
         ] {
-            assert!(!is_toml_number_literal(bad), "{bad:?} should be rejected");
+            assert_eq!(number_kind(bad), None, "{bad:?} should be rejected");
         }
-        // A leading-zero literal is rejected end-to-end, not just by the helper.
+        // A rejected literal fails end to end, not just in the helper.
         assert!(parse_toml("[decode]\ndetect_records = 08\n").is_err());
         assert!(parse_toml("[filter]\nexclude_rts = [01]\n").is_err());
+    }
+
+    /// Each form parses to the value TOML gives it, in a scalar and in an
+    /// array; an integer past `i64` is refused, repeated as written.
+    /// Requirements: L2-CFG-014
+    #[test]
+    fn number_literal_values() {
+        for (text, value) in [
+            ("1_000_000", 1_000_000),
+            ("0x08", 8),
+            ("0xFF", 255),
+            ("0xdead_beef", 0xdead_beef),
+            ("0o10", 8),
+            ("0b1000", 8),
+            ("-1_0", -10),
+            ("0x7FFF_FFFF_FFFF_FFFF", i64::MAX),
+            ("9_223_372_036_854_775_807", i64::MAX),
+            ("-9_223_372_036_854_775_808", i64::MIN),
+        ] {
+            assert_eq!(parse_number(text, 1), Ok(TomlValue::Int(value)), "{text}");
+        }
+        assert_eq!(
+            parse_number("1_000_000.0", 1),
+            Ok(TomlValue::Float(1_000_000.0))
+        );
+        assert_eq!(parse_number("1e1_0", 1), Ok(TomlValue::Float(1e10)));
+        for (text, kind) in [
+            ("0x8000_0000_0000_0000", "integer"),
+            ("9_223_372_036_854_775_808", "integer"),
+            ("-9223372036854775809", "integer"),
+            (
+                "0b1_0000000000000000000000000000000000000000000000000000000000000000",
+                "integer",
+            ),
+        ] {
+            assert_eq!(
+                parse_number(text, 3),
+                Err(format!("line 3: invalid {kind} \"{text}\"")),
+                "the literal is repeated as written"
+            );
+        }
+        let config = parse_into_config(
+            "[decode]\ndetect_records = 0x08\n[filter]\nexclude_rts = [0x1F, 0b1_0]\n\
+             [output]\nmax_sort_group = 1_000\n",
+        )
+        .unwrap();
+        assert_eq!(config.detect_records, 8);
+        assert_eq!(config.max_sort_group, 1000);
+        assert_eq!(config.filters.exclude_rts, [31, 2]);
+        // The range is checked on the value: 0x11 fails exactly as 17 does,
+        // and the range error names the value in decimal.
+        let hex = parse_into_config("[output]\nthreads = 0x11\n").unwrap_err();
+        let dec = parse_into_config("[output]\nthreads = 17\n").unwrap_err();
+        assert_eq!(hex.to_string(), dec.to_string());
     }
 
     /// Schema-invalid but TOML-valid values are load-time config errors, aligned

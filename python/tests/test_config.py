@@ -959,10 +959,8 @@ class TestSchemaValidation:
         "snippet",
         [
             "[decode]\nx = { a = 1 }\n",  # inline table
-            "[decode]\ndetect_records = 1_0\n",  # underscore separator
-            "[decode]\ndetect_records = 0x08\n",  # hex integer
-            "[decode]\ndetect_records = 0o10\n",  # octal integer
-            "[decode]\ndetect_records = 0b1000\n",  # binary integer
+            # Separators and 0x/0o/0b prefixes are accepted since L2-CFG-014;
+            # test_config_numbers.py covers the whole number grammar.
             "[decode]\nx = 1979-05-27\n",  # date-time
             "[filter]\nexclude_rts = [\n1,\n]\n",  # multi-line array
             '[decode]\n"strict" = true\n',  # quoted key

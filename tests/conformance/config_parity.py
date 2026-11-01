@@ -100,10 +100,22 @@ CORPUS: list[tuple[str, str | bytes, str]] = [
     # ── outside the flat schema (reject on both) ───────────────────────────
     ("inline-table", "[decode]\nx = { a = 1 }\n", "reject"),
     ("multiline-array", "[filter]\nexclude_rts = [\n  1,\n]\n", "reject"),
-    ("int-underscores", "[decode]\ndetect_records = 1_0\n", "reject"),
-    ("hex-int", "[decode]\ndetect_records = 0x08\n", "reject"),
-    ("octal-int", "[decode]\ndetect_records = 0o10\n", "reject"),
-    ("binary-int", "[decode]\ndetect_records = 0b1000\n", "reject"),
+    # L2-CFG-014: TOML 1.0's number forms, accepted since 5.9.0 (python/tests/
+    # test_config_numbers.py referees the whole grammar against tomllib).
+    ("int-underscores", "[decode]\ndetect_records = 1_0\n", "accept"),
+    ("hex-int", "[decode]\ndetect_records = 0x08\n", "accept"),
+    ("octal-int", "[decode]\ndetect_records = 0o10\n", "accept"),
+    ("binary-int", "[decode]\ndetect_records = 0b1000\n", "accept"),
+    ("float-underscores", "[decode]\nstandard_tick_rate_hz = 1_000_000.0\n", "accept"),
+    ("hex-int-array", "[filter]\nexclude_rts = [0x1F, 0b1]\n", "accept"),
+    ("hex-int-out-of-range", "[output]\nthreads = 0x11\n", "reject"),
+    ("hex-int-past-i64", "[mux]\nfield = 0x8000_0000_0000_0000\n", "reject"),
+    ("int-underscore-doubled", "[decode]\ndetect_records = 1__0\n", "reject"),
+    ("int-underscore-leading", "[decode]\ndetect_records = _10\n", "reject"),
+    ("int-underscore-trailing", "[decode]\ndetect_records = 10_\n", "reject"),
+    ("hex-int-signed", "[mux]\nfield = -0x1\n", "reject"),
+    ("hex-int-upper-prefix", "[decode]\ndetect_records = 0X08\n", "reject"),
+    ("octal-int-bad-digit", "[decode]\ndetect_records = 0o8\n", "reject"),
     ("datetime-value", "[decode]\nx = 1979-05-27\n", "reject"),
     # `1e6` is a plain float both parsers accept — kept as an `accept` guard that
     # the whitelist must not over-reject scientific notation.

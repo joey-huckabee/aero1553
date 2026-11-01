@@ -90,8 +90,9 @@ _KEYS = [
     "中文",  # CJK
 ]
 # Values: valid forms mixed heavily with edge cases that have historically
-# diverged (leading zeros, bare trailing dot, hex/oct/bin, underscores, string
-# escapes, inline tables, datetimes, multi-line-array openers).
+# diverged (leading zeros, bare trailing dot, hex/oct/bin, underscores -- valid
+# since L2-CFG-014 but easy to misplace -- string escapes, inline tables,
+# datetimes, multi-line-array openers).
 _VALUES = [
     '"per-file"',  # a valid delta_scope name; nonsense for every other key
     # Non-ASCII digits: Rust's `is_ascii_digit` rejects them, and Python's
@@ -130,6 +131,15 @@ _VALUES = [
     "0o10",
     "0b1000",
     "1_000",
+    # L2-CFG-014's edges: separators in the wrong place, a signed prefix, a hex
+    # digit that looks like an exponent, and a prefixed value past 64 bits.
+    "1__0",
+    "_1",
+    "1_",
+    "-0x1",
+    "0xE",
+    "0X8",
+    "0x8000_0000_0000_0000",
     "+.5",
     "00",
     # 64-bit boundaries. The C++ loader parsed integers with `strtoll`, which
