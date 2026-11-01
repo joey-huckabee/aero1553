@@ -121,7 +121,8 @@ seen by multiple recorders already ships behind `--collapse-duplicates` /
 - **Deduped `count`** — collapsing applies to the `decode` CSV path today; a
   deduped `count` mode could follow.
 
-**Merging streams (not started).** A merge needs its inputs side by side, so
+**Merging streams (deferred, possible future change).** Deferred 2026-11-01 by
+the maintainer; not scheduled. A merge needs its inputs side by side, so
 one pipe cannot carry it: `cat a.mie b.mie | aero1553 decode -` is one stream,
 which ends at `a`'s terminator (5.7.0 warns, `L2-RDR-022`). Process
 substitution names each stream separately --
