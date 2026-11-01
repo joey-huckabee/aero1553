@@ -21,6 +21,44 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **The decoding thread runs 11% fewer instructions per record**, measured as
+  8-9% less decode time on Linux arm64. That thread is what a decode waits on
+  (5.2.0 onward). Three changes, each kept only after it measured at least 2%
+  on its own:
+  - Each record's data words are read straight into `DataWords`, not into a
+    zeroed buffer and then copied (-6.3%).
+  - The `log_*!` macros test the level before building a line's arguments.
+    The reader's per-record DEBUG line cost 29 instructions per record with
+    DEBUG off (-2.3%).
+  - The read window's per-record "is it in memory" test is inline, and the
+    refill is a separate cold function (-3.3%).
+
+  Calling thread: 1,037 to 919 instructions per record
+  (`perf/instructions.py`). On 256 MiB in a Linux arm64 sandbox, 21 shuffled
+  paired rounds, output identical to 5.6.1, the candidate took this fraction
+  of 5.6.1's time: decode **0.911** (rounds 0.845-0.929), merge **0.925**,
+  corrupt with `--separate-errors` **0.920**. Decoding from standard input is
+  unchanged relative to the file (0.999).
+
+  On the x86 CI runners the effect is inside their noise. Four baseline runs
+  of the whole change read decode 1.069, 0.963 and 1.128 (7 rounds each) and
+  0.939 (21 rounds); merge 0.962, 0.962 and 0.946; corrupt-split 0.921, 0.875
+  and 0.981. A 21-round run at each step found no step slower than a control
+  with no Rust change (0.970), and single rounds there spread +-25%. So x86
+  shows no regression and no measured gain: a few percent either way cannot
+  be resolved on those runners.
+
+### Added
+
+- **`perf/instructions.py`**: instructions per record for the calling and
+  rendering threads of one decode, counted by Valgrind's callgrind, with
+  `--json` / `--compare`. Timing on a shared machine cannot show a 1-2%
+  change; an instruction count barely moves between runs. It works where
+  `perf` cannot reach the hardware counters, as in this repository's cloud
+  sandboxes.
+
+### Changed
+
 - **Performance gates are enforced on Windows** with the Linux limits. The suite
   ran there report-only from 5.6.0 until 11 runs had shown where its ratios
   sit; all 11 were inside the limits.

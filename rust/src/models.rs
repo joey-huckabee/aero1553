@@ -914,6 +914,22 @@ impl DataWords {
         }
     }
 
+    /// Decode little-endian words straight into the buffer: at most
+    /// [`MAX_DATA_WORDS`], and a trailing odd byte is ignored. What
+    /// [`Self::from_slice`] of the decoded words gives, without building the
+    /// words in a second buffer first -- once per record, on the thread a
+    /// decode waits on.
+    pub(crate) fn from_le_bytes(bytes: &[u8]) -> Self {
+        let mut buf = [0u16; MAX_DATA_WORDS];
+        let (chunks, _odd) = bytes.as_chunks::<2>();
+        let mut len = 0u8;
+        for (slot, chunk) in buf.iter_mut().zip(chunks) {
+            *slot = u16::from_le_bytes(*chunk);
+            len += 1;
+        }
+        Self { buf, len }
+    }
+
     /// Build from a slice, keeping at most [`MAX_DATA_WORDS`] words. A longer
     /// slice is truncated rather than panicking: MIL-STD-1553B caps a single
     /// transaction at 32 data words, so any standard-conforming caller is
@@ -1340,6 +1356,26 @@ impl MieMessage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// `from_le_bytes` is `from_slice` of the decoded words, without the
+    /// second buffer: whole words only, at most `MAX_DATA_WORDS` of them.
+    #[test]
+    fn data_words_from_le_bytes_matches_from_slice() {
+        let bytes: Vec<u8> = (0..80u8).map(|b| b.wrapping_mul(37)).collect();
+        for len in [0, 1, 2, 3, 30, 63, 64, 65, 80] {
+            let words: Vec<u16> = bytes[..len]
+                .as_chunks::<2>()
+                .0
+                .iter()
+                .map(|c| u16::from_le_bytes(*c))
+                .collect();
+            assert_eq!(
+                DataWords::from_le_bytes(&bytes[..len]),
+                DataWords::from_slice(&words),
+                "{len} bytes"
+            );
+        }
+    }
 
     /// Requirements: L2-MSG-001
     #[test]

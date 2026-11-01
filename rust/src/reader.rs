@@ -20,7 +20,7 @@ use crate::decode::{
     DEFAULT_DETECT_RECORDS, DEFAULT_MUX_DELIMITER, DEFAULT_MUX_ENABLED, DEFAULT_MUX_FIELD,
     DetectionConfidence, MIN_RECORD_BYTES_STANDARD, classify_message_format, decode_command_word,
     decode_irig_timestamp, decode_standard_timestamp, decode_type_word, is_terminator_type_word,
-    mux_from_filename, probe_timestamp_format, read_u16, read_u16_array,
+    mux_from_filename, probe_timestamp_format, read_u16,
 };
 use crate::delta::{DeltaOutcome, DeltaTracker};
 use crate::error::{MieError, MieResult};
@@ -1257,13 +1257,12 @@ impl RecordIter<'_> {
         if raw_word_count > 0 {
             // Guarded by `raw_word_count > 0` above.
             let n = usize::try_from(raw_word_count).unwrap_or(0);
-            let mut buf = [0u16; crate::models::MAX_DATA_WORDS];
             let n_capped = n.min(crate::models::MAX_DATA_WORDS);
             // Bound the read to the current record (defense-in-depth).
             let record_end = self.rel() + record_bytes;
             let record_data = &self.win()[..record_end];
-            if read_u16_array(record_data, cmd_byte_offset, n_capped, &mut buf) {
-                data_words = DataWords::from_slice(&buf[..n_capped]);
+            if let Some(bytes) = record_data.get(cmd_byte_offset..cmd_byte_offset + n_capped * 2) {
+                data_words = DataWords::from_le_bytes(bytes);
             }
         }
 
@@ -1508,14 +1507,14 @@ impl RecordIter<'_> {
             // guarantee syntactic rather than positional.
             let n = usize::try_from(payload_words).unwrap_or(0);
             let n_capped = n.min(crate::models::MAX_DATA_WORDS);
-            let mut buf = [0u16; crate::models::MAX_DATA_WORDS];
             // Bound to the current record's bytes. payload_words is
             // already derived from tw.word_count, so this is structurally
             // safe; bounding makes it explicit.
             let record_end = self.rel() + usize::from(tw.word_count()) * 2;
             let record_data = &self.win()[..record_end];
-            if read_u16_array(record_data, cmd_byte_offset + 2, n_capped, &mut buf) {
-                data_words = DataWords::from_slice(&buf[..n_capped]);
+            let start = cmd_byte_offset + 2;
+            if let Some(bytes) = record_data.get(start..start + n_capped * 2) {
+                data_words = DataWords::from_le_bytes(bytes);
             }
         }
 
@@ -1593,14 +1592,12 @@ fn extract_payload(
         Receive, ReceiveBroadcast, RtToRt, RtToRtBroadcast, SpuriousData, Transmit,
     };
 
+    // All `n` words or none, as before: a payload running past the data is
+    // empty, not partial.
     let read_n = |start: usize, n: usize| -> DataWords {
-        let mut buf = [0u16; crate::models::MAX_DATA_WORDS];
         let n_capped = n.min(crate::models::MAX_DATA_WORDS);
-        if read_u16_array(data, start, n_capped, &mut buf) {
-            DataWords::from_slice(&buf[..n_capped])
-        } else {
-            DataWords::new()
-        }
+        data.get(start..start + n_capped * 2)
+            .map_or_else(DataWords::new, DataWords::from_le_bytes)
     };
 
     match fmt {
