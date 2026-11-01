@@ -199,11 +199,9 @@ pub fn with_cli_scope<R>(f: impl FnOnce() -> R) -> R {
 #[doc(hidden)]
 #[inline]
 pub fn emit(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
-    // The level check stays first and alone, and `emit` is inlined so it sits
-    // at each call site: a filtered-out line -- including the per-record DEBUG
-    // lines on the decode path -- costs a thread-local load, at most one
-    // relaxed load, and a branch. The delivery below is `#[cold]` so its code
-    // stays out of that path.
+    // The `log_*!` macros test the level before building `args` (see them);
+    // this test stays for a direct caller. The delivery below is `#[cold]` so
+    // its code stays out of the filtered-out path.
     if !enabled(level) {
         return;
     }
@@ -280,28 +278,43 @@ fn deliver(level: Level, module: &str, args: std::fmt::Arguments<'_>) {
 #[doc(hidden)]
 pub use self::emit as _emit;
 
+// The level is tested in the macro, before `format_args!` builds anything.
+// `emit` tests it too, but by then the caller has built the arguments, and the
+// compiler did not always drop that work on the early return: the per-record
+// DEBUG line in the reader cost 29 instructions per record with DEBUG off,
+// 3% of the decoding thread (perf/instructions.py). No log call's arguments
+// have side effects, so not evaluating them when the line is filtered out
+// changes nothing but the cost.
 #[macro_export]
 macro_rules! log_debug {
     ($($arg:tt)*) => {
-        $crate::log::emit($crate::log::Level::Debug, module_path!(), format_args!($($arg)*))
+        if $crate::log::enabled($crate::log::Level::Debug) {
+            $crate::log::emit($crate::log::Level::Debug, module_path!(), format_args!($($arg)*))
+        }
     };
 }
 #[macro_export]
 macro_rules! log_info {
     ($($arg:tt)*) => {
-        $crate::log::emit($crate::log::Level::Info, module_path!(), format_args!($($arg)*))
+        if $crate::log::enabled($crate::log::Level::Info) {
+            $crate::log::emit($crate::log::Level::Info, module_path!(), format_args!($($arg)*))
+        }
     };
 }
 #[macro_export]
 macro_rules! log_warn {
     ($($arg:tt)*) => {
-        $crate::log::emit($crate::log::Level::Warn, module_path!(), format_args!($($arg)*))
+        if $crate::log::enabled($crate::log::Level::Warn) {
+            $crate::log::emit($crate::log::Level::Warn, module_path!(), format_args!($($arg)*))
+        }
     };
 }
 #[macro_export]
 macro_rules! log_error {
     ($($arg:tt)*) => {
-        $crate::log::emit($crate::log::Level::Error, module_path!(), format_args!($($arg)*))
+        if $crate::log::enabled($crate::log::Level::Error) {
+            $crate::log::emit($crate::log::Level::Error, module_path!(), format_args!($($arg)*))
+        }
     };
 }
 
