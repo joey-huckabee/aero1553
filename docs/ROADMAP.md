@@ -392,7 +392,11 @@ order they are expected to pay:
   error-continuation state (`prev_was_error`, the `0x2000` / `0x2001`
   classification) and `DELTA` state must carry across every boundary exactly as
   they do today. `rust/src/parallel.rs`, `rust/src/merge.rs`.
-- **Indexed duplicate lookup in the merge.** With
+- **Indexed duplicate lookup in the merge (deferred, possible future
+  change).** Deferred 2026-11-01: the maintainer's sites do not see duplicate
+  messages in their output, so `--collapse-duplicates` is not in use there and
+  this would speed up a path nobody runs. Pick it up if a site starts merging
+  with collapsing on wide windows or busy buses. With
   `--collapse-duplicates`, every record scans the whole survivor set, once to
   expire and once to match (`DedupWindow::is_duplicate`, `rust/src/merge.rs`).
   A wide `--collapse-window-us` or dense timestamps make that expensive. A
