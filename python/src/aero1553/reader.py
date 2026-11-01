@@ -108,6 +108,10 @@ class MieFileReader:
         mux_delimiter: Delimiter the file name is split on for MUX.
         mux_field: Which split field is the MUX value (negative counts from
             the end).
+        mux_value: A fixed MUX value for every record, in place of the file
+            name's field (L2-WRT-028). ``None`` (default) takes it from the
+            name. In a merge, each reader keeps its own, so readers built
+            with different values label their rows apart.
         calendar_year: The calendar year a calendar rendering will use, or
             ``None`` under ``doy`` (L2-WRT-026 clause 4 / L2-LOG-002).
 
@@ -115,6 +119,8 @@ class MieFileReader:
         MieFileNotFoundError: If the file does not exist.
         MieFileEmptyError: If the file is zero bytes.
         MieFileIoError: If the file exists but cannot be opened or read.
+        ValueError: If ``mux_value`` is empty, or given with
+            ``mux_enabled=False``.
     """
 
     def __init__(
@@ -130,7 +136,18 @@ class MieFileReader:
         mux_delimiter: str = DEFAULT_MUX_DELIMITER,
         mux_field: int = DEFAULT_MUX_FIELD,
         calendar_year: int | None = None,
+        mux_value: str | None = None,
     ) -> None:
+        if mux_value is not None:
+            if not mux_value:
+                msg = (
+                    "mux_value must be a non-empty string; "
+                    "pass mux_enabled=False to leave MUX empty"
+                )
+                raise ValueError(msg)
+            if not mux_enabled:
+                msg = "mux_value and mux_enabled=False contradict each other"
+                raise ValueError(msg)
         self._path = Path(path)
         self._native = NativeReader(
             self._path,
@@ -145,6 +162,7 @@ class MieFileReader:
             mux_delimiter=mux_delimiter,
             mux_field=mux_field,
             calendar_year=calendar_year,
+            mux_value=mux_value,
         )
 
     @property

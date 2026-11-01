@@ -19,6 +19,45 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **`--mux-value TEXT` / `[mux] value` / `mux_value=`: set the `MUX` column
+  directly** (`L2-WRT-028`).
+  - Every row gets the value in place of the file name's field: for a file
+    named without a recorder field, and for standard input (`decode -`), whose
+    `MUX` was always empty.
+  - `--mux-value` overrides a configured `value` and a configured
+    `enabled = false`.
+  - Refused (exit `4` on the CLI, `5` in a config file, `ValueError` in
+    Python): an empty value (that is `--no-mux`), a value with `--no-mux` /
+    `enabled = false`, and a value on a decode of two or more inputs. A merge's
+    `MUX` is how its rows tell recorders apart, and one value on every row
+    would erase that.
+  - In the Python library each `MieFileReader(..., mux_value=...)` keeps its
+    own, so a merge of readers can label each input.
+  - In Rust it is `MieFileReader::with_mux_value`, an additive method, not a
+    `ReaderOptions` field: a new field would break code that builds that
+    struct with a literal.
+- **A warning when data follows the end-of-records terminator**
+  (`L2-RDR-022`). A recording ends at its terminator, so recordings joined end
+  to end -- `cat a.mie b.mie | aero1553 decode -`, or a file built that way --
+  decoded as the first one only, at exit `0`, with no word of the rest (on the
+  golden recordings, 723 rows of 1,103). The reader now WARNs, naming the
+  terminator and the first non-zero byte after it, and says to pass recordings
+  as separate inputs.
+  - Zero bytes are taken for padding and not reported.
+  - The scan stops 1 MiB past the terminator, so a heavily padded file costs
+    no full read.
+  - Rows and exit code are unchanged, in strict mode too: the trailing data is
+    not a malformed record, and failing would break decodes that succeed today.
+
+- **`perf/instructions.py`**: instructions per record for the calling and
+  rendering threads of one decode, counted by Valgrind's callgrind, with
+  `--json` / `--compare`. Timing on a shared machine cannot show a 1-2%
+  change; an instruction count barely moves between runs. It works where
+  `perf` cannot reach the hardware counters, as in this repository's cloud
+  sandboxes.
+
 ### Changed
 
 - **The decoding thread runs 11% fewer instructions per record**, measured as
@@ -47,17 +86,6 @@ shared behavior) holds at any compatible version pair. See
   with no Rust change (0.970), and single rounds there spread +-25%. So x86
   shows no regression and no measured gain: a few percent either way cannot
   be resolved on those runners.
-
-### Added
-
-- **`perf/instructions.py`**: instructions per record for the calling and
-  rendering threads of one decode, counted by Valgrind's callgrind, with
-  `--json` / `--compare`. Timing on a shared machine cannot show a 1-2%
-  change; an instruction count barely moves between runs. It works where
-  `perf` cannot reach the hardware counters, as in this repository's cloud
-  sandboxes.
-
-### Changed
 
 - **Performance gates are enforced on Windows** with the Linux limits. The suite
   ran there report-only from 5.6.0 until 11 runs had shown where its ratios

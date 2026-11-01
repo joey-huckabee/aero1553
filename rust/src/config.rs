@@ -124,6 +124,11 @@ pub struct DecoderConfig {
     pub mux_enabled: bool,
     pub mux_delimiter: String,
     pub mux_field: i64,
+    /// A fixed MUX value for every record, replacing the one taken from the
+    /// file name (`[mux] value` / `--mux-value`, L2-WRT-028). `None` (the
+    /// default) takes MUX from the name. Never `Some("")`: both sources refuse
+    /// an empty value, since `--no-mux` is how MUX is left empty.
+    pub mux_value: Option<String>,
     /// L2-MRG-007: collapse the same bus transaction witnessed by multiple
     /// recorders into one row, in a multi-file merge. Off by default (loss-free);
     /// `[merge] collapse_duplicates = true` / `--collapse-duplicates` enables it.
@@ -182,6 +187,7 @@ impl Default for DecoderConfig {
             mux_enabled: DEFAULT_MUX_ENABLED,
             mux_delimiter: DEFAULT_MUX_DELIMITER.to_string(),
             mux_field: DEFAULT_MUX_FIELD,
+            mux_value: None,
             collapse_duplicates: false,
             collapse_window_us: 0,
             delta_scope: DeltaScope::PerFile,
@@ -216,6 +222,9 @@ pub struct ConfigOverrides {
     pub mux_enabled: Option<bool>,
     pub mux_delimiter: Option<String>,
     pub mux_field: Option<i64>,
+    /// `--mux-value`: a fixed MUX value. Turns MUX population on, overriding a
+    /// configured `enabled = false`, as every CLI flag overrides the config.
+    pub mux_value: Option<String>,
     pub collapse_duplicates: Option<bool>,
     pub collapse_window_us: Option<i64>,
     pub delta_scope: Option<DeltaScope>,
@@ -284,6 +293,10 @@ impl DecoderConfig {
         // Stored as `Option<f64>`, so the value is re-wrapped rather than copied.
         if let Some(v) = ov.standard_tick_rate_hz {
             self.standard_tick_rate_hz = Some(v);
+        }
+        if let Some(v) = ov.mux_value {
+            self.mux_value = Some(v);
+            self.mux_enabled = true;
         }
         // Likewise `Option<u16>`: "no year supplied" has to stay expressible,
         // so an absent override must not overwrite a configured year with
@@ -607,6 +620,24 @@ fn apply_mux_section(toml: &TomlDoc, cfg: &mut DecoderConfig) -> Result<(), Conf
     if let Some(n) = toml.get_int("mux", "field")? {
         cfg.mux_field = n;
     }
+    // L2-WRT-028: a fixed value, replacing the one taken from the file name.
+    if let Some(v) = toml.get_string("mux", "value")? {
+        if v.is_empty() {
+            return Err(ConfigError(
+                "Invalid mux.value: must be a non-empty string \
+                 (set enabled = false to leave MUX empty)"
+                    .to_string(),
+            ));
+        }
+        if !cfg.mux_enabled {
+            return Err(ConfigError(
+                "mux.value is set but mux.enabled = false: a fixed MUX value and \
+                 an empty MUX column contradict each other; remove one"
+                    .to_string(),
+            ));
+        }
+        cfg.mux_value = Some(v.to_string());
+    }
     Ok(())
 }
 
@@ -756,6 +787,7 @@ fn is_known_shared_key(section: &str, key: &str) -> bool {
             | ("mux", "enabled")
             | ("mux", "delimiter")
             | ("mux", "field")
+            | ("mux", "value")
             | ("merge", "collapse_duplicates")
             | ("merge", "collapse_window_us")
             | ("merge", "max_collapse_survivors")
@@ -1479,6 +1511,47 @@ fn push_quoted_char(c: char, cur: &mut String, prev_backslash: bool) -> (bool, b
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Requirements: L2-WRT-028
+    #[test]
+    fn mux_value_parses_and_refuses_empty_or_contradicted() {
+        let cfg = parse_into_config("[mux]\nvalue = \"R7\"\n").unwrap();
+        assert_eq!(cfg.mux_value.as_deref(), Some("R7"));
+        assert!(cfg.mux_enabled);
+        assert_eq!(DecoderConfig::default().mux_value, None);
+
+        let empty = parse_into_config("[mux]\nvalue = \"\"\n").unwrap_err();
+        assert!(empty.0.contains("mux.value"), "{}", empty.0);
+        // Either order in the file: the contradiction is the pair.
+        for text in [
+            "[mux]\nenabled = false\nvalue = \"R7\"\n",
+            "[mux]\nvalue = \"R7\"\nenabled = false\n",
+        ] {
+            let err = parse_into_config(text).unwrap_err();
+            assert!(err.0.contains("contradict"), "{text:?}: {}", err.0);
+        }
+        assert!(
+            parse_into_config("[mux]\nvalue = 7\n").is_err(),
+            "not a string"
+        );
+    }
+
+    /// Requirements: L2-WRT-028
+    #[test]
+    fn mux_value_override_turns_mux_on_over_the_config() {
+        let off = parse_into_config("[mux]\nenabled = false\n").unwrap();
+        let cfg = off.with_overrides(ConfigOverrides {
+            mux_value: Some("CLI".to_string()),
+            ..ConfigOverrides::default()
+        });
+        assert!(cfg.mux_enabled);
+        assert_eq!(cfg.mux_value.as_deref(), Some("CLI"));
+        let configured = parse_into_config("[mux]\nvalue = \"CFG\"\n").unwrap();
+        let kept = configured
+            .clone()
+            .with_overrides(ConfigOverrides::default());
+        assert_eq!(kept.mux_value.as_deref(), Some("CFG"));
+    }
 
     /// Absolute path to the repo-root `config/default.toml`.
     ///

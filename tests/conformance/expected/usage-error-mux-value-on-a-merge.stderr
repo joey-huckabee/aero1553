@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --mux-value gives every row the same MUX, which a merge of 2 inputs cannot use: MUX is how its rows tell their recorders apart. Decode the inputs one at a time, or take MUX from the file names (no fixed value) or leave it empty (--no-mux)
+Error: --mux-value gives every row the same MUX, which a merge of 2 inputs cannot use: MUX is how its rows tell their recorders apart. Decode the inputs one at a time, or take MUX from the file names (no fixed value) or leave it empty (--no-mux)
+Run 'aero1553 --help' for usage.

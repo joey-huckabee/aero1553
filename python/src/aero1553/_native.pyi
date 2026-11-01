@@ -189,6 +189,7 @@ class NativeReader:
         mux_delimiter: str,
         mux_field: int,
         calendar_year: int | None,
+        mux_value: str | None = None,
     ) -> None: ...
     @property
     def file_size(self) -> int: ...

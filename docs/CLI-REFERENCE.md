@@ -253,12 +253,19 @@ having no name and being readable once:
 
 - **`-` must be the only input.** A merge reads files: `decode - other.mie` is a
   usage error (exit `4`).
-- **`MUX` is empty**: there is no file name to take it from.
+- **`MUX` is empty** -- there is no file name to take it from -- unless you set
+  one with `--mux-value`.
 - **No input/output collision check**: there is no input path. `--no-clobber`
   still protects the destination.
 - **A terminal is refused** (exit `4`): `decode -` typed with nothing piped in
   would otherwise wait for input that cannot be typed.
 - **`dump -` is refused** (exit `4`): the dump states the input's size first.
+- **Don't `cat` recordings together into one pipe.** A recording ends at its
+  end-of-records terminator, so `cat a.mie b.mie | aero1553 decode -` decodes
+  `a` only. The decoder warns when non-zero data follows the terminator
+  (`L2-RDR-022`), but the rows of `b` are not in the output. To combine
+  recordings, list them as inputs: `aero1553 decode a.mie b.mie`. Merging
+  several *streams* is not supported yet (`ROADMAP.md`).
 - **`-` is special only as the positional input, before `--`.** `decode -- -`
   decodes a file named `-`, a manifest line or glob match of `-` is a file, and
   `-o -` still writes a file named `-`: stdout is chosen by leaving out `-o`.
@@ -318,11 +325,20 @@ field index `4`) yields `MUX = aa`. In a merge, each row carries the MUX of the
 file it was decoded from. An out-of-range field leaves MUX empty. To produce
 output that matches the DDC vendor CSV byte-for-byte (empty MUX), use `--no-mux`.
 
+`--mux-value TEXT` sets MUX directly, for every row, in place of the file name's
+field (`L2-WRT-028`): for a file named without a recorder field, and for
+standard input, which has no name. It is refused with `--no-mux` (they
+contradict), when empty (use `--no-mux`), and on a decode of two or more inputs,
+where MUX is how rows tell their recorders apart (all exit `4`). In the Python
+library each `MieFileReader(..., mux_value=...)` carries its own value, so a
+merge of readers can label each input.
+
 | Flag | Value | Default | Description |
 |------|-------|---------|-------------|
 | `--no-mux` | flag | off (MUX on) | Leave the `MUX` column empty (vendor-exact). Mirrors `[mux] enabled = false`. |
 | `--mux-delimiter D` | string | `.` | Field separator used to split the filename. Mirrors `[mux] delimiter`. |
 | `--mux-field N` | int | `4` | 0-based field index into the split filename; negative counts from the end. Mirrors `[mux] field`. |
+| `--mux-value TEXT` | string | *(unset)* | A fixed MUX value for every row, replacing the file name's field. Not with `--no-mux`, not empty, not with 2+ inputs. Overrides `[mux] value` and `[mux] enabled = false`. Mirrors `[mux] value`. |
 
 See [`docs/VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md) for the vendor-exact
 workflow.

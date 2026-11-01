@@ -75,6 +75,7 @@ _KEYS = [
     "enabled",
     "delimiter",
     "field",
+    "value",  # [mux] value (L2-WRT-028)
     "exclude_rts",
     "level",
     "irig_day_advisory",

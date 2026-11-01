@@ -201,6 +201,7 @@ and a configuration key:
 | `standard_tick_rate_hz` | `None` | the Standard counter's rate, which gives Standard records a `delta` |
 | `detect_records`, `lookahead_records` | 8, 2 | how many records format detection and sync validation look at |
 | `mux_enabled`, `mux_delimiter`, `mux_field` | `True`, `"."`, `4` | how the `mux` value is taken from the file name |
+| `mux_value` | `None` | a fixed `mux` for every record, in place of the file name's; each reader in a merge keeps its own |
 
 After a full iteration, `sync_losses` says how many corrupt stretches were
 skipped:

@@ -167,7 +167,10 @@ aero1553 count - < flight.mie
 ```
 
 The output is exactly what the same file gives, except that `MUX` is empty (a
-stream has no file name to take it from). `-` must be the only input, `dump`
+stream has no file name to take it from; set one with `--mux-value`). Don't
+`cat` several recordings into one pipe: a recording ends at its end-of-records
+terminator, so only the first is decoded (the decoder warns). List them as
+inputs instead, `aero1553 decode a.mie b.mie`, to merge them. `-` must be the only input, `dump`
 does not take it, and `-o -` is still a file named `-`. On Windows, use `cmd`
 or `<` redirection, or PowerShell 7.4 or later: Windows PowerShell 5.1
 corrupts binary data in a pipe. Details: `docs/CLI-REFERENCE.md`, "Standard input".
@@ -575,6 +578,18 @@ aero1553 decode --glob 'flight/*.mie_irig' -o merged.csv
 MUX population is **on by default**. To produce output that matches a DDC vendor
 CSV byte-for-byte (empty MUX), turn it off with **`--no-mux`** (or
 `[mux] enabled = false`). See [`VENDOR-CSV-DIFFS.md`](VENDOR-CSV-DIFFS.md).
+
+When the file name carries no recorder field -- or there is no file name, as
+with standard input -- set the value yourself:
+
+```bash
+aero1553 decode capture.mie --mux-value R7 -o out.csv     # every row's MUX is "R7"
+ssh rec7 'cat /data/rec.mie' | aero1553 decode - --mux-value R7 -o out.csv
+```
+
+`[mux] value = "R7"` in a config file does the same. A fixed value is refused on
+a merge of two or more inputs, since one label on every row would hide which
+recorder each row came from.
 
 ---
 

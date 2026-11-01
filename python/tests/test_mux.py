@@ -87,3 +87,70 @@ def test_writer_emits_mux_and_quotes(tmp_path: Path) -> None:
     buf = io.StringIO()
     write_csv([replace(msg, mux="a,b")], output=buf)
     assert '"a,b"' in buf.getvalue()
+
+
+# ── A fixed MUX value (L2-WRT-028) ──────────────────────────────────────────
+
+
+def _write(tmp_path: Path, name: str) -> Path:
+    path = tmp_path / name
+    path.write_bytes(RECORD_RT15_SA11_RCV)
+    return path
+
+
+@pytest.mark.requirement("L2-WRT-028")
+def test_reader_mux_value_replaces_the_file_name(tmp_path: Path) -> None:
+    path = _write(tmp_path, "a.b.c.d.R7.mie")
+    assert {m.mux for m in MieFileReader(path)} == {"R7"}
+    assert {m.mux for m in MieFileReader(path, mux_value="FIXED")} == {"FIXED"}
+    # The delimiter and field have nothing to pick while a value is set.
+    fixed = MieFileReader(path, mux_value="FIXED", mux_delimiter="_", mux_field=0)
+    assert {m.mux for m in fixed} == {"FIXED"}
+
+
+@pytest.mark.requirement("L2-WRT-028")
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    [
+        ({"mux_value": ""}, "non-empty"),
+        ({"mux_value": "X", "mux_enabled": False}, "contradict"),
+    ],
+)
+def test_reader_mux_value_refusals(tmp_path: Path, kwargs: dict[str, object], message: str) -> None:
+    path = _write(tmp_path, "rec.mie")
+    with pytest.raises(ValueError, match=message):
+        MieFileReader(path, **kwargs)  # type: ignore[arg-type]
+
+
+@pytest.mark.requirement("L2-WRT-028")
+def test_merge_of_readers_keeps_each_readers_value(tmp_path: Path) -> None:
+    """The library's per-input form: each reader carries its own value."""
+    from aero1553.merge import merge_readers
+
+    a = _write(tmp_path, "a.mie")
+    b = _write(tmp_path, "b.mie")
+    merged = merge_readers(
+        [MieFileReader(a, mux_value="LEFT"), MieFileReader(b, mux_value="RIGHT")]
+    )
+    assert sorted(m.mux or "" for m in merged) == ["LEFT", "RIGHT"]
+
+
+@pytest.mark.requirement("L2-WRT-028")
+def test_config_mux_value_and_its_refusals(tmp_path: Path) -> None:
+    from aero1553.config import DecoderConfig, load_config
+
+    good = tmp_path / "good.toml"
+    good.write_text('[mux]\nvalue = "CFG"\n', encoding="utf-8")
+    assert load_config(good).mux_value == "CFG"
+    assert DecoderConfig().mux_value is None
+    for name, text in (
+        ("empty.toml", '[mux]\nvalue = ""\n'),
+        ("both.toml", '[mux]\nenabled = false\nvalue = "CFG"\n'),
+    ):
+        bad = tmp_path / name
+        bad.write_text(text, encoding="utf-8")
+        with pytest.raises(ValueError, match="mux"):
+            load_config(bad)
+    # An override turns MUX on over a configured enabled = false, as on the CLI.
+    merged = DecoderConfig(mux_enabled=False).with_overrides(mux_value="CLI")
+    assert (merged.mux_enabled, merged.mux_value) == (True, "CLI")

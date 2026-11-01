@@ -41,6 +41,7 @@ impl PyReader {
     #[pyo3(signature = (
         path, *, strict, input_time_format, detect_records, lookahead_records,
         standard_tick_rate_hz, mux_enabled, mux_delimiter, mux_field, calendar_year,
+        mux_value = None,
     ))]
     fn new(
         py: Python<'_>,
@@ -54,6 +55,7 @@ impl PyReader {
         mux_delimiter: String,
         mux_field: i64,
         calendar_year: Option<i64>,
+        mux_value: Option<String>,
     ) -> PyResult<Self> {
         logbridge::sync_level(py)?;
         let options = ReaderOptions {
@@ -73,6 +75,12 @@ impl PyReader {
                 .map_err(|err| PyValueError::new_err(err.to_string()))?,
         };
         MieFileReader::with_options(&path, options)
+            // L2-WRT-028: a fixed value replaces the file name's. The Python
+            // layer has already refused an empty one, and one with MUX off.
+            .map(|inner| match mux_value {
+                Some(value) => inner.with_mux_value(value),
+                None => inner,
+            })
             .map(|inner| Self { inner })
             .map_err(|err| errors::to_py(py, err))
     }

@@ -430,7 +430,14 @@ and aren't counted):
 **MUX** fills the `MUX` column from a field of each input's file name (default on,
 `L2-WRT-020`) — handy when file names encode the source recorder. Each merged row
 carries the MUX of the file it came from. Turn it off with `--no-mux` (or
-`[mux] enabled = false`) for byte-exact vendor output. See
+`[mux] enabled = false`) for byte-exact vendor output, or set a fixed value for
+every row with `--mux-value TEXT` / `[mux] value` (single input only,
+`L2-WRT-028`).
+
+**Recordings joined end to end** (`cat a.mie b.mie`, as a file or a pipe) decode
+as the first recording only: it ends at its end-of-records terminator. The
+decoder WARNs when non-zero data follows a terminator (`L2-RDR-022`); exit code
+and rows are unchanged. Pass the recordings as separate inputs to merge them. See
 [`CONFIG-REFERENCE.md`](CONFIG-REFERENCE.md) for the keys.
 
 ---

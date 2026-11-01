@@ -93,6 +93,7 @@ pub fn load_config(py: Python<'_>, path: PathBuf) -> PyResult<Bound<'_, PyDict>>
     d.set_item("mux_enabled", c.mux_enabled)?;
     d.set_item("mux_delimiter", &c.mux_delimiter)?;
     d.set_item("mux_field", c.mux_field)?;
+    d.set_item("mux_value", &c.mux_value)?;
     d.set_item("collapse_duplicates", c.collapse_duplicates)?;
     d.set_item("collapse_window_us", c.collapse_window_us)?;
     d.set_item("max_collapse_survivors", c.max_collapse_survivors)?;

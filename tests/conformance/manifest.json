@@ -1762,6 +1762,118 @@
       "input": "inputs/basic-multi-record.hex",
       "expected_exit": 5,
       "config": "configs/invalid-utc-offset.toml"
+    },
+    {
+      "name": "mux-value-on-a-file",
+      "input": "inputs/basic-multi-record.hex",
+      "input_names": [
+        "full_loadout.draw.data.1553.aa.unused.mie_irig"
+      ],
+      "args": [
+        "--mux-value",
+        "FIXED"
+      ],
+      "expected": "expected/mux-value-on-a-file.csv"
+    },
+    {
+      "name": "mux-value-quoted",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-value",
+        "a,\"b"
+      ],
+      "expected": "expected/mux-value-quoted.csv"
+    },
+    {
+      "name": "mux-value-from-config",
+      "input": "inputs/basic-multi-record.hex",
+      "input_names": [
+        "full_loadout.draw.data.1553.aa.unused.mie_irig"
+      ],
+      "config": "configs/mux-value.toml",
+      "expected": "expected/mux-value-from-config.csv"
+    },
+    {
+      "name": "mux-value-cli-overrides-config",
+      "input": "inputs/basic-multi-record.hex",
+      "input_names": [
+        "full_loadout.draw.data.1553.aa.unused.mie_irig"
+      ],
+      "config": "configs/mux-value.toml",
+      "args": [
+        "--mux-value",
+        "CLI"
+      ],
+      "expected": "expected/mux-value-cli-overrides-config.csv"
+    },
+    {
+      "name": "mux-value-cli-overrides-disabled-config",
+      "input": "inputs/basic-multi-record.hex",
+      "input_names": [
+        "full_loadout.draw.data.1553.aa.unused.mie_irig"
+      ],
+      "config": "configs/mux-disabled.toml",
+      "args": [
+        "--mux-value",
+        "ON"
+      ],
+      "expected": "expected/mux-value-cli-overrides-disabled-config.csv"
+    },
+    {
+      "name": "usage-error-mux-value-with-no-mux",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-value",
+        "X",
+        "--no-mux"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-mux-value-empty",
+      "input": "inputs/basic-multi-record.hex",
+      "args": [
+        "--mux-value="
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-mux-value-on-a-merge",
+      "inputs": [
+        "inputs/merge-a.hex",
+        "inputs/merge-b.hex"
+      ],
+      "args": [
+        "--mux-value",
+        "X"
+      ],
+      "expected_exit": 4
+    },
+    {
+      "name": "usage-error-config-mux-value-on-a-merge",
+      "inputs": [
+        "inputs/merge-a.hex",
+        "inputs/merge-b.hex"
+      ],
+      "config": "configs/mux-value.toml",
+      "expected_exit": 4
+    },
+    {
+      "name": "config-error-mux-value-contradicts-disabled",
+      "input": "inputs/basic-multi-record.hex",
+      "config": "configs/mux-value-contradicts-disabled.toml",
+      "expected_exit": 5
+    },
+    {
+      "name": "config-error-mux-value-empty",
+      "input": "inputs/basic-multi-record.hex",
+      "config": "configs/mux-value-empty.toml",
+      "expected_exit": 5
+    },
+    {
+      "name": "data-after-terminator-warns",
+      "input": "inputs/data-after-terminator.hex",
+      "expected": "expected/data-after-terminator-warns.csv"
     }
   ]
 }

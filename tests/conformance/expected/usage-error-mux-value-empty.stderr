@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] invalid --mux-value: must be a non-empty string (use --no-mux to leave MUX empty)
+Error: invalid --mux-value: must be a non-empty string (use --no-mux to leave MUX empty)
+Run 'aero1553 --help' for usage.

@@ -1,0 +1,3 @@
+# L2-WRT-028: a fixed MUX value, replacing the file name's field.
+[mux]
+value = "CFG"

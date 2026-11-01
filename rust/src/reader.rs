@@ -48,6 +48,10 @@ const STREAM_REACH: usize = MAX_SCAN_BYTES + 34 * crate::sync::MAX_RECORD_BYTES;
 /// itself (depth-1 validation) and nothing after it.
 const STREAM_RECORD_NEED: usize = crate::sync::MAX_RECORD_BYTES + 2;
 
+/// How far past an end-of-records terminator to look for data that will not
+/// be decoded (L2-RDR-022). Past it, zeros are taken for padding.
+const AFTER_TERMINATOR_SCAN: usize = 1 << 20;
+
 /// Reader handle. Construct with [`Self::new`]; iterate by calling `.iter()`
 /// or using `IntoIterator`.
 pub struct MieFileReader {
@@ -282,6 +286,18 @@ impl MieFileReader {
         })
     }
 
+    /// This reader with a fixed MUX value on every record it yields, in place
+    /// of the value taken from the file name (L2-WRT-028). An empty `value`
+    /// leaves MUX empty. A method rather than a [`ReaderOptions`] field so
+    /// that adding it did not break code that builds `ReaderOptions` with a
+    /// struct literal.
+    #[must_use]
+    pub fn with_mux_value(mut self, value: impl Into<String>) -> Self {
+        let value = value.into();
+        self.mux = (!value.is_empty()).then(|| Arc::new(value));
+        self
+    }
+
     /// Whether this reader reads a stream (standard input) rather than a file.
     pub(crate) fn is_stream(&self) -> bool {
         matches!(self.input, Input::Stream(_))
@@ -501,6 +517,21 @@ impl MieFileReader {
                 self.path.display()
             );
             self.empty_recording.store(true, Ordering::Relaxed);
+            // L2-RDR-022, for a terminator at offset 0. The start-up window
+            // already holds the bytes to check, so none are read for this.
+            if let Some(i) = data
+                .get(2..)
+                .and_then(|rest| rest.iter().position(|&b| b != 0))
+            {
+                log_warn!(
+                    "{}: data after the end-of-records terminator at 0x0 was not \
+                     decoded (first non-zero byte at 0x{:X}). A recording ends at its \
+                     terminator, so recordings joined end to end decode as the first \
+                     one only: to combine recordings, pass them as separate inputs",
+                    self.path.display(),
+                    i + 2
+                );
+            }
             return (true, None);
         }
         // L2-RDR-004: distinguish "no MIE record at all" from "structurally-
@@ -910,6 +941,7 @@ impl RecordIter<'_> {
                 self.offset
             );
             self.done = true;
+            self.warn_data_after_terminator(self.offset);
             self.log_complete();
             return Step::Stop;
         }
@@ -1456,6 +1488,52 @@ impl RecordIter<'_> {
     fn advance_after_yield(&mut self, record_bytes: usize) {
         self.offset += record_bytes;
         self.msg_count += 1;
+    }
+
+    /// L2-RDR-022: report data the end-of-records terminator at `terminator`
+    /// leaves undecoded -- most often a second recording appended to the first
+    /// (`cat a.mie b.mie | aero1553 decode -`), which was dropped silently.
+    ///
+    /// Zero bytes are padding a recorder may write, not data, so only a
+    /// non-zero byte counts, and the scan stops at the first. It also stops
+    /// [`AFTER_TERMINATOR_SCAN`] past the terminator: a file padded with
+    /// gigabytes of zeros must not cost a full read. The report is the same for
+    /// a file and a stream (L2-CLI-023), so it names offsets, not a byte count
+    /// a stream would have to be read to the end to know.
+    fn warn_data_after_terminator(&mut self, terminator: usize) {
+        let start = terminator + 2;
+        let limit = start.saturating_add(AFTER_TERMINATOR_SCAN);
+        let mut pos = start;
+        let mut found = None;
+        while pos < limit && pos < self.file_len {
+            if self.src.ensure(pos, 1, &mut self.file_len).is_err() {
+                return; // A read error here changes nothing already decoded.
+            }
+            let Some(bytes) = self.src.bytes().get(pos - self.src.base()..) else {
+                return;
+            };
+            if bytes.is_empty() {
+                break;
+            }
+            let bytes = &bytes[..bytes.len().min(limit - pos)];
+            if let Some(i) = bytes.iter().position(|&b| b != 0) {
+                found = Some(pos + i);
+                break;
+            }
+            pos += bytes.len();
+        }
+        let Some(at) = found else {
+            return;
+        };
+        log_warn!(
+            "{}: data after the end-of-records terminator at 0x{:X} was not decoded \
+             (first non-zero byte at 0x{:X}). A recording ends at its terminator, so \
+             recordings joined end to end decode as the first one only: to combine \
+             recordings, pass them as separate inputs",
+            self.path_for_log.display(),
+            terminator,
+            at
+        );
     }
 
     fn log_complete(&self) {
@@ -2795,5 +2873,38 @@ mod tests {
                 .unwrap();
         let msg = reader.iter().next().unwrap().unwrap();
         assert!(msg.mux.is_none());
+    }
+
+    /// Requirements: L2-WRT-028
+    #[test]
+    fn with_mux_value_replaces_the_name_and_empty_clears_it() {
+        let dir = std::env::temp_dir().join(format!("aero1553-muxv-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("a.b.c.d.R7.mie");
+        std::fs::write(&path, rt15_sa11_rcv()).unwrap();
+        let mux_of = |r: &MieFileReader| {
+            r.iter()
+                .next()
+                .unwrap()
+                .unwrap()
+                .mux
+                .map(|m| m.as_str().to_string())
+        };
+        assert_eq!(
+            mux_of(&MieFileReader::new(&path).unwrap()).as_deref(),
+            Some("R7")
+        );
+        let fixed = MieFileReader::new(&path).unwrap().with_mux_value("FIXED");
+        assert_eq!(mux_of(&fixed).as_deref(), Some("FIXED"));
+        assert_eq!(
+            mux_of(&MieFileReader::new(&path).unwrap().with_mux_value("")),
+            None
+        );
+        let stream =
+            MieFileReader::from_stream(choppy(&rt15_sa11_rcv()), &ReaderOptions::default())
+                .unwrap()
+                .with_mux_value("S1");
+        assert_eq!(mux_of(&stream).as_deref(), Some("S1"));
+        std::fs::remove_dir_all(dir).unwrap();
     }
 }
