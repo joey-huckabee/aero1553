@@ -10,7 +10,9 @@
 # CLI arguments take precedence over values in this file. For example,
 # --log-level DEBUG will override the level set here.
 #
-# File format: TOML (https://toml.io)
+# File format: TOML (https://toml.io) -- the flat subset described in
+# docs/CONFIG-REFERENCE.md. Numbers may use TOML's separators and prefixes:
+# 1_000_000, 0x08, 0o10, 0b1000 (since 5.9.0).
 # ============================================================================
 
 

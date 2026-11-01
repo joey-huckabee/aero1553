@@ -893,6 +893,19 @@ The retired-key clause exists because the unknown-key WARN is exactly the wrong 
 **Rationale**: Each clause is a place the hand-rolled parsers disagreed about what a file meant, found when their diagnostics were first compared (L2-CLI-022). Rust trimmed every Unicode space with `str::trim`, so `level<U+00A0>= "INFO"` configured the level in Rust and was a configuration error in C++, which is locale-free by rule and cannot classify Unicode spaces; the same trim had already been retired for the manifest and the MUX field (L2-MRG-001, L2-WRT-020). Rust refused a file that is not UTF-8 and C++ accepted it. Rust upper-cased the log level and the type names with Unicode rules, under which a dotless i becomes `I` and a long s becomes `S`, so `"ınfo"` was a valid level and `"ſpurious_data"` a valid type in Rust only. And Rust's hexadecimal conversion accepted a sign, so `"0x+1"` was type 1 in Rust and an error in C++. TOML 1.0 requires UTF-8, so the encoding clause is the specification's own.
 **Verification Method**: Test (T)
 
+#### L2-CFG-014
+
+**Parent**: L1-CFG-001
+**Statement**: A number in a configuration file SHALL be read by the TOML 1.0 number grammar, `inf` and `nan` excepted:
+
+1. A decimal integer or float SHALL match `[+-]? ( 0 | [1-9] D ) ( . D )? ( [eE] [+-]? D )?`, where `D` is one or more digits with a single underscore allowed between two digits. A literal with a fraction or exponent is a float; otherwise an integer.
+2. An integer MAY instead be written in hexadecimal, octal or binary after the prefix `0x`, `0o` or `0b`: the prefix in lower case, with no sign, followed by one or more digits of that radix (hexadecimal digits in either case), with the same underscore rule. Leading zeros after the prefix SHALL be accepted.
+3. Every other form SHALL be a configuration error (exit `5`), including leading zeros in a decimal (`08`), a bare or leading dot (`1.`, `.5`), an underscore not between two digits (`_1`, `1_`, `1__0`, `0x_8`), a signed or upper-case prefix (`-0x1`, `0X8`), and `inf` / `nan`.
+4. An integer outside the signed 64-bit range SHALL be a configuration error that repeats the literal as written. A number in range SHALL then be validated by its key exactly as the same value written in plain decimal would be.
+
+**Rationale**: Until 5.9.0 the loader accepted plain decimals only, refusing `1_000_000` and `0x08` although TOML reads both, to keep two hand-rolled parsers minimal and alike. Since 4.0.0 there is one parser, so that reason is gone, and the forms help whoever writes a config: a rate in the millions is easier to check with separators, and a bit mask or type code reads naturally in hex. `inf` and `nan` stay refused because no key accepts a non-finite value, and refusing them in the grammar gives the same answer sooner. A prefix is matched before any exponent so that `0xE` is fourteen, not a malformed float. Both CLIs run the one parser, so their agreement proves nothing about the grammar; an independent TOML parser (Python's `tomllib`) is the reference instead.
+**Verification Method**: Test (T)
+
 ### L2-CFG schema reference
 
 The table below pins the accepted TOML keys, their types, valid ranges, and unknown-value handling. This schema is normative for `L2-CFG-001`, `L2-CFG-008`, `L2-CFG-009`, `L2-CFG-010`, and `L2-CFG-011`.

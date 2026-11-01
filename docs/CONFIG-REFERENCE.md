@@ -640,7 +640,11 @@ To preserve the crate's zero-dependency design, Rust parses TOML with a hand-rol
 
 - `[section]` headers (a simple identifier — letters, digits, underscore) and `key = value` pairs, one per line, where the key is a simple identifier;
 - values:
-  - **numbers** matching `[+-]? (0 | [1-9][0-9]*) (.[0-9]+)? ([eE][+-]?[0-9]+)?` — plain decimal integers and floats, **no** leading zeros (`08`), **no** bare trailing dot (`1.`), and **no** `0x` / `0o` / `0b` prefixes or `_` separators;
+  - **numbers** in TOML 1.0's grammar (`L2-CFG-014`, since 5.9.0):
+    - decimal integers and floats, `[+-]? (0 | [1-9] D) (. D)? ([eE] [+-]? D)?`, where `D` is a run of digits with single underscores allowed *between* digits: `8`, `-1`, `1.5`, `1e6`, `1_000_000`, `1_000_000.0`;
+    - integers in hex, octal or binary after a lowercase, unsigned `0x` / `0o` / `0b`: `0x08`, `0xFF`, `0xdead_beef`, `0o10`, `0b1000` (leading zeros after the prefix are fine: `0x0008`);
+    - **not** leading zeros in a decimal (`08`), a bare trailing dot (`1.`), a misplaced separator (`_1`, `1_`, `1__0`, `0x_8`), a signed or uppercase prefix (`-0x1`, `0X8`), a digit the prefix does not allow (`0o8`, `0b2`), or `inf` / `nan` (no key accepts a non-finite value);
+    - a value is range-checked after it is read, so `threads = 0x11` fails exactly as `threads = 17` does, and the message names it as `17`. An integer outside 64 bits is refused as written: `invalid integer "0x8000_0000_0000_0000"`;
   - **strings** — double-quoted, supporting exactly the escapes `\"` `\\` `\n` `\t` (not `\r`, `\uXXXX`, or others);
   - **booleans** (`true` / `false`), and **single-line** arrays of the above (`[1, 2, 3]` or `["A", "B"]`);
 - `#` line comments and trailing comments (a `#` inside a quoted string is preserved).
@@ -648,13 +652,13 @@ To preserve the crate's zero-dependency design, Rust parses TOML with a hand-rol
 **Anything outside this flat subset is a load-time config error (exit `5`) on every implementation.** Rather than accept different subsets and reconcile them one form at a time, every loader accepts exactly this grammar and refuses the rest (since v4.0.0 the Python package runs the Rust loader itself, L3-PY-005). The full-TOML forms that are therefore rejected include:
 
 - multi-line / spanning arrays;
-- underscore digit separators in numbers (`1_000_000` — write `1000000`), `0x` / `0o` / `0b` integer prefixes, leading zeros (`08`, `01`), and a bare trailing dot (`1.`);
+- the number forms listed above as refused: leading zeros (`08`, `01`), a bare trailing dot (`1.`), misplaced separators, signed or uppercase prefixes, `inf` / `nan`;
 - string escapes beyond `\"` `\\` `\n` `\t` (e.g. `\r`, `\uXXXX`);
 - inline tables (`{ ... }`) and date-time values;
 - quoted keys (`"strict" = ...`);
 - dotted keys (`decode.strict = true`), dotted section headers (`[output.no_clobber]`), and array-of-tables headers (`[[decode]]`).
 
-A full TOML parser and a language's native number/string parsing each accept forms the other does not (`tomllib` honors dotted keys and normalizes `1_000`; Rust's `i64`/`f64` accept `08` / `1.`), so the loaders are pinned to this single explicit grammar instead of reconciled form by form. Two guards run the CLIs against each other in CI: a curated parity corpus (`tests/conformance/config_parity.py`) and a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts identical accept/reject — so a new divergence is caught by CI rather than in the field.
+A full TOML parser and a language's native number/string parsing each accept forms the other does not (`tomllib` honors dotted keys; Rust's `i64`/`f64` accept `08` / `1.`), so the loaders are pinned to this single explicit grammar instead of reconciled form by form. Two guards run the CLIs against each other in CI: a curated parity corpus (`tests/conformance/config_parity.py`) and a differential **fuzzer** (`config_fuzz.py`) that generates config documents and asserts identical accept/reject — so a new divergence is caught by CI rather than in the field. Since both CLIs run one parser, the number grammar has a third, independent judge: `python/tests/test_config_numbers.py` checks the parser against `tomllib` on about 4,000 literals, value as well as verdict.
 
 **Duplicate keys and re-declared sections are rejected by both implementations.** A repeated `(section, key)`, or a `[section]` header declared more than once (even with different keys inside), is a load-time config error (exit `5`) on every implementation — the hand-rolled parser previously kept the *first* value / silently merged the re-opened section; it now raises, as the TOML spec requires.
 

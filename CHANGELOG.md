@@ -19,6 +19,18 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **Config numbers can use TOML's separators and prefixes** (`L2-CFG-014`).
+  `1_000_000`, `1_000_000.0`, `0x08`, `0o10` and `0b1000` were refused with
+  `invalid number literal` (exit 5); they now load as TOML reads them, in a
+  value or an array. What TOML refuses stays refused: `1__0`, `_1`, `-0x1`,
+  `0X8`, `08`. A value is range-checked as before, so `threads = 0x11` fails
+  exactly as `threads = 17` does. Config files only; command-line numbers are
+  unchanged. Python's `tomllib` now referees the grammar on about 4,000
+  literals (`python/tests/test_config_numbers.py`), since both CLIs share one
+  parser and agreeing with each other proves nothing about it.
+
 ## [5.8.0] — 2026-11-01
 
 ### Changed
