@@ -306,7 +306,18 @@ order they are expected to pay:
 
 - **Profile the calling thread again.** Measure before choosing the next
   target; `perf/profile.py` (5.6.0) reports user and system CPU per thread
-  from `/proc`. Its first run, on a 256 MiB decode to a 906 MB CSV on native
+  from `/proc`, and `perf/instructions.py` counts the calling thread's
+  instructions per record (callgrind), steady enough to price a 1-2% change.
+  Its first use took the calling thread from 1,037 to 919 instructions per
+  record (-11.4%; 256 MiB decode 0.911 of 5.6.1's time on arm64): a payload
+  read straight into `DataWords`, log levels tested before a line's
+  arguments are built, and the read window's per-record test kept inline.
+  Tried and dropped as under 2%: caching the canonical-order run's timestamp
+  key, a one-record fast path in the order stage, and inlining the validator.
+  What remains is spread thin: the order stage moving each record in and out
+  of its buffer (~14%), DELTA (~7%), and validation re-reading the Type Word
+  and timestamp words the decoder then reads again (~7%, and the "one
+  validation implementation" commitment applies). Its first run, on a 256 MiB decode to a 906 MB CSV on native
   Linux (arm64, 4 CPUs, 2 rendering threads), put the calling thread at 97%
   busy -- 0.80 s user against 0.12 s system -- and each rendering thread at
   31%, with 5 MB peak memory, the same from standard input. So on that host

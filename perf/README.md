@@ -206,6 +206,35 @@ does not show kernel time, which is why the per-thread system time comes from
 the kernel writing CSV as decoding, and this is the tool for checking that
 before choosing what to optimise next.
 
+## Counting instructions
+
+Timing on a shared machine moves by 5% or more between runs, so it cannot show
+whether a change worth 1-2% to the decoding thread paid. `perf/instructions.py`
+(Linux, needs `valgrind`) counts instructions instead, which for one binary on
+one input barely move (a few hundred in 45 million):
+
+```bash
+python3 perf/instructions.py --json before.json   # on the base commit
+python3 perf/instructions.py --compare before.json  # after the change
+```
+
+It builds the release CLI with symbols into `rust/target/instr` (the shipping
+build is untouched), decodes the first 2 MB of the golden recording `a-large`
+(about 44,000 records) under callgrind with each thread counted separately,
+and reports instructions per record for the calling thread and the rendering
+threads, with the calling thread's costliest functions.
+
+Use it to decide whether one change pays, then judge a series of them by time
+with `perf/baseline.py`: instructions are not time, since a stall costs time
+and no instructions. Function names in its list are the compiler's: inlined
+code is credited to the function it was inlined into, so a function's share is
+a lead to follow, not a measurement. The reliable way to price a piece of code
+is to change it and count again.
+
+`perf` (the Linux profiler) gives time rather than instructions, but needs
+hardware counters that some containers and CI sandboxes refuse;
+callgrind does not.
+
 ## Changing a gate
 
 Calibrate on the CI runner, not a workstation: run the suite a few times

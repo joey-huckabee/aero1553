@@ -21,6 +21,36 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **Decoding is about 8-9% faster: the decoding thread runs 11% fewer
+  instructions per record.** That thread is what a decode waits on (5.2.0
+  onward). Three changes, each kept only after it measured at least 2% on
+  its own:
+  - Each record's data words are read straight into `DataWords`, not into a
+    zeroed buffer and then copied (-6.3%).
+  - The `log_*!` macros test the level before building a line's arguments.
+    The reader's per-record DEBUG line cost 29 instructions per record with
+    DEBUG off (-2.3%).
+  - The read window's per-record "is it in memory" test is inline, and the
+    refill is a separate cold function (-3.3%).
+
+  Calling thread: 1,037 to 919 instructions per record
+  (`perf/instructions.py`). On 256 MiB in a Linux arm64 sandbox, 21 shuffled
+  paired rounds, output identical to 5.6.1, the candidate took this fraction
+  of 5.6.1's time: decode **0.911**, merge **0.925**, corrupt with
+  `--separate-errors` **0.920**. Decoding from standard input is unchanged
+  relative to the file (0.999).
+
+### Added
+
+- **`perf/instructions.py`**: instructions per record for the calling and
+  rendering threads of one decode, counted by Valgrind's callgrind, with
+  `--json` / `--compare`. Timing on a shared machine cannot show a 1-2%
+  change; an instruction count barely moves between runs. It works where
+  `perf` cannot reach the hardware counters, as in this repository's cloud
+  sandboxes.
+
+### Changed
+
 - **Performance gates are enforced on Windows** with the Linux limits. The suite
   ran there report-only from 5.6.0 until 11 runs had shown where its ratios
   sit; all 11 were inside the limits.
