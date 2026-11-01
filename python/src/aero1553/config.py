@@ -28,7 +28,7 @@ Usage::
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
@@ -237,6 +237,9 @@ class DecoderConfig:
     mux_enabled: bool = True
     mux_delimiter: str = "."
     mux_field: int = 4
+    #: L2-WRT-028: a fixed MUX value for every record, in place of the file
+    #: name's field ([mux] value / --mux-value). None takes MUX from the name.
+    mux_value: str | None = None
 
     #: L2-MRG-007: collapse the same bus transaction witnessed by multiple
     #: recorders into one row, in a multi-file merge. Off by default (loss-free).
@@ -279,7 +282,7 @@ class DecoderConfig:
         Returns:
             A new DecoderConfig with the overrides applied.
         """
-        return DecoderConfig(
+        merged = DecoderConfig(
             log_level=self._override_present(kwargs, "log_level"),
             irig_day_advisory=self._override_present(kwargs, "irig_day_advisory"),
             input_time_format=self._override_present(kwargs, "input_time_format"),
@@ -298,6 +301,7 @@ class DecoderConfig:
             mux_enabled=self._override_present(kwargs, "mux_enabled"),
             mux_delimiter=self._override_present(kwargs, "mux_delimiter"),
             mux_field=self._override_present(kwargs, "mux_field"),
+            mux_value=self._override_present(kwargs, "mux_value"),
             collapse_duplicates=self._override_present(kwargs, "collapse_duplicates"),
             collapse_window_us=self._override_present(kwargs, "collapse_window_us"),
             max_collapse_survivors=self._override_present(kwargs, "max_collapse_survivors"),
@@ -305,6 +309,11 @@ class DecoderConfig:
             delta_scope=self._override_present(kwargs, "delta_scope"),
             threads=self._override_present(kwargs, "threads"),
         )
+        # L2-WRT-028: like --mux-value, a fixed-value override turns MUX on,
+        # over a configured enabled = false.
+        if kwargs.get("mux_value") is not None:
+            merged = replace(merged, mux_enabled=True)
+        return merged
 
     def _override_present(self, kwargs: dict[str, Any], name: str) -> Any:
         """Override resolution for every scalar field: only an explicit

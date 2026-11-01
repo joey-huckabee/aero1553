@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: mux.value is set but mux.enabled = false: a fixed MUX value and an empty MUX column contradict each other; remove one
+Error: <CONFIG>: mux.value is set but mux.enabled = false: a fixed MUX value and an empty MUX column contradict each other; remove one

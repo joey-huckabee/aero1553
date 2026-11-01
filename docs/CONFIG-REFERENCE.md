@@ -41,6 +41,7 @@ utc_offset         = "+00:00"    # Z | +HH:MM | -HH:MM (iso zone designator)
 enabled   = true                 # populate MUX from the file name (--no-mux disables)
 delimiter = "."                  # field separator (non-empty)
 field     = 4                    # 0-based field index (negative = from end)
+# value   = "R7"                 # fixed MUX for every row, in place of the name
 
 [merge]
 delta_scope         = "per-file" # per-file | global (multi-file DELTA scope)
@@ -76,6 +77,7 @@ exclude_subaddresses = []        # array of integers in [0, 31]
 | `mux.enabled` | bool | `true` | `--no-mux` (sets `false`) | L2-WRT-020 |
 | `mux.delimiter` | string | `"."` | `--mux-delimiter` | L2-WRT-020 |
 | `mux.field` | int | `4` | `--mux-field` | L2-WRT-020 |
+| `mux.value` | string | *(unset)* | `--mux-value` | L2-WRT-028 |
 | `merge.delta_scope` | string | `"per-file"` | `--delta-scope` | L2-MRG-005, L3-WRT-004 |
 | `merge.collapse_duplicates` | bool | `false` | `--collapse-duplicates` | L2-MRG-007 |
 | `merge.collapse_window_us` | int | `0` | `--collapse-window-us` | L2-MRG-007 |
@@ -429,6 +431,16 @@ Separator the file's basename is split on. **Validation:** must be a non-empty s
 **Type:** int · **Default:** `4` · **CLI:** `--mux-field`
 
 0-based index of the field used as the MUX value; a **negative** index counts from the end (e.g. `-1` is the last field). An out-of-range index, an empty selected field, or a `false` `enabled` leaves MUX empty. **Validation:** TOML integer only, within the signed 64-bit range (a literal outside it is rejected at load time, never clamped); any index in that range is accepted, and one past either end of the file name simply yields empty MUX.
+
+### `value`
+
+**Type:** string · **Default:** *(unset)* · **CLI:** `--mux-value`
+
+A fixed MUX value for every row, in place of the file name's field (L2-WRT-028) -- for a file whose name does not encode its recorder, and for standard input (`decode -`), which has no name. `delimiter` and `field` have no effect while it is set. `--mux-value` on the command line overrides it, and also overrides `enabled = false`.
+
+A fixed value is **refused on a decode of two or more inputs** (exit `4`): MUX is how a merge's rows tell their recorders apart, and one value on every row would erase that. Decode such inputs one at a time, or pass `--no-mux` to leave MUX empty for that run.
+
+**Validation:** a non-empty string; an empty one, or `value` with `enabled = false` in the same file, is a config error (exit `5`).
 
 ---
 

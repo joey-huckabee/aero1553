@@ -1,0 +1,3 @@
+ERROR [aero1553::cli] --mux-value and --no-mux contradict each other: one sets MUX, the other leaves it empty
+Error: --mux-value and --no-mux contradict each other: one sets MUX, the other leaves it empty
+Run 'aero1553 --help' for usage.

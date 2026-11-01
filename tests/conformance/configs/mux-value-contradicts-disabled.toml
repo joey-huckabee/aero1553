@@ -1,0 +1,4 @@
+# L2-WRT-028: a fixed value and an empty MUX contradict (exit 5).
+[mux]
+enabled = false
+value = "CFG"

@@ -1,0 +1,3 @@
+# L2-WRT-028: an empty fixed value is refused (exit 5).
+[mux]
+value = ""

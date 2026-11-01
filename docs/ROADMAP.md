@@ -99,9 +99,6 @@ reuse that same parsed identity:
   survivor is chosen by which recorder it came from rather than by argument
   order. (`--collapse-duplicates` already addresses the common case by emitting
   one row instead of choosing between two.)
-- **An explicit `MUX` value** (`--mux-value TEXT`, `[mux] value`) -- for a
-  file whose name does not encode its recorder, and for standard input
-  (`decode -`, 5.6.0), whose `MUX` is empty because it has no name.
 - **Optional `TERM_NAME` from the filename** — the same delimiter+index
   mechanism (a second configurable field) could populate the still-empty
   `TERM_NAME` column, if a terminal-name field is encoded in the name.
@@ -123,6 +120,23 @@ seen by multiple recorders already ships behind `--collapse-duplicates` /
   read) rather than always keeping the first in heap order.
 - **Deduped `count`** — collapsing applies to the `decode` CSV path today; a
   deduped `count` mode could follow.
+
+**Merging streams (not started).** A merge needs its inputs side by side, so
+one pipe cannot carry it: `cat a.mie b.mie | aero1553 decode -` is one stream,
+which ends at `a`'s terminator (5.7.0 warns, `L2-RDR-022`). Process
+substitution names each stream separately --
+`aero1553 decode <(ssh rec1 cat a.mie) <(ssh rec2 cat b.mie)` -- and the merge
+already reads each input forwards one record at a time, so the forward-only
+window behind `decode -` (`L2-CLI-023`) could back each one. Today such an input
+fails as `MIE file is empty (0 bytes): /dev/fd/63`, because inputs are opened as
+regular files (size first, then positional reads). To settle before building:
+- telling a pipe or FIFO input from a file (and refusing a terminal);
+- the empty and collision checks, as `decode -` settled them;
+- **a `MUX` label per input**, since `/dev/fd/63` names nothing -- a second
+  manifest column, or one `--mux-value` per input matched by position. The
+  single `--mux-value` is refused on a merge (`L2-WRT-028`), so allowing a
+  per-input form later breaks nothing;
+- Windows, which has no `<(...)`: named pipes, or Linux and macOS only.
 
 **`--order file` (non-time merge).** A distant-future opt-in that would
 concatenate inputs in CLI/manifest order **without** time-sorting, for sets that

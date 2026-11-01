@@ -1,0 +1,2 @@
+ERROR [aero1553::cli] <CONFIG>: Invalid mux.value: must be a non-empty string (set enabled = false to leave MUX empty)
+Error: <CONFIG>: Invalid mux.value: must be a non-empty string (set enabled = false to leave MUX empty)

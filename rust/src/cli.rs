@@ -115,6 +115,9 @@ DECODE OPTIONS:
   --mux-delimiter D                     MUX field separator (default '.')
   --mux-field N                         0-based MUX field index; negative
                                         counts from the end (default 4)
+  --mux-value TEXT                      Fixed MUX value for every row, in
+                                        place of the file name's field (not
+                                        with --no-mux, or with 2+ inputs)
   --collapse-duplicates                 Collapse the same bus transaction seen
                                         by multiple recorders into one row
                                         (multi-file merge only). Default: off
@@ -224,6 +227,8 @@ struct DecodeArgs {
     mux_delimiter: Option<String>,
     /// `--mux-field <N>`: 0-based field index (negative = from end) for MUX.
     mux_field: Option<i64>,
+    /// `--mux-value <TEXT>`: a fixed MUX value for every row (L2-WRT-028).
+    mux_value: Option<String>,
     /// `--collapse-duplicates`: collapse cross-recorder duplicate messages.
     collapse_duplicates: bool,
     /// `--collapse-window-us <N>`: timestamp tolerance (µs) for collapsing.
@@ -1175,6 +1180,9 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
             "--mux-field" => {
                 args.mux_field = Some(parse_mux_field(&a.value("--mux-field", iter)?)?);
             }
+            "--mux-value" => {
+                args.mux_value = Some(parse_mux_value(&a.value("--mux-value", iter)?)?);
+            }
             "--max-sort-group" => {
                 args.max_sort_group =
                     Some(parse_max_sort_group(&a.value("--max-sort-group", iter)?)?);
@@ -1276,6 +1284,15 @@ fn parse_decode(iter: &mut ArgIter<'_>) -> Result<DecodeArgs, ParseError> {
     if methods > 1 {
         return Err(
             "decode accepts only one input method: positional paths, --manifest, or --glob -- not a combination"
+                .to_string()
+                .into(),
+        );
+    }
+    // L2-WRT-028: a fixed MUX value and an empty MUX column contradict.
+    if args.no_mux && args.mux_value.is_some() {
+        return Err(
+            "--mux-value and --no-mux contradict each other: one sets MUX, the other \
+             leaves it empty"
                 .to_string()
                 .into(),
         );
@@ -1514,6 +1531,15 @@ fn parse_mux_delimiter(s: &str) -> Result<String, String> {
     Ok(s.to_string())
 }
 
+fn parse_mux_value(s: &str) -> Result<String, String> {
+    if s.is_empty() {
+        return Err("invalid --mux-value: must be a non-empty string \
+                    (use --no-mux to leave MUX empty)"
+            .to_string());
+    }
+    Ok(s.to_string())
+}
+
 fn parse_mux_field(s: &str) -> Result<i64, String> {
     s.trim_ascii()
         .parse::<i64>()
@@ -1663,7 +1689,16 @@ fn resolve_time_render(cfg: &DecoderConfig) -> Result<TimeRender, CliError> {
 
 fn open_reader(path: &Path, cfg: &DecoderConfig) -> Result<MieFileReader, CliError> {
     MieFileReader::with_options(path, reader_options(cfg))
+        .map(|r| with_fixed_mux(r, cfg))
         .map_err(|e| CliError::runtime(format_mie_error(e)))
+}
+
+/// L2-WRT-028: a configured fixed MUX value replaces the file name's.
+fn with_fixed_mux(reader: MieFileReader, cfg: &DecoderConfig) -> MieFileReader {
+    match (&cfg.mux_value, cfg.mux_enabled) {
+        (Some(value), true) => reader.with_mux_value(value.as_str()),
+        _ => reader,
+    }
 }
 
 /// A reader over standard input (L2-CLI-023). A terminal is refused rather
@@ -1679,6 +1714,7 @@ fn open_stdin_reader(cfg: &DecoderConfig) -> Result<MieFileReader, CliError> {
         ));
     }
     MieFileReader::from_stdin(&reader_options(cfg))
+        .map(|r| with_fixed_mux(r, cfg))
         .map_err(|e| CliError::runtime(format_mie_error(e)))
 }
 
@@ -1737,6 +1773,7 @@ fn build_config_overrides(
         mux_enabled: if args.no_mux { Some(false) } else { None },
         mux_delimiter: args.mux_delimiter.clone(),
         mux_field: args.mux_field,
+        mux_value: args.mux_value.clone(),
         collapse_duplicates: if args.collapse_duplicates {
             Some(true)
         } else {
@@ -1929,6 +1966,22 @@ fn run_decode(globals: GlobalArgs, mut args: DecodeArgs) -> Result<u8, CliError>
     // commits the batch as `.partial` (L2-MRG-004), mirroring how a priming-time
     // or mid-file failure is handled. A single-input decode is unaffected.
     let merge_requested = input_paths.len() > 1;
+    // L2-WRT-028: one fixed value on every row of a merge would hide which
+    // recorder each row came from, which is what MUX tells a merge apart by.
+    if merge_requested && cfg.mux_enabled && cfg.mux_value.is_some() {
+        let source = if args.mux_value.is_some() {
+            "--mux-value".to_string()
+        } else {
+            "[mux] value in the config file".to_string()
+        };
+        return Err(CliError::usage(format!(
+            "{source} gives every row the same MUX, which a merge of {} inputs \
+             cannot use: MUX is how its rows tell their recorders apart. Decode \
+             the inputs one at a time, or take MUX from the file names \
+             (no fixed value) or leave it empty (--no-mux)",
+            input_paths.len()
+        )));
+    }
     let mut opened = if args.stdin {
         OpenedInputs {
             readers: vec![open_stdin_reader(&cfg)?],
@@ -2353,6 +2406,20 @@ fn format_mie_error(e: MieError) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Requirements: L2-WRT-028
+    #[test]
+    fn mux_value_is_refused_empty_or_with_no_mux() {
+        let parsed = parse_decode(&mut args(&["rec.mie", "--mux-value", "R9"])).unwrap();
+        assert_eq!(parsed.mux_value.as_deref(), Some("R9"));
+        for bad in [
+            &["rec.mie", "--mux-value="][..],
+            &["rec.mie", "--mux-value", "R9", "--no-mux"][..],
+            &["rec.mie", "--no-mux", "--mux-value=R9"][..],
+        ] {
+            assert!(parse_decode(&mut args(bad)).is_err(), "{bad:?}");
+        }
+    }
 
     /// One whitespace rule on every numeric flag (once shared with the C++ CLI):
     /// surrounding ASCII whitespace is trimmed (`str::trim_ascii`); whitespace

@@ -99,7 +99,12 @@ FACTORS: dict[str, list[tuple[str, ...]]] = {
     "detect": [(), ("--detect-records", "1"), ("--detect-records", "32")],
     "lookahead": [(), ("--lookahead-records", "1"), ("--lookahead-records", "5")],
     "tick": [(), ("--standard-tick-rate-hz", "1000000")],
-    "mux": [(), ("--no-mux",), ("--mux-delimiter", "-", "--mux-field", "-1")],
+    "mux": [
+        (),
+        ("--no-mux",),
+        ("--mux-delimiter", "-", "--mux-field", "-1"),
+        ("--mux-value", "R9"),
+    ],
     "collapse": [
         (),
         ("--collapse-duplicates",),
@@ -134,6 +139,8 @@ def _excluded(a: str, x: tuple[str, ...], b: str, y: tuple[str, ...]) -> bool:
     inp = pair.get("input", ("",))[0]
     if pair.get("source") == ("stdin",) and inp in _MERGES:
         return True  # stdin in a merge: usage error (stdin-parity, cli tests)
+    if pair.get("mux", ())[:1] == ("--mux-value",) and inp in _MERGES:
+        return True  # a fixed MUX value on a merge: usage error (L2-WRT-028)
     if pair.get("in-time", ("",))[-1:] == ("standard",) and inp and inp not in _STANDARD:
         return True  # IRIG data read as Standard: no valid records
     # A calendar date from a Standard counter: refused.
@@ -501,14 +508,17 @@ def _check_row(
         _check_partition(base, inline, cmd, inline_cmd, root, finding)
         checked["--separate-errors partitions"] += 1
 
-    # 6. Standard input against the file, MUX aside.
+    # 6. Standard input against the file, MUX aside: a stream has no name to
+    # take MUX from, so the file is decoded with --no-mux -- unless a fixed
+    # value is set, which both carry (L2-WRT-028).
     if len(pairs.files[settings["input"][0]]) == 1:
+        file_mux = settings["mux"] if settings["mux"][:1] == ("--mux-value",) else ("--no-mux",)
         if settings["source"] == ("stdin",):
             stream, stream_cmd = base, cmd
-            from_file, file_cmd = again(source=("file",), mux=("--no-mux",))
+            from_file, file_cmd = again(source=("file",), mux=file_mux)
         else:
             stream, stream_cmd = again(source=("stdin",))
-            from_file, file_cmd = again(mux=("--no-mux",))
+            from_file, file_cmd = again(mux=file_mux)
         name = pairs.files[settings["input"][0]][0]
         want = from_file.stderr.replace(f"<IN>{os.sep}{name.name}", "<stdin>")
         got = (stream.code, stream.csv(), stream.files.keys(), stream.stderr)

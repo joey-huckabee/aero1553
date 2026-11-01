@@ -457,6 +457,13 @@ delimiter = "."
 # MUX empty. Overridden by --mux-field. Default: 4
 field = 4
 
+# A fixed MUX value for every row, in place of the file name's field: for a
+# file named without one, or for standard input, which has no name
+# (L2-WRT-028). Refused on a decode of two or more inputs, whose rows MUX
+# tells apart; refused with enabled = false. Overridden by --mux-value.
+# Default: unset (MUX from the file name)
+# value = "R7"
+
 [merge]
 # ──────────────────────────────────────────────────────────────────────────
 # DELTA measurement scope (L2-MRG-005).

@@ -2676,3 +2676,134 @@ fn powershell_7_pipe_feeds_stdin() {
         "output differs from the file decode"
     );
 }
+
+// ── Fixed MUX value (L2-WRT-028) ─────────────────────────────────────
+
+/// The MUX column of each data row.
+fn mux_column(csv: &[u8]) -> Vec<String> {
+    let text = String::from_utf8_lossy(csv);
+    let mut lines = text.lines();
+    let header: Vec<&str> = lines.next().unwrap().split(',').collect();
+    let at = header.iter().position(|h| *h == "MUX").unwrap();
+    lines
+        .map(|l| l.split(',').nth(at).unwrap_or("").to_string())
+        .collect()
+}
+
+/// Requirements: L2-WRT-028
+#[test]
+fn mux_value_labels_every_row_from_a_file_or_stdin() {
+    let tmp = TempDir::new();
+    let data = varied_recording(20);
+    let input = tmp.write("a.b.c.d.R7.mie", &data);
+    let by_name = run([std::ffi::OsStr::new("decode"), input.as_os_str()]);
+    assert!(mux_column(&by_name.stdout).iter().all(|m| m == "R7"));
+    let fixed = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--mux-value"),
+        std::ffi::OsStr::new("FIXED"),
+    ]);
+    assert_eq!(exit_code(&fixed), 0);
+    let muxes = mux_column(&fixed.stdout);
+    assert!(
+        !muxes.is_empty() && muxes.iter().all(|m| m == "FIXED"),
+        "{muxes:?}"
+    );
+    let piped = run_with_stdin(["decode", "-", "--mux-value", "FIXED"], &data);
+    assert_eq!(piped.stdout, fixed.stdout);
+}
+
+/// Requirements: L2-WRT-028
+#[test]
+fn mux_value_is_refused_on_a_merge_from_either_source() {
+    let tmp = TempDir::new();
+    let a = tmp.write("a.mie", &one_valid_record());
+    let b = tmp.write("b.mie", &one_valid_record());
+    let config = tmp.write("site.toml", b"[mux]\nvalue = \"CFG\"\n");
+    let cli = run([
+        std::ffi::OsStr::new("decode"),
+        a.as_os_str(),
+        b.as_os_str(),
+        std::ffi::OsStr::new("--mux-value"),
+        std::ffi::OsStr::new("X"),
+    ]);
+    assert_eq!(exit_code(&cli), 4);
+    assert!(String::from_utf8_lossy(&cli.stderr).contains("--mux-value"));
+    let configured = run([
+        std::ffi::OsStr::new("--config"),
+        config.as_os_str(),
+        std::ffi::OsStr::new("decode"),
+        a.as_os_str(),
+        b.as_os_str(),
+    ]);
+    assert_eq!(exit_code(&configured), 4);
+    assert!(String::from_utf8_lossy(&configured.stderr).contains("[mux] value"));
+    assert!(
+        configured.stdout.is_empty(),
+        "a refused merge writes nothing"
+    );
+}
+
+// ── Data after the end-of-records terminator (L2-RDR-022) ───────────
+
+const AFTER_TERMINATOR: &str = "data after the end-of-records terminator";
+
+/// Clean records with distinct data: no errors and no junk, so strict mode
+/// passes it.
+fn clean_recording(n: u32) -> Vec<u8> {
+    let mut data = Vec::new();
+    for i in 0..n {
+        let mut r = one_valid_record();
+        r[10..14].copy_from_slice(&i.to_le_bytes());
+        data.extend_from_slice(&r);
+    }
+    data
+}
+
+/// Requirements: L2-RDR-022
+#[test]
+fn data_after_the_terminator_is_reported_not_silently_dropped() {
+    let tmp = TempDir::new();
+    let first = clean_recording(10);
+    let mut joined = first.clone();
+    joined.extend_from_slice(&[0, 0]); // the first recording's terminator
+    joined.extend_from_slice(&clean_recording(5)); // a second recording
+    let input = tmp.write("joined.mie", &joined);
+    let alone = run_with_stdin(["decode", "-"], &first);
+    let out = run([std::ffi::OsStr::new("decode"), input.as_os_str()]);
+    assert_eq!(exit_code(&out), 0, "a warning, not an error");
+    assert_eq!(out.stdout, alone.stdout, "rows are the first recording's");
+    let err = String::from_utf8_lossy(&out.stderr);
+    assert!(err.contains(AFTER_TERMINATOR), "{err}");
+    assert!(err.contains("pass them as separate inputs"), "{err}");
+    // Strict mode warns the same and does not fail.
+    let strict = run([
+        std::ffi::OsStr::new("decode"),
+        input.as_os_str(),
+        std::ffi::OsStr::new("--strict"),
+    ]);
+    assert_eq!(exit_code(&strict), 0);
+    assert!(String::from_utf8_lossy(&strict.stderr).contains(AFTER_TERMINATOR));
+    // And from a pipe, with the same words.
+    let piped = run_with_stdin(["decode", "-"], &joined);
+    assert!(String::from_utf8_lossy(&piped.stderr).contains(AFTER_TERMINATOR));
+}
+
+/// Requirements: L2-RDR-022
+#[test]
+fn zero_padding_or_data_past_the_scan_limit_is_not_reported() {
+    let mut padded = varied_recording(10);
+    padded.extend_from_slice(&[0, 0]);
+    padded.extend(std::iter::repeat_n(0u8, 5000));
+    let out = run_with_stdin(["decode", "-"], &padded);
+    assert_eq!(exit_code(&out), 0);
+    assert!(!String::from_utf8_lossy(&out.stderr).contains(AFTER_TERMINATOR));
+    // A non-zero byte more than 1 MiB of zeros past the terminator is beyond
+    // the scan, which is bounded so a padded file does not cost a full read.
+    padded.extend(std::iter::repeat_n(0u8, 1 << 20));
+    padded.push(0xFF);
+    let far = run_with_stdin(["decode", "-"], &padded);
+    assert_eq!(exit_code(&far), 0);
+    assert!(!String::from_utf8_lossy(&far.stderr).contains(AFTER_TERMINATOR));
+}
