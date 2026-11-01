@@ -53,6 +53,9 @@ ROOT = Path(__file__).resolve().parents[1]
 MIB = 1 << 20
 MERGE_FILES = 8
 
+sys.path.insert(0, str(ROOT / "perf"))
+from machine import cpu_model  # noqa: E402
+
 _spec = importlib.util.spec_from_file_location("golden", ROOT / "tests" / "golden" / "golden.py")
 assert _spec is not None and _spec.loader is not None
 golden = importlib.util.module_from_spec(_spec)
@@ -248,6 +251,8 @@ def main() -> int:
     lines = [
         f"### Baseline against candidate ({a.mib} MiB inputs, {a.rounds} rounds, "
         f"margin {a.margin:.0%})",
+        "",
+        f"{cpu_model()}, {os.cpu_count()} CPUs",
         "",
         "| Case | Baseline median | Candidate median | Candidate / baseline (median of rounds) "
         "| Range | |",

@@ -515,7 +515,7 @@ one of them:
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
 
 **Performance** (`.github/workflows/perf.yml`, every pull request and push to
-`main`; gates enforced on Linux, reported only on Windows) runs the performance suite in `perf/`: the Rust library, the
+`main`; gates enforced on Linux and Windows, same limits) runs the performance suite in `perf/`: the Rust library, the
 Python library and both CLIs timed on the golden recording (`tests/golden/`),
 every case's output checked against the golden pins. It fails on a wrong
 answer or on a **gate** -- a ratio between two cases of the same run, such as

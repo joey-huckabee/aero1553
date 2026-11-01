@@ -155,11 +155,38 @@ or say in the release pull request why the check is skipped.
 
 ## Windows
 
-`.github/workflows/perf.yml` runs the same suite on `windows-latest` with
-`--no-gates`: outputs are still checked against the pins, so a wrong answer
-fails, and the times are reported in the job summary and the
-`perf-report-windows` artifact. Its gates can be enforced once a few runs have
-shown where its ratios sit.
+`.github/workflows/perf.yml` runs the same suite on `windows-latest`, with the
+same gates and limits as Linux, its report in the job summary and the
+`perf-report-windows` artifact. It ran report-only (`--no-gates`) from 5.6.0
+until 11 runs had shown where its ratios sit. All 11 were inside the Linux
+limits; the tightest was the numeric-columns gate, at 2.84 against 3.0, which
+led to that limit's recalibration below.
+
+## Gate calibration, 2026-11-01
+
+From the 22 reports since gates became paired medians (11 Linux, 11 Windows;
+four Windows CPU types), median ratio ranges:
+
+| Gate | Limit | Windows | Linux |
+|---|---|---|---|
+| Python decode / Rust decode | max 1.15 | 0.874-1.041 | 0.954-1.226 |
+| Python CLI / Rust decode | max 1.15 | 0.829-1.059 | 0.978-1.073 |
+| Python merge / Rust merge | max 1.15 | 0.973-1.077 | 1.003-1.070 |
+| stdin / file (`--no-mux`) | max 1.25 | 0.943-1.041 | 0.898-1.095 |
+| Python iteration / Rust iteration | max 3.0 | 1.963-2.462 | 1.929-2.468 |
+| dicts / `columns()` | min 4.0 | 5.731-6.939 | 5.865-6.710 |
+| numeric columns / Rust read | max **3.5** (was 3.0) | 2.090-2.841 | 2.589-3.144 |
+
+Two values crossed a limit, both on one Linux runner (#205) that passed at
+1.033 and 2.669 when re-run. The numeric-columns gate moved to 3.5: 3.0 left
+5% headroom on Windows, and its worst value seen was 3.144. The Python-decode
+gate stays at 1.15 despite that runner's 1.226. Of the 22 runs, only that one
+was over, and this is the gate that once caught a real 17% regression.
+Widening it would blunt it.
+
+Reports now name the CPU model (`perf/machine.py`). Linux reports used to say
+only `x86_64`, so the failing runner's machine type cannot be known. If one
+type keeps failing a gate, its reports will now show it.
 
 ## Where a decode spends its CPU
 
