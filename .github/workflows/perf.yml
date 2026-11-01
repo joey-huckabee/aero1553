@@ -19,11 +19,9 @@ name: Performance
 #     runs, phases, import times, totals, records/s, peak memory), and the
 #     JSON report is kept as an artifact for comparing runs over time.
 #
-# Gates are enforced on Linux, where they were calibrated. Windows runs the
-# same suite with --no-gates: every output is still checked against the golden
-# pins (a wrong answer fails), and the times are reported so a Windows-only
-# slowdown is visible. Its gates can be enforced once a few runs have shown
-# where its ratios sit.
+# Gates are enforced on Linux and on Windows, with the same limits. Windows ran
+# report-only (--no-gates) until 11 runs had shown where its ratios sit: every
+# one inside the limits (perf/README.md, "Windows").
 
 on:
   push:
@@ -86,7 +84,7 @@ jobs:
           if-no-files-found: ignore
 
   perf-windows:
-    name: Performance suite, Windows (report only)
+    name: Performance suite, Windows
     runs-on: windows-latest
     timeout-minutes: 40
     steps:
@@ -120,8 +118,8 @@ jobs:
       - name: Install the package (builds the extension in release mode)
         run: uv --directory python sync --locked
 
-      - name: Run the performance suite (gates reported, not enforced)
-        run: uv --directory python run python ../perf/run.py --repeat 5 --no-gates --out ../perf-out
+      - name: Run the performance suite
+        run: uv --directory python run python ../perf/run.py --repeat 5 --out ../perf-out
 
       - name: Keep the report
         if: always()

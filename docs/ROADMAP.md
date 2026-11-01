@@ -346,18 +346,17 @@ order they are expected to pay:
   `py.decode_csv / rust.decode_csv` at 1.226 (rounds 1.07-1.36) and
   `py.columns_pandas_numeric / rust.iterate` at 3.144 (rounds 3.10-3.19, tight,
   so not noise within the run) against limits of 1.15 and 3.0; a re-run read
-  1.033 and 2.669, as usual, and the change touched neither timed path. Record
-  the CPU model in the report, and if one machine type keeps doing this,
-  calibrate per type or widen those two limits.
+  1.033 and 2.669, as usual, and the change touched neither timed path. The
+  numeric gate has since been recalibrated to 3.5 and reports name the CPU
+  model (`perf/README.md`, "Gate calibration"). To do: if one machine type
+  keeps failing a gate, calibrate that gate per type rather than widen it for
+  every runner.
 - **Multi-gigabyte benchmark cases.** Release pull requests and a weekly run
   against `main` time the candidate against the previous release on 256 MiB
   generated recordings (`perf/baseline.py`, 15% margin from A/A runs). The
   multi-gigabyte cases that justified 5.0.0 to 5.2.0 are still run by hand
   (`rust/examples/synth_large.rs`, the full experiment tagged
   `archive/perf-io-backends`), and nothing under 15% is caught automatically.
-- **Enforce the Windows performance gates.** Since 5.6.0 the suite runs on
-  Windows report-only. Once a few runs show where its ratios sit, set limits
-  and enforce them.
 - **PGO and fat LTO for the release binaries.** Typically 5-15% with no source
   change; the work is in CI, including the glibc 2.22 zigbuild job. Best done
   after the calling-thread work, since PGO tunes whatever the code is.

@@ -53,6 +53,7 @@ _spec.loader.exec_module(golden)
 sys.path.insert(0, str(PERF))
 from cases import CASES as PY_CASES  # noqa: E402
 from cases import NEEDS  # noqa: E402
+from machine import cpu_model  # noqa: E402
 
 RUST_CASES = ("rust.iterate", "rust.filter_order", "rust.decode_csv", "rust.merge_csv")
 IMPORTS = ("aero1553", "numpy", "pandas")
@@ -389,7 +390,7 @@ def main() -> int:
             "aero1553": _version(),
             "python": platform.python_version(),
             "platform": f"{platform.system()} {platform.machine()}",
-            "cpu": platform.processor() or os.environ.get("PROCESSOR_IDENTIFIER", ""),
+            "cpu": cpu_model(),
             # The default decode thread count follows it (L2-WRT-027).
             "cpu_count": os.cpu_count(),
             "recording": {"a": pinned_a, "b": pins["recordings"][b_name]},
@@ -433,7 +434,7 @@ def render(report: dict[str, Any]) -> str:
         "## Performance report",
         "",
         f"aero1553 {env['aero1553']} | Python {env['python']} | {env['platform']} | "
-        f"{env['cpu_count']} CPUs | "
+        f"{env['cpu']} | {env['cpu_count']} CPUs | "
         f"{a['rows']:,} records ({a['bytes'] / 1e6:.2f} MB golden recording) | "
         f"{env['repeat']} runs per case",
         "",

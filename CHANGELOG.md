@@ -19,6 +19,20 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **Performance gates are enforced on Windows** with the Linux limits. The suite
+  ran there report-only from 5.6.0 until 11 runs had shown where its ratios
+  sit; all 11 were inside the limits.
+- **The numeric-columns gate (`py.columns_pandas_numeric / rust.iterate`) is
+  3.5, was 3.0**, from the 22 reports since gates became paired medians:
+  Windows read 2.09-2.84 and Linux 2.59-3.14. The old limit left 5% headroom
+  and failed one Linux runner type. The other limits stand. The full table is
+  in `perf/README.md`, "Gate calibration".
+- **Performance reports name the CPU model** (`perf/machine.py`, also used by
+  `perf/baseline.py`). Linux reports said only `x86_64`, so a gate that failed
+  on one machine type could not be traced to it.
+
 ## [5.6.1] — 2026-10-31
 
 ### Added

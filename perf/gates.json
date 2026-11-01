@@ -46,8 +46,8 @@
       "name": "numeric columns cost a small multiple of a bare Rust read",
       "numerator": "py.columns_pandas_numeric",
       "denominator": "rust.iterate",
-      "max": 3.0,
-      "why": "Without the text fields, columns() builds no per-record Python object, so a DataFrame of them should cost little over reading the file."
+      "max": 3.5,
+      "why": "Without the text fields, columns() builds no per-record Python object, so a DataFrame of them should cost little over reading the file. Calibrated at 3.5 on 2026-11-01 from the 22 reports since gates became paired medians: Windows read 2.09-2.84 and Linux 2.59-3.14, so 3.0 left 5% headroom on Windows and failed one Linux runner type."
     }
   ]
 }
