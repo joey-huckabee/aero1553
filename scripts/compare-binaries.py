@@ -61,9 +61,11 @@ def requirements(binary: Path) -> dict[str, list[str]]:
     for line in _tool("objdump", "-T", str(binary)).splitlines():
         if "*UND*" in line:
             fields = line.split()
-            # "... *UND* <size> <version> <name>": weak symbols add a flag
-            # column, so take the last two fields.
-            imports.append(f"{fields[-2]} {fields[-1]}")
+            # "... *UND* <size> <version> <name>", where a symbol imported at
+            # no version shows "Base" from one linker and nothing (the size
+            # column) from another: keep the version only when there is one.
+            version = fields[-2] if fields[-2].startswith("(") else "(none)"
+            imports.append(f"{version} {fields[-1]}")
     return {"interpreter": interp, "needed": sorted(needed), "imports": sorted(set(imports))}
 
 
