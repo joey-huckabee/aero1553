@@ -134,6 +134,7 @@ impl Window {
     /// # Errors
     ///
     /// Whatever the positional read reports.
+    #[inline]
     pub(crate) fn ensure(
         &mut self,
         offset: usize,
@@ -147,6 +148,15 @@ impl Window {
         {
             return Ok(());
         }
+        self.refill(offset, need, file_len)
+    }
+
+    /// The rest of [`Self::ensure`]: the window does not reach far enough.
+    /// Once per 256 KiB, so kept out of line; the test above runs per record.
+    #[cold]
+    #[inline(never)]
+    fn refill(&mut self, offset: usize, need: usize, file_len: &mut usize) -> io::Result<()> {
+        let win_end = self.base + self.end;
         if let Source::Stream(stream) = &mut self.source
             && (offset < self.base || offset > win_end)
         {
