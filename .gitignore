@@ -49,3 +49,7 @@ lcov.info
 htmlcov/
 coverage.xml
 
+
+# perf/run.py output (written to the working directory)
+perf-report.json
+perf-report.md
