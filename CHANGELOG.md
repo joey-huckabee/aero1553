@@ -31,6 +31,17 @@ shared behavior) holds at any compatible version pair. See
   literals (`python/tests/test_config_numbers.py`), since both CLIs share one
   parser and agreeing with each other proves nothing about it.
 
+### Documentation
+
+- **Agent rules moved to `AGENTS.md`; `CLAUDE.md` now imports it.** One file
+  for every coding agent, in the layout the maintainer's other repositories
+  use. Brought up to date on the way: standard input, `text.rs`, the TOML
+  number grammar, `--mux-value`, `docs/DATAFLOW.md` and `perf/README.md` were
+  missing; the repository layout, the change and release workflow, and the Git
+  conventions (no tool attribution anywhere, `main` reached only through pull
+  requests, merge commits, merged branches deleted by hand) are now written
+  down. The MSRV hygiene check reads `AGENTS.md` in place of `CLAUDE.md`.
+
 ## [5.8.0] — 2026-11-01
 
 ### Changed

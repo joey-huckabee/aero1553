@@ -2,7 +2,7 @@
 
 Operational reference for anyone modifying the Aero1553 codebase. Covers the workflows you'll repeat: adding requirements, tests, conformance fixtures, error variants, and CLI flags; running the trace matrix; bumping coverage; releasing.
 
-This guide is for **maintainers**. End-user CLI usage belongs in [`docs/USER-GUIDE.md`](USER-GUIDE.md); error/exit-code reference for operators lives in [`docs/ERROR-CATALOG.md`](ERROR-CATALOG.md); LLM-session project conventions live in [`CLAUDE.md`](../CLAUDE.md).
+This guide is for **maintainers**. End-user CLI usage belongs in [`docs/USER-GUIDE.md`](USER-GUIDE.md); error/exit-code reference for operators lives in [`docs/ERROR-CATALOG.md`](ERROR-CATALOG.md); the conventions every coding agent follows live in [`AGENTS.md`](../AGENTS.md).
 
 ---
 
@@ -716,13 +716,13 @@ These are the operating rules that keep the two crates from drifting:
 4. **Error variants ship together.** When you add a new variant in one language, add it in the other in the same PR.
 5. **What an operator reads to fix their command is a contract; the decoder's narration is not.** Configuration errors, the unknown-key WARN, usage errors, and the help and version text read the same from every implementation, byte for byte and line ending included (L2-CLI-022). The config differential checks and `tests/conformance/cli_message_parity.py` compare them, paths aside. The help text is Rust's `HELP`, which the Python CLI runs. Quote a value the operator wrote with `text::quote` -- never `{:?}` or a hand-built `"\"" + s + "\""` -- so a non-ASCII byte or an embedded quote is shown the same way everywhere. The decoder's own INFO and DEBUG lines (record traces, progress, detection scores) may still be worded per implementation. This rule replaced "log wording can drift", under which the two CLIs' config errors had come to differ for 60 of 79 corpus snippets and one printed a rejected value as an empty string.
 6. **CLI capability parity is the contract** (per L1-CLI-001) — capability parity matters, exact spelling doesn't. Today the two CLIs share one identical argument surface: the same subcommands (`decode` / `count` / `dump`), the same `--separate-errors` flag, the same global `--config`, and the same comma-separated filter syntax. They are free to diverge in spelling so long as capability parity holds.
-7. **The Rust crate has no runtime dependencies.** Argument parsing, CSV writing, TOML loading, logging, error types and file input are all hand-rolled (`memmap2`, the last dependency, was dropped in 5.0.0). Adding a crate requires explicit justification — see `docs/ROADMAP.md` and `CLAUDE.md` "Conventions worth preserving".
+7. **The Rust crate has no runtime dependencies.** Argument parsing, CSV writing, TOML loading, logging, error types and file input are all hand-rolled (`memmap2`, the last dependency, was dropped in 5.0.0). Adding a crate requires explicit justification — see `docs/ROADMAP.md` and `AGENTS.md` "Conventions worth preserving".
 
 ---
 
 ## 13. Quick links
 
-- [`CLAUDE.md`](../CLAUDE.md) — project conventions for LLM sessions
+- [`AGENTS.md`](../AGENTS.md) — project conventions for coding agents (`CLAUDE.md` imports it)
 - [`docs/ARCHITECTURE.md`](ARCHITECTURE.md) — module-level architecture
 - [`docs/ERROR-CATALOG.md`](ERROR-CATALOG.md) — every error / exit code
 - [`docs/L1-REQ.md`](L1-REQ.md) / [`L2-REQ.md`](L2-REQ.md) / [`L3-REQ.md`](L3-REQ.md) — spec
