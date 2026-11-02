@@ -590,7 +590,7 @@ Body conventions:
 
 ## Code conventions worth preserving
 
-These are codified in `CLAUDE.md`; the highlights:
+These are codified in `AGENTS.md`; the highlights:
 
 - **No external dependencies.** The crate has none. Adding a crate
   requires justification — argument parsing, CSV, TOML, logging,

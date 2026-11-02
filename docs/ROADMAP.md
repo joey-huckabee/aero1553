@@ -268,7 +268,7 @@ in step.
 
 ## Release artifacts and process (partly done)
 
-`CLAUDE.md` anticipates impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`)
+`AGENTS.md` anticipates impl-prefixed tags (`rust-vX.Y.Z`, `python-vX.Y.Z`)
 while every release so far has been a joint cut from one tag, and
 `scripts/repo-hygiene.sh` fails the build when the implementations declare
 different versions. No impl-prefixed tag is needed unless they later diverge.
@@ -309,7 +309,7 @@ To settle when it is taken up:
 - **Licensing:** cargo-libc compiles glibc's startup sources (LGPL-2.1+) into
   the objects it links. Confirm from its `NOTICE.md` what that means for the
   shipped binary before the first release built with it.
-- **Docs:** `CLAUDE.md`, `MAINTAINER-GUIDE.md` section 11 and the job's comments
+- **Docs:** `AGENTS.md`, `MAINTAINER-GUIDE.md` section 11 and the job's comments
   name zigbuild.
 - **Wheels, possibly:** it can also target an older glibc for a PyO3 extension
   through maturin. Today's wheels are built separately.
