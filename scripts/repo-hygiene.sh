@@ -267,7 +267,7 @@ fi
 
 # ── 11. Declared Rust MSRV agrees everywhere it is written down ───────
 # `rust-version` in rust/Cargo.toml is the only enforceable copy; the number
-# is also written into CI, CONTRIBUTING, both READMEs, CLAUDE.md, the
+# is also written into CI, CONTRIBUTING, both READMEs, AGENTS.md, the
 # MAINTAINER-GUIDE and L3-RS-001. Until v2.12.0 the *rationale* in four of
 # those was false (it credited memmap2, which declares 1.65 — the real driver
 # is the crate's own let-chains). Prose explaining a number is not mechanically
@@ -303,7 +303,7 @@ PATTERNS = [
 # Files that must each carry at least one floor declaration — losing the
 # statement entirely is drift too.
 REQUIRED = [
-    "rust/Cargo.toml", "CLAUDE.md", "CONTRIBUTING.md", "rust/README.md",
+    "rust/Cargo.toml", "AGENTS.md", "CONTRIBUTING.md", "rust/README.md",
     "docs/L3-REQ.md", "docs/MAINTAINER-GUIDE.md", ".github/workflows/ci.yml",
 ]
 
