@@ -274,50 +274,21 @@ while every release so far has been a joint cut from one tag, and
 different versions. No impl-prefixed tag is needed unless they later diverge.
 
 **Done.** The Linux x86-64 binary that serves SLES 12 SP5 is built on every push
-by the `rust-glibc-2-22` CI job with
-`cargo zigbuild --release --target x86_64-unknown-linux-gnu.2.22`, checked to
-reference no symbol newer than `GLIBC_2.22`, and run against the whole
-conformance suite (`L3-RS-018`). Releases 5.0.0 to 5.2.0 attach it as
+by the `rust-glibc-2-22` CI job with a pinned
+[cargo-libc](https://github.com/rustcommons/cargo-libc)
+(`cargo libc build --distro sles-12-sp5`, since 5.9.0; cargo-zigbuild before),
+checked to reference no symbol newer than `GLIBC_2.22`, tested with every system
+call kernel 4.12 lacks returning `ENOSYS`, and run against the whole conformance
+suite (`L3-RS-018`). Releases since 5.0.0 attach it as
 `aero1553-x86_64-linux-glibc2.22`, with its SHA-256 in the release notes.
-
-**Replace cargo-zigbuild with cargo-libc (queued, after the current list).**
-[cargo-libc](https://github.com/rustcommons/cargo-libc) (0.2, from the
-maintainer's [rustcommons](https://github.com/rustcommons) organisation) builds
-for a chosen glibc release the way the `rust-glibc-2-22` job uses zigbuild, and
-adds what that job does by hand:
-- **Build:** `cargo libc build --distro sles-12-sp5` targets glibc 2.22 and
-  kernel 4.12 together, in place of
-  `cargo zigbuild --target x86_64-unknown-linux-gnu.2.22`.
-- **Check:** `cargo libc inspect --max-glibc 2.22` replaces the job's
-  `objdump -T` grep for the newest `GLIBC_` symbol.
-- **Kernel simulation:** `cargo libc test --distro sles-12-sp5` runs the tests
-  with the syscalls kernel 4.12 lacks returning `ENOSYS` (its tier 2). Nothing
-  covers that today. It narrows, but does not close, the real-SLES-host item
-  below: cargo-libc's own documentation says it does not replace a real host
-  (tier 3).
-- **No Zig.** It needs Clang (with `--gcc-install-dir`), GCC and GNU binutils on
-  the build host, and Rust 1.90+ for the tool itself. The crate's MSRV (1.88)
-  is unaffected: the tool runs only in CI.
-
-To settle when it is taken up:
-- **Pinning:** install a pinned version in CI (`cargo install cargo-libc
-  --version ... --locked`). It is a build tool, not a crate dependency, so
-  `cargo-deny` does not see it.
-- **Proving the switch:** for one release, build with both tools and compare the
-  binaries' required `GLIBC_*` versions and the conformance results before
-  dropping zigbuild.
-- **Licensing:** cargo-libc compiles glibc's startup sources (LGPL-2.1+) into
-  the objects it links. Confirm from its `NOTICE.md` what that means for the
-  shipped binary before the first release built with it.
-- **Docs:** `AGENTS.md`, `MAINTAINER-GUIDE.md` section 11 and the job's comments
-  name zigbuild.
-- **Wheels, possibly:** it can also target an older glibc for a PyO3 extension
-  through maturin. Today's wheels are built separately.
 
 **Still to do:**
 
+- **Wheels for an older glibc.** cargo-libc can also build a PyO3 extension for
+  an older glibc through maturin. Today's wheels are built separately.
 - **Test on a real SLES 12 SP5 host.** The glibc-2.22 link target proves which
-  symbols the binary asks for, not that it runs on the real host; no release
+  symbols the binary asks for, and the kernel simulation which system calls the
+  tests make, not that it runs on the real host; no release
   has been run on one yet. Decide who does that check, on what machine, and how
   it is recorded for each release.
 - **Automate the release.** Attaching the binary is manual today: download the
@@ -431,7 +402,7 @@ order they are expected to pay:
   (`rust/examples/synth_large.rs`, the full experiment tagged
   `archive/perf-io-backends`), and nothing under 15% is caught automatically.
 - **PGO and fat LTO for the release binaries.** Typically 5-15% with no source
-  change; the work is in CI, including the glibc 2.22 zigbuild job. Best done
+  change; the work is in CI, including the glibc 2.22 cargo-libc job. Best done
   after the calling-thread work, since PGO tunes whatever the code is.
 - **Per-record `MUX` handle.** Every record holds a clone of one `Arc<String>` per
   input file. 5.2.0 stopped worker threads from dropping records (which moved

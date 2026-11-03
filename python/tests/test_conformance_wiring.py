@@ -17,6 +17,7 @@ from __future__ import annotations
 import argparse
 import importlib.util
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -158,12 +159,17 @@ def test_conformance_job_present_in_ci() -> None:
 
 @pytest.mark.requirement("L3-RS-018")
 def test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci() -> None:
-    """CI SHALL build the Rust binary against glibc 2.22 (SLES 12 SP5),
-    reject a symbol newer than GLIBC_2.22, and run the conformance suite
+    """CI SHALL build the Rust binary for SLES 12 SP5 (glibc 2.22, kernel
+    4.12) with a pinned cargo-libc, reject a symbol newer than GLIBC_2.22, run
+    the tests under the simulated kernel, and run the conformance suite
     against that binary rather than a dev build."""
     body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "x86_64-unknown-linux-gnu.2.22" in body, "no glibc 2.22 zigbuild target in CI"
-    assert "GLIBC_2.22" in body, "CI does not check the binary's glibc symbol versions"
+    assert re.search(r"CARGO_LIBC_VERSION: \d+\.\d+\.\d+\n", body), "cargo-libc is not pinned"
+    assert "cargo libc build --distro sles-12-sp5" in body, "no SLES 12 SP5 build in CI"
+    assert "--max-glibc 2.22" in body, "CI does not check the binary's glibc symbol versions"
+    assert "cargo libc test --distro sles-12-sp5 --runner local" in body, (
+        "CI does not run the tests under the simulated SLES 12 SP5 kernel"
+    )
     assert "--rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553" in body, (
         "CI does not run the conformance suite against the glibc 2.22 binary"
     )
