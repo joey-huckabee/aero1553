@@ -42,7 +42,18 @@ CSV output is byte-identical between the two — your choice doesn't change the 
 
 ### Rust binary
 
-If a prebuilt binary is available for your platform, just download and run it. To build from source:
+Each release on GitHub attaches two prebuilt binaries. Download one and run it; there is nothing to install.
+
+| Platform | File | Needs |
+|---|---|---|
+| Linux x86-64, including SLES 12 SP5 | `aero1553-x86_64-linux-glibc2.22` | glibc 2.18 or newer and GCC's `libgcc_s.so.1`, both present on standard installs. Run `chmod +x` on it once. |
+| Windows 10 / Server 2016 or later, x64 | `aero1553-x86_64-windows.exe` | Nothing: the C runtime is built in, so no Visual C++ Redistributable is needed. |
+
+Each release's notes give the SHA-256 of both files, so you can check a download (`sha256sum` on Linux, `Get-FileHash` in PowerShell).
+
+**Windows shows a warning the first time.** The exe is not code-signed, so when it was downloaded from the internet, Windows SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**. Some corporate antivirus products quarantine unsigned programs; ask your IT team to allow the file by its SHA-256.
+
+To build from source:
 
 ```bash
 git clone <repo-url>

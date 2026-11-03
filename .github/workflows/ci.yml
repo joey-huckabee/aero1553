@@ -207,6 +207,86 @@ jobs:
           path: rust/target/x86_64-unknown-linux-gnu/release/aero1553
           if-no-files-found: error
 
+  rust-windows-x64:
+    # The Windows x64 binary attached to each release (L3-RS-020). The C
+    # runtime is linked statically (rust/.cargo/config.toml), so the exe needs
+    # nothing beyond Windows itself -- checked below from its import table,
+    # not assumed -- and the conformance suite runs against this binary, the
+    # one that ships, not a dev build.
+    name: Rust Windows x64 binary
+    # Pinned, not windows-latest: the image's toolchain builds the shipping
+    # binary, so an image update must not change it silently.
+    runs-on: windows-2025
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Normalize git line endings on Windows
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+          rustup component add llvm-tools-preview
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build the release binary
+        working-directory: rust
+        run: cargo build --locked --release
+
+      - name: No C runtime DLL
+        # A C runtime DLL in the import table means a user without the VC++
+        # Redistributable cannot start the exe. Every DLL is printed, so the
+        # log shows the rest are Windows' own.
+        shell: bash
+        run: |
+          exe=rust/target/release/aero1553.exe
+          objdump="$(rustc --print sysroot)/lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-objdump.exe"
+          dlls=$("$objdump" -p "$exe" | sed -n 's/^ *DLL Name: *//p' | tr -d '\r')
+          echo "size: $(stat -c %s "$exe") bytes"
+          echo "imported DLLs:"; echo "$dlls" | sed 's/^/  /'
+          test -n "$dlls"
+          if crt=$(echo "$dlls" | grep -iE '^(vcruntime|msvcp|ucrtbase|api-ms-win-crt-)'); then
+            echo "::error::the exe imports the C runtime: $crt"
+            exit 1
+          fi
+
+      - name: The binary reports this version
+        shell: bash
+        run: |
+          want=$(sed -n 's/^version = "\(.*\)"/\1/p' rust/Cargo.toml | head -1)
+          got=$(rust/target/release/aero1553.exe --version | tr -d '\r')
+          echo "$got"
+          test "$got" = "aero1553 $want"
+
+      - name: Conformance suite against the shipping binary
+        run: >
+          python tests/conformance/run.py --only rust
+          --rust-bin rust/target/release/aero1553.exe
+
+      - name: Name the binary for release
+        shell: bash
+        run: cp rust/target/release/aero1553.exe aero1553-x86_64-windows.exe
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v6
+        with:
+          name: aero1553-x86_64-windows.exe
+          path: aero1553-x86_64-windows.exe
+          if-no-files-found: error
+
   rust-msrv:
     name: Rust MSRV (1.88)
     runs-on: ubuntu-latest

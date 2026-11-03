@@ -19,6 +19,19 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **A Windows x64 binary, `aero1553-x86_64-windows.exe`, is attached to each
+  release** (`L3-RS-020`). The C runtime is linked into the exe, so it runs on
+  Windows 10 / Server 2016 or later with nothing installed: no Visual C++
+  Redistributable. CI fails a build that imports a C runtime DLL, checks its
+  version, and runs the conformance suite against it. Proven on one commit
+  built both ways: the same behaviour on 182 invocations over every golden
+  recording and conformance input as the default dynamic-runtime build, at
+  the same speed; the exe is about 95 KB larger (962,560 bytes). It is not
+  code-signed, so Windows SmartScreen warns on first run (More info,
+  then Run anyway).
+
 ## [5.9.0] — 2026-11-03
 
 ### Changed

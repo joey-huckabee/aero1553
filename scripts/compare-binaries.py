@@ -1,6 +1,7 @@
 """Compare two builds of the aero1553 CLI: is the new one the same program?
 
     python3 scripts/compare-binaries.py OLD NEW [--rounds N] [--allow REGEX ...]
+                                        [--behaviour-only]
 
 Run from the repository root on Linux with binutils (``objdump``,
 ``readelf``). Two builds of one commit made by different tools -- linkers,
@@ -23,8 +24,12 @@ what reaches a user:
    recording, interleaved rounds, medians. Never a pass or fail -- a shared
    runner's timing moves by far more than a link difference would.
 
-Exit 0 when (1) and (2) match. Written for the cargo-zigbuild to cargo-libc
-switch (5.9.0); reusable for any change to how the release binary is built.
+``--behaviour-only`` skips (1), for a binary that is not ELF (a Windows exe,
+whose imports the CI job checks itself). Exit 0 when (1) and (2) match.
+
+Written for the cargo-zigbuild to cargo-libc switch (5.9.0) and used for the
+Windows static runtime (5.10.0); reusable for any change to how a release
+binary is built.
 """
 
 from __future__ import annotations
@@ -149,14 +154,22 @@ def main() -> int:
         metavar="REGEX",
         help="An accepted requirement difference (repeatable); it is reported, not failed.",
     )
+    parser.add_argument(
+        "--behaviour-only",
+        action="store_true",
+        help="Skip the ELF requirement checks (for a non-ELF binary such as a Windows exe).",
+    )
     args = parser.parse_args()
     old, new = args.old.resolve(), args.new.resolve()
     problems: list[str] = []
 
     print(f"old: {old} ({old.stat().st_size:,} bytes)")
     print(f"new: {new} ({new.stat().st_size:,} bytes)")
-    req_old, req_new = requirements(old), requirements(new)
-    for key in ("interpreter", "needed", "imports"):
+    req_old: dict[str, list[str]] = {}
+    req_new: dict[str, list[str]] = {}
+    if not args.behaviour_only:
+        req_old, req_new = requirements(old), requirements(new)
+    for key in ("interpreter", "needed", "imports") if req_old else ():
         if req_old[key] == req_new[key]:
             print(f"same {key}: {len(req_old[key])} entr{'y' if len(req_old[key]) == 1 else 'ies'}")
         else:
@@ -169,8 +182,9 @@ def main() -> int:
                         print(f"accepted {key} difference, only in {side}: {entry}")
                     else:
                         problems.append(f"{key} differ: only in {side}: {entry}")
-    newest = [newest_glibc(r["imports"]) for r in (req_old, req_new)]
-    print(f"newest glibc: old {newest[0]}, new {newest[1]}")
+    if req_old:
+        newest = [newest_glibc(r["imports"]) for r in (req_old, req_new)]
+        print(f"newest glibc: old {newest[0]}, new {newest[1]}")
 
     with tempfile.TemporaryDirectory(prefix="aero1553-compare-") as tmp:
         work = Path(tmp)
@@ -193,6 +207,9 @@ def main() -> int:
     if problems:
         print("\nDIFFERENT\n" + "\n".join(problems), file=sys.stderr)
         return 1
+    if args.behaviour_only:
+        print("the two binaries behave the same (requirements not compared)")
+        return 0
     print("the two binaries are the same program: same behaviour, same requirements")
     if args.allow:
         print("(apart from the requirement differences accepted above)")

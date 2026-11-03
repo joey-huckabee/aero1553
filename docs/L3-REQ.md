@@ -232,6 +232,11 @@ The Rust rendering threads SHALL be implemented in a private module `rust/src/pa
 
 The count is kept off `WriteOptions` because that struct is public with public fields: adding one breaks every caller that builds it with a struct literal, which `cargo semver-checks` would rightly reject in a minor release. A library caller loses nothing by it — the default is the measured one, and the output is byte-identical at every count.
 
+**L3-RS-020** · Parent: L2-CONF-005 · Verification: T
+The Rust `aero1553` binary for Windows x64 SHALL be built for `x86_64-pc-windows-msvc` with the C runtime linked statically (`-C target-feature=+crt-static`, set for that target in `rust/.cargo/config.toml`), so it runs on Windows 10 / Server 2016 or later with nothing installed: no Visual C++ Redistributable and no `vcruntime140.dll` beside it. CI SHALL build that binary on every push and pull request, SHALL fail if its import table names a C runtime DLL (`vcruntime*`, `msvcp*`, `ucrtbase`, `api-ms-win-crt-*`), SHALL check that it reports the crate's version, and SHALL run the conformance suite against that binary -- the one that ships -- not against a development build. Each release SHALL attach it as `aero1553-x86_64-windows.exe`.
+
+The setting lives in the config file rather than the release job so that every Windows build -- the tests, conformance and performance runs, a developer's -- is the kind that ships. The cost is that a fix to Microsoft's C runtime reaches users only through a new release; the decoder's own code, file parsing included, is Rust, and calls into the runtime for little more than memory copies and start-up. The switch was proven on one commit built both ways: the same output, errors and exit code on 182 invocations over every golden recording and conformance input (`scripts/compare-binaries.py --behaviour-only`).
+
 ---
 
 ## L3-CPP: C++ implementation technology (withdrawn)
