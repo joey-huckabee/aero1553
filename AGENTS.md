@@ -404,7 +404,8 @@ removed from `docs/ROADMAP.md` in the same change.
 `docs/MAINTAINER-GUIDE.md` section 11: a `release/X.Y.Z` pull request that bumps the version
 everywhere it is declared (the hygiene check lists the places) and rolls `[Unreleased]` into a
 dated section with its compare link; a merge commit; an annotated tag `Aero1553 X.Y.Z` on it;
-and a GitHub release with the glibc 2.22 binary and its SHA-256 attached.
+and a GitHub release with the glibc 2.22 binary and the Windows exe attached, each with its
+SHA-256.
 
 ## Reference docs
 

@@ -295,10 +295,11 @@ suite (`L3-RS-018`). Releases since 5.0.0 attach it as
   artifact from the tag's CI run, check `--version` and the glibc floor, upload
   it, and add its SHA-256 to the notes. A workflow triggered by a `v*` tag could
   do all of it, and could create the release from the `CHANGELOG.md` section.
-- **Windows x64 binary**, built with the MSVC toolchain
-  (`x86_64-pc-windows-msvc`). Needs deciding: is a static CRT
-  (`-C target-feature=+crt-static`) wanted, so the binary does not depend on the
-  VC++ redistributable being present?
+- **Code-sign the Windows exe.** Since 5.10.0 each release attaches
+  `aero1553-x86_64-windows.exe` (`L3-RS-020`), unsigned: Windows SmartScreen
+  warns on first run, and some antivirus products quarantine unsigned programs.
+  Signing needs a code-signing certificate, a cost and a decision of its own.
+- **Windows on ARM64** (`aarch64-pc-windows-msvc`), if a site asks for it.
 
 Merged branches are deleted by hand, on the remote and locally together, so
 the two stay consistent; the repository's "delete head branches on merge"

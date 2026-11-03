@@ -276,27 +276,6 @@ jobs:
           python tests/conformance/run.py --only rust
           --rust-bin rust/target/release/aero1553.exe
 
-      # One-time proof for the static runtime (5.10.0): the same commit built
-      # with the default, dynamic runtime must behave identically.
-      - name: "Static check: build with the dynamic runtime"
-        working-directory: rust
-        shell: bash
-        env:
-          # Set but empty: replaces the config file's rustflags.
-          CARGO_ENCODED_RUSTFLAGS: ""
-          CARGO_TARGET_DIR: ${{ github.workspace }}/rust/target-dyn
-        run: |
-          cargo build --locked --release
-          exe=target-dyn/release/aero1553.exe
-          objdump="$(rustc --print sysroot)/lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-objdump.exe"
-          "$objdump" -p "$exe" | grep -qi "DLL Name: vcruntime140.dll"
-          echo "dynamic: $(stat -c %s "$exe") bytes; static: $(stat -c %s target/release/aero1553.exe) bytes"
-
-      - name: "Static check: same behaviour"
-        run: >
-          python scripts/compare-binaries.py --behaviour-only
-          rust/target-dyn/release/aero1553.exe rust/target/release/aero1553.exe
-
       - name: Name the binary for release
         shell: bash
         run: cp rust/target/release/aero1553.exe aero1553-x86_64-windows.exe

@@ -291,7 +291,7 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | L2-CONF-002 | _(none)_ | `python/tests/test_conformance_wiring.py::test_conformance_runner_comparison_rejects_a_difference`<br>`python/tests/test_conformance_wiring.py::test_conformance_runner_registers_both_clis` | Implemented |
 | L2-CONF-003 | _(none)_ | `python/tests/test_conformance_wiring.py::test_conformance_manifest_has_cases_with_oracles`<br>`python/tests/test_conformance_wiring.py::test_conformance_runner_exists` | Implemented |
 | L2-CONF-004 | _(none)_ | `--update-expected`<br>`.github/workflows/ci.yml`<br>`.github/workflows/differential.yml`<br>`conformance`<br>`cross-impl-differential`<br>`tests/conformance/run.py` | Implemented (I) |
-| L2-CONF-005 | L3-PY-001, L3-PY-002, L3-PY-003, L3-PY-008, L3-PY-017, L3-RS-001, L3-RS-002, L3-RS-011, L3-RS-018 | `python/tests/test_conformance_wiring.py::test_conformance_job_present_in_ci`<br>`python/tests/test_conformance_wiring.py::test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci`<br>`python/tests/test_package_api.py::test_console_script_entry_point_registered` | Partially Implemented |
+| L2-CONF-005 | L3-PY-001, L3-PY-002, L3-PY-003, L3-PY-008, L3-PY-017, L3-RS-001, L3-RS-002, L3-RS-011, L3-RS-018, L3-RS-020 | `python/tests/test_conformance_wiring.py::test_conformance_job_present_in_ci`<br>`python/tests/test_conformance_wiring.py::test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci`<br>`python/tests/test_conformance_wiring.py::test_windows_binary_is_static_checked_and_conformance_tested_in_ci`<br>`python/tests/test_package_api.py::test_console_script_entry_point_registered` | Partially Implemented |
 | L2-CONF-006 | L3-PY-007, L3-PY-020, L3-RS-013 | `python/tests/test_e2e_golden.py::test_a_user_dataclass_from_to_dict`<br>`python/tests/test_e2e_golden.py::test_columns_agree_with_the_pinned_csv`<br>`python/tests/test_e2e_golden.py::test_freerun_records_are_undated_but_keep_their_clock`<br>`python/tests/test_e2e_golden.py::test_numpy_and_pandas_analysis`<br>`python/tests/test_e2e_golden.py::test_selecting_fields_returns_the_same_values`<br>`python/tests/test_e2e_golden.py::test_standard_time_needs_a_tick_rate_and_never_has_a_date`<br>`python/tests/test_e2e_golden.py::test_with_a_year_datetime_is_the_iso_instant_or_nat`<br>`python/tests/test_e2e_golden.py::test_without_a_year_there_is_no_datetime_and_no_error`<br>`python/tests/test_package_api.py::test_decoder_entry_point_importable_from_package_root`<br>`python/tests/test_package_api.py::test_decoder_entry_point_is_a_typed_callable`<br>`python/tests/test_package_api.py::test_message_type_importable_from_package_root`<br>`python/tests/test_package_api.py::test_public_surface_is_documented`<br>`python/tests/test_python_guide.py::test_guide_example`<br>`python/tests/test_python_guide.py::test_the_guide_has_examples_with_output`<br>`python/tests/test_readme_examples.py::test_python_readme_examples_execute`<br>`python/tests/test_table.py::test_a_decoder_error_mid_stream_is_raised`<br>`python/tests/test_table.py::test_a_python_iterable_and_a_filtered_stream_are_accepted`<br>`python/tests/test_table.py::test_an_empty_stream_has_empty_columns_of_the_right_shape`<br>`python/tests/test_table.py::test_datetime_is_the_instant_the_iso_rendering_names`<br>`python/tests/test_table.py::test_datetime_needs_a_year_only_when_asked_for`<br>`python/tests/test_table.py::test_every_column_equals_to_dict_record_by_record`<br>`python/tests/test_table.py::test_fields_are_the_to_dict_keys_and_the_column_keys`<br>`python/tests/test_table.py::test_fields_resolution_is_safe_across_threads`<br>`python/tests/test_table.py::test_fields_selects_in_schema_order_and_rejects_unknowns`<br>`python/tests/test_table.py::test_numpy_and_pandas_wrap_the_columns_without_copying`<br>`python/tests/test_table.py::test_records_with_no_date_are_nat_not_a_refusal`<br>`python/tests/test_table.py::test_time_us_follows_the_delta_rule`<br>`python/tests/test_table.py::test_to_dict_agrees_with_the_records_attributes`<br>`rust/tests/integration.rs::crate_root_reexports_public_decode_api` | Implemented |
 
 ### L1-EXIT: Exit-code semantics and operational contract
@@ -386,14 +386,14 @@ Status is computed by `scripts/build-trace-matrix.py`'s rollup rule. This matrix
 | WRT | 0 | 23 | 5 | 23 | 5 | 23 | 5 |
 | FLT | 0 | 3 | 0 | 3 | 0 | 3 | 0 |
 | PY | 0 | 0 | 22 | 0 | 17 | 0 | 17 |
-| RS | 0 | 0 | 18 | 0 | 13 | 0 | 13 |
-| **Total** | **33** | **153** | **46** | **149** | **36** | **151** | **36** |
+| RS | 0 | 0 | 19 | 0 | 14 | 0 | 14 |
+| **Total** | **33** | **153** | **47** | **149** | **37** | **151** | **37** |
 
 The countable requirement set is every L2 and L3 requirement plus the 6 Test-verifiable L1 *leaf* requirement(s) (L1s with no L2 decomposition, e.g. `L1-ROB-001`, where the test markers attach directly). Composite L1s are verified transitively through their L2/L3 children, which are counted individually above.
 
-**Tested by at least one test marker**: 191 of 205 (93.2%).
+**Tested by at least one test marker**: 192 of 206 (93.2%).
 
-**Verified (Test or declared Inspection/Analysis/Demonstration)**: 193 of 205 (94.1%).
+**Verified (Test or declared Inspection/Analysis/Demonstration)**: 194 of 206 (94.2%).
 
 ### Orphan check
 
