@@ -33,3 +33,13 @@
 cov      = 'llvm-cov --html --open --ignore-filename-regex=bin[\\/]aero1553\.rs$'
 cov-lcov = 'llvm-cov --lcov --output-path lcov.info --ignore-filename-regex=bin[\\/]aero1553\.rs$'
 cov-ci   = 'llvm-cov --fail-under-lines 90 --fail-under-regions 89 --ignore-filename-regex=bin[\\/]aero1553\.rs$'
+
+# The Windows C runtime is linked into the binary (L3-RS-020), so the exe runs
+# on any Windows 10 / Server 2016 or later with nothing installed -- no VC++
+# Redistributable, no vcruntime140.dll beside it. Set here rather than in the
+# release job, so every Windows build -- the CI tests, conformance and perf
+# runs, a developer's -- is the kind that ships. Linux is unaffected, and the
+# Python extension (python/native, outside this directory) is not built with
+# it: it runs inside Python, which brings its own runtime.
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]
