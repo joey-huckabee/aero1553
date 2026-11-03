@@ -193,7 +193,9 @@ def main() -> int:
     if problems:
         print("\nDIFFERENT\n" + "\n".join(problems), file=sys.stderr)
         return 1
-    print("the two binaries are the same program: same requirements, same behaviour")
+    print("the two binaries are the same program: same behaviour, same requirements")
+    if args.allow:
+        print("(apart from the requirement differences accepted above)")
     return 0
 
 

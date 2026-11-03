@@ -19,7 +19,24 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **The SLES 12 SP5 binary is built with cargo-libc instead of cargo-zigbuild**
+  (`L3-RS-018`). cargo-libc 0.4.0, pinned in CI, links for glibc 2.22 and
+  kernel 4.12 together. Proven on one commit built both ways
+  (`scripts/compare-binaries.py`, new): the same output, errors and exit code on
+  182 invocations over every golden recording and conformance input, and the
+  same newest glibc version needed (2.18). **One requirement changes:** the
+  binary now loads GCC's runtime library `libgcc_s.so.1` for its unwinder, as
+  a natively built Rust program does, where Zig linked an unwinder of its own.
+  The binary is still unchecked on a real SLES 12 host.
+
 ### Added
+
+- **The Rust tests run under a simulated SLES 12 SP5 kernel in CI**
+  (`L3-RS-018`): every system call kernel 4.12 lacks returns `ENOSYS`, so a
+  dependency on a newer kernel fails the build. It narrows, but does not
+  replace, a run on a real SLES 12 host.
 
 - **Config numbers can use TOML's separators and prefixes** (`L2-CFG-014`).
   `1_000_000`, `1_000_000.0`, `0x08`, `0o10` and `0b1000` were refused with

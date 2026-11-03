@@ -48,8 +48,9 @@ change that Python picks up through the extension. "Both implementations" means 
 
 **The C++ implementation under `cpp/` was removed in 5.0.0.** It existed to make **SLES 12 SP5**
 a first-class deployment target; that target is now served by the Rust binary built against
-glibc 2.22 (`L3-RS-018`), today with `cargo zigbuild` (the move to cargo-libc is queued in
-`docs/ROADMAP.md`). Comments and requirement rationales that mention C++ record history;
+glibc 2.22 and kernel 4.12 (`L3-RS-018`) with a pinned cargo-libc (since 5.9.0; cargo-zigbuild
+before). It needs glibc and GCC's `libgcc_s.so.1`. Before changing how it is built, compare the
+old and new binaries with `scripts/compare-binaries.py`. Comments and requirement rationales that mention C++ record history;
 ADR-0001 to ADR-0003 in `docs/adr/` are superseded.
 
 **Edition 2024, MSRV 1.88.** The floor is set by the crate's own use of **let-chains**
@@ -273,7 +274,7 @@ be added without classifying it on both sides.
 - **No external dependencies.** The crate has none (`memmap2` was dropped in 5.0.0). Adding a
   crate requires justification: argument parsing, CSV, TOML, logging, error types and file
   input are all hand-rolled by design, and the maintainer values keeping it that way. Build
-  tools that run only in CI (cargo-zigbuild, cargo-libc) are not crate dependencies.
+  tools that run only in CI (cargo-libc) are not crate dependencies.
 - **The input is streamed, never mapped or read whole.** `source.rs`'s `Window` bounds memory
   per open input to the window, independent of file size; `dump` reads through the same module.
   Before calling a sync helper, make the window reach as far as that helper can look: the
