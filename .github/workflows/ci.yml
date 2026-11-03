@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
-      CARGO_LIBC_VERSION: 0.2.4
+      CARGO_LIBC_VERSION: 0.4.0
 
     steps:
       - name: Check out repository
@@ -212,10 +212,18 @@ jobs:
           cargo zigbuild --locked --release --target x86_64-unknown-linux-gnu.2.22
 
       - name: "Switch check: same program"
+        # The accepted differences are where the unwinder lives: zig links its
+        # own (which imports a few stdio and pthread functions); cargo-libc
+        # uses the system's libgcc_s.so.1, as a native build does. Anything
+        # else still fails.
         run: >
           python3 scripts/compare-binaries.py
           rust/target-zig/x86_64-unknown-linux-gnu/release/aero1553
           rust/target/x86_64-unknown-linux-gnu/release/aero1553
+          --allow '^libgcc_s\.so\.1$'
+          --allow '^\(GCC_[0-9.]+\) _Unwind_[A-Za-z]+$'
+          --allow '^\(none\) __gmon_start__$'
+          --allow '^\(GLIBC_2\.2\.5\) (dladdr|fflush|fprintf|fwrite|snprintf|stderr|pthread_rwlock_(rdlock|unlock|wrlock))$'
 
       - name: Upload binary
         uses: actions/upload-artifact@v6

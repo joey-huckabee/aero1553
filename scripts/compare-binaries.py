@@ -1,6 +1,6 @@
 """Compare two builds of the aero1553 CLI: is the new one the same program?
 
-    python3 scripts/compare-binaries.py OLD NEW [--rounds N]
+    python3 scripts/compare-binaries.py OLD NEW [--rounds N] [--allow REGEX ...]
 
 Run from the repository root on Linux with binutils (``objdump``,
 ``readelf``). Two builds of one commit made by different tools -- linkers,
@@ -10,7 +10,10 @@ what reaches a user:
 1. **What the binary asks of the system.** The program interpreter, the
    shared libraries it needs, and every symbol it imports with its version.
    These must be identical: a symbol imported at a different version is a
-   different requirement on the target machine.
+   different requirement on the target machine. A difference that has been
+   understood and accepted is named with ``--allow REGEX`` (matched against
+   the library or ``(version) symbol`` entry); it is printed, not hidden, and
+   any difference no pattern matches still fails.
 2. **What it does.** Every golden recording (``tests/golden``) and every
    conformance input (``tests/conformance/inputs``) is run through both
    binaries under several commands and options -- decode, count, dump, a
@@ -139,6 +142,13 @@ def main() -> int:
     parser.add_argument("old", type=Path)
     parser.add_argument("new", type=Path)
     parser.add_argument("--rounds", type=int, default=7, help="Timing rounds (default 7).")
+    parser.add_argument(
+        "--allow",
+        action="append",
+        default=[],
+        metavar="REGEX",
+        help="An accepted requirement difference (repeatable); it is reported, not failed.",
+    )
     args = parser.parse_args()
     old, new = args.old.resolve(), args.new.resolve()
     problems: list[str] = []
@@ -152,7 +162,13 @@ def main() -> int:
         else:
             gone = sorted(set(req_old[key]) - set(req_new[key]))
             added = sorted(set(req_new[key]) - set(req_old[key]))
-            problems.append(f"{key} differ: only in old {gone}, only in new {added}")
+            for side, entries in (("old", gone), ("new", added)):
+                for entry in entries:
+                    accepted = any(re.search(pattern, entry) for pattern in args.allow)
+                    if accepted:
+                        print(f"accepted {key} difference, only in {side}: {entry}")
+                    else:
+                        problems.append(f"{key} differ: only in {side}: {entry}")
     newest = [newest_glibc(r["imports"]) for r in (req_old, req_new)]
     print(f"newest glibc: old {newest[0]}, new {newest[1]}")
 
