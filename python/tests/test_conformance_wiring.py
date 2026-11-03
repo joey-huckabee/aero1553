@@ -163,10 +163,11 @@ def test_windows_binary_is_static_checked_and_conformance_tested_in_ci() -> None
     reject one that imports a C runtime DLL, check its version, run the
     conformance suite against it, and upload it under its release name."""
     config = (_REPO_ROOT / "rust" / ".cargo" / "config.toml").read_text(encoding="utf-8")
-    assert re.search(
-        r'\[target\.x86_64-pc-windows-msvc\]\s*\nrustflags = \["-C", "target-feature=\+crt-static"\]',
-        config,
-    ), "the Windows C runtime is not linked statically"
+    static = (
+        r"\[target\.x86_64-pc-windows-msvc\]\s*\n"
+        r'rustflags = \["-C", "target-feature=\+crt-static"\]'
+    )
+    assert re.search(static, config), "the Windows C runtime is not linked statically"
     body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
     assert "vcruntime|msvcp|ucrtbase|api-ms-win-crt-" in body, "no C runtime import check"
     assert "--rust-bin rust/target/release/aero1553.exe" in body, (
