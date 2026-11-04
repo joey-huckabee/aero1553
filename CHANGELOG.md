@@ -19,6 +19,15 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Maintenance
+
+- **The SLES 12 SP5 binary is built with cargo-libc 0.5.0** (was 0.4.0).
+  0.5.0 adds an optional `inspect --target-libgcc` check and changes nothing
+  in how a binary is linked; one commit built with both versions gave the same
+  program (`scripts/compare-binaries.py`, no accepted differences): the same
+  size, required libraries, 86 imports and newest glibc version (2.18), and
+  the same behaviour on 182 invocations.
+
 ## [5.10.0] — 2026-11-03
 
 ### Added
