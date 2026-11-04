@@ -400,7 +400,9 @@ holds. Measure before writing a number into a comment or a test floor.
 **Every change updates `CHANGELOG.md` under `[Unreleased]`**, and a shipped roadmap item is
 removed from `docs/ROADMAP.md` in the same change.
 
-**Release only for a bug fix or a feature, and only when the maintainer asks.** The process is
+**Release for a bug fix, a feature, or any new documentation, and only when the maintainer
+asks.** A documentation-only change still gets a release, so the docs a user reads always
+match a tagged version. The process is
 `docs/MAINTAINER-GUIDE.md` section 11: a `release/X.Y.Z` pull request that bumps the version
 everywhere it is declared (the hygiene check lists the places) and rolls `[Unreleased]` into a
 dated section with its compare link; a merge commit; an annotated tag `Aero1553 X.Y.Z` on it;
@@ -430,6 +432,10 @@ SHA-256.
 - `docs/VENDOR-CSV-DIFFS.md` -- alignment with DDC vendor CSV: matching columns, the five
   vendor-empty columns, the known IRIG day-of-year firmware discrepancy, and how to report a
   divergence.
+- `docs/BUILDING.md` -- how to build every release artifact, offline included: a bundle gathered
+  on a connected machine (`scripts/offline-bundle.py`), then `scripts/offline-build.sh` /
+  `.ps1` on the disconnected one. CI runs the procedure (`L3-RS-021`); change the scripts and
+  the guide together.
 - `docs/MIE-FORMAT.md` -- the MIE binary format: framing, record shape, every word layout, the
   11 transaction types, the error-record lifecycle, code tables and worked hex-to-CSV decodes.
 - `docs/ARCHITECTURE.md` -- module diagram, four-phase sync strategy, error pipeline,

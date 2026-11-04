@@ -53,7 +53,7 @@ Each release's notes give the SHA-256 of both files, so you can check a download
 
 **Windows shows a warning the first time.** The exe is not code-signed, so when it was downloaded from the internet, Windows SmartScreen says "Windows protected your PC". Choose **More info**, then **Run anyway**. Some corporate antivirus products quarantine unsigned programs; ask your IT team to allow the file by its SHA-256.
 
-To build from source:
+To build from source -- including on a machine with no network, and the exact release artifacts -- see [`BUILDING.md`](BUILDING.md). The short version, on a connected machine:
 
 ```bash
 git clone <repo-url>
