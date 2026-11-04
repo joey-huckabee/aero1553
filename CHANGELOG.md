@@ -36,9 +36,11 @@ shared behavior) holds at any compatible version pair. See
 - **The SLES 12 SP5 binary is tested on SUSE's own SLES 12 SP5 userland**
   (`L3-RS-018`). CI takes SUSE's public SLES 12 SP5 base image (pinned by
   digest), checks the binary's `libgcc_s` needs against SUSE's
-  `libgcc_s.so.1` (`cargo libc inspect --target-libgcc`), and runs the whole
-  conformance suite on SUSE's loader, glibc 2.22 and `libgcc_s`. The 5.10.0
-  binary passed all 224 cases there.
+  `libgcc_s.so.1` -- all three version nodes are there
+  (`cargo libc inspect --target-libgcc`), and SUSE's loader binds all 12
+  unwinder functions to it at start-up -- and runs the whole conformance suite
+  on SUSE's loader, glibc 2.22 and `libgcc_s`. The 5.10.0 binary passed all
+  224 cases there.
 
 ### Changed
 

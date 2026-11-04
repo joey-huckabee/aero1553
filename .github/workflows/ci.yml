@@ -217,11 +217,29 @@ jobs:
           docker export "$cid" | tar -x -C "$sles" --no-same-owner --exclude='dev/*'
           docker rm "$cid" >/dev/null
           grep -E '^(NAME|VERSION)=' "$sles/etc/os-release"
-          cargo libc inspect "$bin" --target-libgcc "$sles/lib64/libgcc_s.so.1" --max-glibc 2.22
+          # cargo-libc's comparison: "missing" (2) fails. On a stripped binary
+          # 0.5.0 reports "unresolved" (3) for the symbols, though the version
+          # nodes match; the binding check below covers the symbols.
+          rc=0
+          cargo libc inspect "$bin" --target-libgcc "$sles/lib64/libgcc_s.so.1" --max-glibc 2.22 || rc=$?
+          case $rc in
+            0) ;;
+            3) echo "::notice::cargo-libc left the libgcc_s symbol comparison unresolved (stripped binary); see the binding check" ;;
+            *) exit "$rc" ;;
+          esac
           printf '#!/bin/sh\nexec "%s" --library-path "%s" "%s" "$@"\n' \
             "$sles/lib64/ld-linux-x86-64.so.2" "$sles/lib64:$sles/usr/lib64" "$bin" > "$RUNNER_TEMP/on-sles"
           chmod +x "$RUNNER_TEMP/on-sles"
           "$RUNNER_TEMP/on-sles" --version
+          # The binary is linked BIND_NOW, so SUSE's loader binds every import at
+          # start-up: each GCC_* import must bind to SUSE's libgcc_s.so.1.
+          want=$(objdump -T "$bin" | awk '/\(GCC_/ {print $NF}' | sort)
+          got=$(LD_DEBUG=bindings "$RUNNER_TEMP/on-sles" --version 2>&1 >/dev/null \
+            | grep -F "binding file $bin [0] to " \
+            | sed -n "s/.*\/libgcc_s\.so\.1 \[0\]: normal symbol \`\([^']*\)'.*/\1/p" | sort -u)
+          test -n "$want"
+          diff <(echo "$want") <(echo "$got")
+          echo "all $(echo "$want" | wc -l) GCC_* imports bind to SUSE's libgcc_s.so.1"
           python3 tests/conformance/run.py --only rust --rust-bin "$RUNNER_TEMP/on-sles"
 
       - name: Upload binary
