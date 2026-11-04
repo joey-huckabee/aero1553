@@ -150,7 +150,7 @@ jobs:
     runs-on: ubuntu-24.04
     env:
       CARGO_TERM_COLOR: always
-      CARGO_LIBC_VERSION: 0.4.0
+      CARGO_LIBC_VERSION: 0.5.0
 
     steps:
       - name: Check out repository
@@ -199,6 +199,25 @@ jobs:
         run: >
           python3 tests/conformance/run.py --only rust
           --rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553
+
+      # One-time proof for the cargo-libc 0.4.0 -> 0.5.0 bump: the same commit
+      # built with the previous version must be the same program, with no
+      # accepted differences at all.
+      - name: "Bump check: build with cargo-libc 0.4.0"
+        working-directory: rust
+        env:
+          CARGO_TARGET_DIR: ${{ github.workspace }}/rust/target-prev
+        run: |
+          cargo install --locked cargo-libc@0.4.0 --root "$RUNNER_TEMP/cargo-libc-0.4.0"
+          "$RUNNER_TEMP/cargo-libc-0.4.0/bin/cargo-libc" libc build --distro sles-12-sp5 \
+            --artifact "$CARGO_TARGET_DIR/x86_64-unknown-linux-gnu/release/aero1553" \
+            -- --release --locked
+
+      - name: "Bump check: same program"
+        run: >
+          python3 scripts/compare-binaries.py
+          rust/target-prev/x86_64-unknown-linux-gnu/release/aero1553
+          rust/target/x86_64-unknown-linux-gnu/release/aero1553
 
       - name: Upload binary
         uses: actions/upload-artifact@v6
