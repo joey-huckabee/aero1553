@@ -200,6 +200,30 @@ jobs:
           python3 tests/conformance/run.py --only rust
           --rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553
 
+      - name: SLES 12 SP5 userland
+        # SUSE's public SLES 12 SP5 base image, pinned by digest (SLES 12 SP5
+        # Base Container 12.5.6.11.20, linux/amd64): its glibc 2.22 and its
+        # libgcc_s.so.1 are those of a SLES 12 SP5 host. The binary's libgcc_s
+        # requirements are checked against SUSE's file, then the conformance
+        # suite runs on SUSE's loader, glibc and libgcc_s. The kernel is the
+        # runner's; the simulated-kernel tests above cover 4.12.
+        env:
+          SLES_IMAGE: registry.suse.com/suse/sles12sp5@sha256:4c7d476a692d4da927397d7fe4e6e9aaa93a2dea6927a69a45cb9a1fcd56ba35
+        run: |
+          bin=$GITHUB_WORKSPACE/rust/target/x86_64-unknown-linux-gnu/release/aero1553
+          sles=$RUNNER_TEMP/sles12sp5
+          mkdir -p "$sles"
+          cid=$(docker create "$SLES_IMAGE" /bin/true)
+          docker export "$cid" | tar -x -C "$sles" --no-same-owner --exclude='dev/*'
+          docker rm "$cid" >/dev/null
+          grep -E '^(NAME|VERSION)=' "$sles/etc/os-release"
+          cargo libc inspect "$bin" --target-libgcc "$sles/lib64/libgcc_s.so.1" --max-glibc 2.22
+          printf '#!/bin/sh\nexec "%s" --library-path "%s" "%s" "$@"\n' \
+            "$sles/lib64/ld-linux-x86-64.so.2" "$sles/lib64:$sles/usr/lib64" "$bin" > "$RUNNER_TEMP/on-sles"
+          chmod +x "$RUNNER_TEMP/on-sles"
+          "$RUNNER_TEMP/on-sles" --version
+          python3 tests/conformance/run.py --only rust --rust-bin "$RUNNER_TEMP/on-sles"
+
       - name: Upload binary
         uses: actions/upload-artifact@v6
         with:
@@ -248,20 +272,10 @@ jobs:
 
       - name: No C runtime DLL
         # A C runtime DLL in the import table means a user without the VC++
-        # Redistributable cannot start the exe. Every DLL is printed, so the
-        # log shows the rest are Windows' own.
-        shell: bash
-        run: |
-          exe=rust/target/release/aero1553.exe
-          objdump="$(rustc --print sysroot)/lib/rustlib/x86_64-pc-windows-msvc/bin/llvm-objdump.exe"
-          dlls=$("$objdump" -p "$exe" | sed -n 's/^ *DLL Name: *//p' | tr -d '\r')
-          echo "size: $(stat -c %s "$exe") bytes"
-          echo "imported DLLs:"; echo "$dlls" | sed 's/^/  /'
-          test -n "$dlls"
-          if crt=$(echo "$dlls" | grep -iE '^(vcruntime|msvcp|ucrtbase|api-ms-win-crt-)'); then
-            echo "::error::the exe imports the C runtime: $crt"
-            exit 1
-          fi
+        # Redistributable cannot start the exe. pe-imports.py prints every DLL,
+        # so the log shows the rest are Windows' own; it is the same check a
+        # disconnected build runs (docs/BUILDING.md).
+        run: python scripts/pe-imports.py rust/target/release/aero1553.exe
 
       - name: The binary reports this version
         shell: bash
@@ -286,6 +300,90 @@ jobs:
           name: aero1553-x86_64-windows.exe
           path: aero1553-x86_64-windows.exe
           if-no-files-found: error
+
+  offline-build-linux:
+    # docs/BUILDING.md, Linux (L3-RS-021): gather a bundle as a connected
+    # machine would, then build the CLI, the SLES 12 SP5 binary and the Python
+    # wheel from it with the network cut, using the bundled Rust installer
+    # rather than the runner's toolchain, and verify each.
+    name: Offline build (Linux)
+    runs-on: ubuntu-24.04
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      - name: Gather the bundle (connected)
+        # No release binaries: the comparison with a release is for a build of
+        # that release, and a pull request's code may differ from it.
+        run: python3 scripts/offline-bundle.py "$RUNNER_TEMP/bundle" --platform linux --no-release-binaries
+
+      - name: Build and verify with the network cut
+        # unshare -n leaves the build only a loopback interface; PATH holds
+        # no Rust, so the script must install the bundled toolchain.
+        run: >
+          sudo unshare -n -- sudo -u "$USER" env PATH=/usr/bin:/bin HOME="$HOME"
+          bash "$RUNNER_TEMP/bundle/source/scripts/offline-build.sh"
+
+  offline-build-windows:
+    # docs/BUILDING.md, Windows (L3-RS-021): gather a bundle, install the
+    # bundled Rust installer, then build the exe and the Python wheel from the
+    # bundle with an empty Cargo home and --offline, and verify them. Windows
+    # cannot cut a runner's network without cutting the runner off, so
+    # "offline" here is Cargo's: it refuses any download.
+    name: Offline build (Windows)
+    runs-on: windows-2025
+    env:
+      CARGO_TERM_COLOR: always
+
+    steps:
+      - name: Normalize git line endings on Windows
+        shell: bash
+        run: |
+          git config --global core.autocrlf false
+          git config --global core.eol lf
+
+      - name: Check out repository
+        uses: actions/checkout@v6
+
+      - name: Install Rust toolchain
+        shell: bash
+        run: |
+          rustup update stable --no-self-update
+          rustup default stable
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Gather the bundle (connected)
+        run: python scripts/offline-bundle.py "$env:RUNNER_TEMP\bundle" --platform windows --no-release-binaries
+
+      - name: Install the bundled Rust
+        # The same installer docs/BUILDING.md has the user run, quietly; then
+        # the runner's rustup leaves PATH, so the build uses the bundled one.
+        run: |
+          $msi = Get-ChildItem "$env:RUNNER_TEMP\bundle\toolchains\rust-*-x86_64-pc-windows-msvc.msi" | Select-Object -First 1
+          Start-Process msiexec.exe -Wait -ArgumentList '/i', $msi.FullName, '/qn', '/norestart'
+          $cargo = Get-ChildItem 'C:\Program Files\Rust*\bin\cargo.exe' | Select-Object -First 1
+          if (-not $cargo) { throw 'the Rust installer put no cargo.exe under C:\Program Files\Rust*' }
+          $path = ($env:PATH -split ';' | Where-Object { $_ -notmatch '\\.cargo\\bin' }) -join ';'
+          "PATH=$($cargo.DirectoryName);$path" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Build and verify offline
+        run: |
+          (Get-Command cargo).Source
+          powershell -ExecutionPolicy Bypass -File "$env:RUNNER_TEMP\bundle\source\scripts\offline-build.ps1"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
   rust-msrv:
     name: Rust MSRV (1.88)

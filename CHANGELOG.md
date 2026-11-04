@@ -19,6 +19,32 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **Every release artifact can be built on a machine with no network**
+  (`docs/BUILDING.md`, `L3-RS-021`). On a connected machine,
+  `scripts/offline-bundle.py` gathers the source, every crate, maturin, the
+  Rust standalone installers and the release's binaries, each checked against
+  its publisher's SHA-256. On the disconnected one, `scripts/offline-build.ps1`
+  (Windows) or `scripts/offline-build.sh` (Linux) builds the Windows exe, the
+  SLES 12 SP5 binary, the CLI and the Python wheel, and verifies them with the
+  conformance suite. CI runs the procedure on every push: on Linux with the
+  network cut, on both platforms with the bundled Rust installer.
+- **`scripts/pe-imports.py`** lists a Windows exe's DLLs and fails on a C
+  runtime DLL, with Python alone, so a self-built exe can be checked without
+  Visual Studio's tools. The Windows CI job now uses it.
+- **The SLES 12 SP5 binary is tested on SUSE's own SLES 12 SP5 userland**
+  (`L3-RS-018`). CI takes SUSE's public SLES 12 SP5 base image (pinned by
+  digest), checks the binary's `libgcc_s` needs against SUSE's
+  `libgcc_s.so.1` (`cargo libc inspect --target-libgcc`), and runs the whole
+  conformance suite on SUSE's loader, glibc 2.22 and `libgcc_s`. The 5.10.0
+  binary passed all 224 cases there.
+
+### Changed
+
+- **A release now also follows documentation-only changes**, so the docs a
+  user reads always match a tagged version (`AGENTS.md`).
+
 ### Maintenance
 
 - **The SLES 12 SP5 binary is built with cargo-libc 0.5.0** (was 0.4.0).

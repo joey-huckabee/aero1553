@@ -169,7 +169,9 @@ def test_windows_binary_is_static_checked_and_conformance_tested_in_ci() -> None
     )
     assert re.search(static, config), "the Windows C runtime is not linked statically"
     body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert "vcruntime|msvcp|ucrtbase|api-ms-win-crt-" in body, "no C runtime import check"
+    assert "python scripts/pe-imports.py rust/target/release/aero1553.exe" in body, (
+        "no C runtime import check on the Windows release binary"
+    )
     assert "--rust-bin rust/target/release/aero1553.exe" in body, (
         "CI does not run the conformance suite against the Windows release binary"
     )
@@ -189,6 +191,32 @@ def test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci() -> No
     assert "cargo libc test --distro sles-12-sp5 --runner local" in body, (
         "CI does not run the tests under the simulated SLES 12 SP5 kernel"
     )
+    pinned = r"SLES_IMAGE: registry\.suse\.com/suse/sles12sp5@sha256:[0-9a-f]{64}\n"
+    assert re.search(pinned, body), "the SLES 12 SP5 userland image is not pinned by digest"
+    assert '--target-libgcc "$sles/lib64/libgcc_s.so.1"' in body, (
+        "CI does not check the binary's libgcc_s needs against SUSE's libgcc_s.so.1"
+    )
+    assert '--rust-bin "$RUNNER_TEMP/on-sles"' in body, (
+        "CI does not run the conformance suite on SUSE's glibc and libgcc_s"
+    )
     assert "--rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553" in body, (
         "CI does not run the conformance suite against the glibc 2.22 binary"
     )
+
+
+@pytest.mark.requirement("L3-RS-021")
+def test_offline_builds_are_proven_in_ci() -> None:
+    """CI SHALL gather a bundle and build from it offline on both platforms, with the
+    network cut on Linux and the bundled Rust installer on both, running the scripts
+    docs/BUILDING.md tells an operator to run."""
+    body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    assert "python3 scripts/offline-bundle.py" in body, "no Linux bundle in CI"
+    assert "python scripts/offline-bundle.py" in body, "no Windows bundle in CI"
+    assert "sudo unshare -n --" in body, "the Linux offline build does not cut the network"
+    assert "PATH=/usr/bin:/bin" in body, "the Linux offline build can see the runner's Rust"
+    assert 'bundle/source/scripts/offline-build.sh"' in body
+    assert "bundle\\source\\scripts\\offline-build.ps1" in body
+    assert "msiexec.exe" in body, "the Windows offline build does not use the bundled installer"
+    guide = (_REPO_ROOT / "docs" / "BUILDING.md").read_text(encoding="utf-8")
+    for script in ("offline-bundle.py", "offline-build.sh", "offline-build.ps1", "pe-imports.py"):
+        assert script in guide, f"docs/BUILDING.md does not explain {script}"

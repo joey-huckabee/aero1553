@@ -286,11 +286,12 @@ suite (`L3-RS-018`). Releases since 5.0.0 attach it as
 
 - **Wheels for an older glibc.** cargo-libc can also build a PyO3 extension for
   an older glibc through maturin. Today's wheels are built separately.
-- **Test on a real SLES 12 SP5 host.** The glibc-2.22 link target proves which
-  symbols the binary asks for, and the kernel simulation which system calls the
-  tests make, not that it runs on the real host; no release
-  has been run on one yet. Decide who does that check, on what machine, and how
-  it is recorded for each release.
+- **Test on a real SLES 12 SP5 host.** Since 5.10.1 CI runs the conformance
+  suite on the userland of SUSE's SLES 12 SP5 base image (its loader, glibc 2.22
+  and `libgcc_s.so.1`), and the tests under a simulated kernel 4.12. What is left
+  is the combination on one machine -- SUSE's own kernel under that userland --
+  which only a real host or VM gives. Decide who runs it, and how it is recorded
+  for each release.
 - **Automate the release.** Attaching the binary is manual today: download the
   artifact from the tag's CI run, check `--version` and the glibc floor, upload
   it, and add its SHA-256 to the notes. A workflow triggered by a `v*` tag could
