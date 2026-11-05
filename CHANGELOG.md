@@ -19,6 +19,26 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Removed
+
+- **SonarCloud analysis.** `.github/workflows/sonarcloud.yml` and the README's
+  quality-gate badge are gone, ahead of the repository becoming private.
+  CodeQL, clippy (pedantic), pylint, ruff, mypy, bandit and vulture still run
+  on every push. SonarCloud was the only check on Python cognitive complexity;
+  nothing replaces it. The SonarCloud section of `docs/ROADMAP.md`, which only
+  recorded resolved findings, is removed; `CHANGELOG.md` keeps that history.
+
+### Changed
+
+- **`scripts/offline-bundle.py` signs in to GitHub for the release binaries**,
+  so it works on the private repository. It uses `GH_TOKEN`, `GITHUB_TOKEN` or
+  the GitHub CLI's sign-in (`gh auth token`), sends the token only to
+  api.github.com and drops it on the redirect to the download. Without a token
+  it leaves the release binaries out and says how to sign in, as before.
+  `docs/BUILDING.md` now clones with `gh repo clone`.
+- **`docs/USER-GUIDE.md` says downloading a release needs repository access**,
+  and how to fetch one with `gh release download`.
+
 ## [5.10.1] — 2026-11-04
 
 ### Added

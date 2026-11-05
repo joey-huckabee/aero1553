@@ -32,6 +32,7 @@ import argparse
 import hashlib
 import io
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -69,6 +70,40 @@ USER_AGENT = "aero1553-offline-bundle (https://github.com/joey-huckabee/aero1553
 def fetch(url: str) -> bytes:
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=300) as response:
+        return response.read()
+
+
+class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
+    """Follow a redirect without the GitHub token. A release asset redirects to a
+    pre-signed storage URL, which refuses a second credential and must never see the
+    token anyway."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        new = super().redirect_request(req, fp, code, msg, headers, newurl)
+        if new is not None:
+            new.remove_header("Authorization")
+        return new
+
+
+def github_token() -> str | None:
+    """A token for the private repository: GH_TOKEN or GITHUB_TOKEN, else the GitHub
+    CLI's (``gh auth login``). None if there is none."""
+    for name in ("GH_TOKEN", "GITHUB_TOKEN"):
+        if os.environ.get(name):
+            return os.environ[name]
+    if shutil.which("gh") is None:
+        return None
+    result = subprocess.run(["gh", "auth", "token"], capture_output=True, text=True, check=False)
+    return result.stdout.strip() or None
+
+
+def fetch_github(url: str, token: str | None, accept: str) -> bytes:
+    """``url`` on api.github.com, with the token if there is one."""
+    headers = {"User-Agent": USER_AGENT, "Accept": accept}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    opener = urllib.request.build_opener(_DropAuthOnRedirect)
+    with opener.open(urllib.request.Request(url, headers=headers), timeout=300) as response:
         return response.read()
 
 
@@ -178,10 +213,14 @@ def release_binaries(out: Path, platforms: list[str], tag: str) -> None:
     """The binaries the release of ``tag`` attaches, checked against the SHA-256 in its
     notes, so the offline build can be compared with what shipped."""
     print(f"release binaries of {tag}")
+    # The repository is private: without a token GitHub answers 404 for the release.
+    token = github_token()
+    url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
     try:
-        meta = json.loads(fetch(f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"))
+        meta = json.loads(fetch_github(url, token, "application/vnd.github+json"))
     except OSError as exc:
-        print(f"  skipped: no GitHub release for {tag} ({exc})")
+        hint = "" if token else "; the repository is private: run `gh auth login` or set GH_TOKEN"
+        print(f"  skipped: no GitHub release for {tag} ({exc}){hint}")
         return
     for platform in platforms:
         name = RELEASE_BINARIES[platform]
@@ -190,7 +229,8 @@ def release_binaries(out: Path, platforms: list[str], tag: str) -> None:
         if asset is None or digest is None:
             print(f"  skipped: {tag} attaches no {name} with a SHA-256")
             continue
-        save(fetch(asset["browser_download_url"]), out / "release" / name, digest.group(1), name)
+        data = fetch_github(asset["url"], token, "application/octet-stream")
+        save(data, out / "release" / name, digest.group(1), name)
 
 
 def checksums(out: Path) -> None:

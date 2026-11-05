@@ -70,7 +70,7 @@ aero1553/
 ├── config/default.toml     fully-commented reference TOML schema
 └── .github/workflows/      ci.yml, differential.yml, fuzz.yml,
                             semver.yml, perf.yml, perf-baseline.yml,
-                            codeql.yml, sonarcloud.yml
+                            codeql.yml
 ```
 
 ---
@@ -513,7 +513,6 @@ one of them:
 |-----|--------------|--------|
 | `cross-impl-differential` | Rust, Python | **The job that runs every implementation together**, with no path filter, and therefore the one that runs the differential config checks (`config_parity`, `config_fuzz`, `config_path_parity`), which compare **all pairs** and skip themselves when fewer than two implementations are selected. Lives alone in `.github/workflows/differential.yml`. It runs `run.py` with no `--only` / `--skip`, so a missing implementation is an error rather than a smaller pass. Deliberately **unfiltered**: it previously lived in the (since removed) C++ workflow behind a `cpp/**` filter, which meant the check written to catch a divergence *between* implementations only ran when the C++ tree changed. Its first run found two real divergences. |
 | `.github/workflows/codeql.yml` | `rust`, `python` | Both use `build-mode: none` and extract from source. |
-| `.github/workflows/sonarcloud.yml` | `rust/src`, `python/src` | Rust (clippy disabled; lcov coverage) and Python (coverage XML) analysis, waiting on the quality gate. |
 
 The Rust and Python deployment targets are Linux. Windows cells exist to catch path / encoding / line-ending portability bugs early, not because Windows is a production target. Coverage gates (Rust + Python), lockfile-and-metadata check, and dist build run on Linux only — Windows is functional smoke. Coverage isn't platform- or interpreter-dependent, so neither coverage gate fans out across its respective matrix.
 
