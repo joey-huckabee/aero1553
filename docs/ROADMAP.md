@@ -26,15 +26,18 @@ checklist in `docs/MAINTAINER-GUIDE.md` section 11.
 
 | Version | Feature |
 |---------|---------|
-| 5.x (minor) | Data-word decoder: engineering values from a site-supplied message definition, plus additional per-message-type CSVs. See [Data-word decoder](#data-word-decoder-next-feature). |
-| Major, provisional | Apache Parquet output. |
+| 6.0 (major) | **tablekit** for the new CSV and Parquet outputs, if it holds aero1553's performance. See [tablekit for CSV and Parquet (6.x)](#tablekit-for-csv-and-parquet-6x). |
+| 6.x | Data-word decoder: engineering values from a site-supplied message definition, plus additional per-message-type CSVs, written through tablekit. See [Data-word decoder](#data-word-decoder-next-feature). |
+| 6.x | Apache Parquet output, through tablekit. |
 
-The data-word decoder was listed as 6.0 until 5.2.0. It is additive and opt-in
--- a decode that does not ask for it produces exactly today's CSV -- so under
-SemVer it is a minor release, not a major one. Parquet keeps a provisional major
-slot until its design is settled: a Parquet writer without a dependency is a
-large piece of work, and taking one would end the crate's zero-dependency
-property (`L3-RS-002`), which is a decision in its own right.
+The maintainer decided on 2026-11-05 that the new output modes -- more CSVs and
+Parquet -- come in a 6.x release built on tablekit
+(github.com/joey-huckabee/tablekit), the table writer shared by the FATMOPs
+tools. 6.0 is a major release because it ends the crate's zero-dependency
+property (`L3-RS-002`): Parquet cannot reasonably be written without one, and
+taking tablekit is that decision. The data-word decoder was 6.0 until 5.2.0,
+then 5.x as an additive minor; it is back in 6.x because its per-message-type
+CSVs are written through tablekit.
 
 3.0 was taken by the timestamp-rendering split (`--input-time-format` /
 `--output-time-format`, `L2-WRT-025` / `L2-WRT-026`), 4.0 by the rename to
@@ -44,6 +47,83 @@ streamed positional reads (see `CHANGELOG.md`). One breaking topic per major:
 the migration note for a flag rename and the one for a new output format have
 nothing to say to each other, and bundling them would have made both harder to
 read.
+
+## tablekit for CSV and Parquet (6.x)
+
+**What it is.** tablekit (private, `joey-huckabee/tablekit`, 0.6 when assessed
+on 2026-11-05) writes tables as CSV in pandas' format and as Parquet with the
+types Impala reads, so every FATMOPs tool's files agree. The new outputs would
+build tablekit batches (Parquet) or rows (`CsvFormat`, one row at a time into a
+buffer) from the decoded records and let it write them.
+
+**Condition: it must hold aero1553's performance.** It is adopted only if:
+
+- the existing 46-column decode is byte-identical and no slower: `perf/run.py`'s
+  gates and `perf/baseline.py` against the last 5.x tag on the 256 MiB cases
+  pass, measured on CI x86, A against B;
+- each new output is measured the same way against a hand-written baseline
+  before it ships, and memory stays constant in file size, as the CSV writer's
+  does (`AGENTS.md`, "Streaming CSV");
+- output is byte-identical at every `--threads` count (`L2-WRT-027`).
+
+**The vendor CSV stays on aero1553's own writer.** The 46-column CSV must match
+DDC's output byte for byte (`L1-OUT-001`), and tablekit cannot write it:
+
+- it writes `True` / `False` and NumPy's shortest float (`0.0`), while the
+  vendor file has 4-digit upper-case hex words (`0400`), `DELTA` with six
+  decimals (`0.000000`) and fixed text such as `11R`. Only text columns could
+  carry those, which means formatting each cell twice;
+- `parallel.rs` already renders rows to bytes on worker threads; replacing it
+  buys nothing and puts every conformance oracle at risk.
+
+tablekit is for the **new** outputs only: per-message-type CSVs and Parquet.
+Two CSV dialects in one tool must each be documented with the mode that writes
+it.
+
+**What aero1553 must change to take it.**
+
+- **Supply-chain gate (`rust/deny.toml`).** Assessed with aero1553's own policy
+  on 2026-11-05, `tablekit-parquet` fails it:
+  - licences outside `MIT` / `Apache-2.0`: `BSD-3-Clause` (`snap`, `zstd-safe`,
+    `zstd-sys`), `CC0-1.0` (`tiny-keccak`), `Unicode-3.0` (`unicode-ident`);
+  - duplicate versions, refused by `multiple-versions = "deny"`: `syn` 2 and 3,
+    `getrandom` 0.2 / 0.3 / 0.4, `r-efi`;
+  - the tablekit crates are unlicensed, and come from git, not crates.io.
+
+  Each needs an explicit allowance with its reason. `tablekit-csv` alone adds
+  only `itoa` and `zmij` (both `MIT OR Apache-2.0`, no dependencies).
+- **Opt-in at build time.** Parquet behind a Cargo feature, so that a build
+  without it keeps the zero-dependency core and the gate checks only the core.
+  Whether the release binaries enable it is a 6.0 decision.
+- **C code in the build.** `zstd-sys` compiles C. The SLES 12 SP5 binary
+  (cargo-libc, glibc 2.22) and the Windows exe (static C runtime, `L3-RS-020`)
+  must be re-proven with `scripts/compare-binaries.py` and
+  `scripts/pe-imports.py`, as for every build-method change.
+- **A private git dependency.**
+  - CI needs a read-only deploy key or token secret for tablekit. A workflow's own `GITHUB_TOKEN` cannot read another private repository.
+  - The dependency is pinned by tag (`rev =`).
+  - `scripts/offline-bundle.py` must vendor `rust/`'s dependencies as well, now that the CLI has some; `cargo vendor` handles git sources.
+
+**Changes suggested to tablekit** (to raise there, not here):
+
+1. **`ParquetWriter::finish` should return the writer**, as `CsvWriter::finish`
+   does (`(W, u64)`). Today it drops `W`. aero1553 commits every output itself:
+   the final flush is part of the commit and is where disk-full is classified
+   (`L2-WRT-024`), and the move is non-replacing under `--no-clobber`
+   (`L2-WRT-023`). Without `W` back, a flush error is lost on drop.
+2. **Make `tablekit-profile` optional for `tablekit-parquet`, or compile the
+   built-in profile at build time.** `ParquetWriter::new` parses the built-in
+   TOML at run time, which brings `serde`, `serde_derive`, `toml` 0.7 and
+   `toml_edit` 0.19 (and with them the second `syn`) into every Parquet writer,
+   for a table that never changes. The crate already has a `build.rs`.
+3. **Row groups by size, not by batch** -- already item 2 on tablekit's
+   roadmap. aero1553 needs a stated memory cap for a Parquet row group, like
+   `max_sort_group`, so the cap must be tablekit's to enforce.
+4. **CI.** tablekit has none; aero1553 gates every push. At least fmt, clippy,
+   the tests, the MSRV build and the pyarrow round-trip should run on every
+   push, and releases should be tagged so aero1553 can pin one.
+5. **A licence** (even a proprietary one) in its `Cargo.toml`, so dependents'
+   licence gates can name it rather than special-case "unlicensed".
 
 ## Data-word decoder (next feature)
 

@@ -19,6 +19,14 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Changed
+
+- **Roadmap: tablekit for the new CSV and Parquet outputs, in 6.x**
+  (`docs/ROADMAP.md`). Adopted only if it holds aero1553's performance; the
+  46-column vendor CSV stays on aero1553's own writer. The entry records what
+  aero1553's supply-chain gate refuses today, what the build needs, and five
+  changes suggested to tablekit. The data-word decoder and Parquet move to 6.x.
+
 ### Removed
 
 - **The Apache-2.0 licence.** The repository is now private and grants no
