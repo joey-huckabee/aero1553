@@ -40,6 +40,13 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **Roadmap: the vendor CSV can move to tablekit too** (`docs/ROADMAP.md`).
+  tablekit PR #18 adds cell formats (hexadecimal, fixed decimals) and a
+  cell-at-a-time row writer; on the golden recording it rendered the 46-column
+  CSV byte-identically at 0.97x the time of aero1553's own writer. The move
+  still needs the full performance gates on CI x86 and a tablekit 0.7.0 tag.
+  The suggestion that tablekit add CI is withdrawn: its own rules forbid CI,
+  and aero1553 needs a release tag from it, not CI.
 - **Roadmap: tablekit for the new CSV and Parquet outputs, in 6.x**
   (`docs/ROADMAP.md`). Adopted only if it holds aero1553's performance; the
   46-column vendor CSV stays on aero1553's own writer. The entry records what
