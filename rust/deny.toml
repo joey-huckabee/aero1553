@@ -14,11 +14,14 @@ yanked = "deny"
 
 [licenses]
 version = 2
-# The crate is Apache-2.0 and has no dependencies. Keep this set tight -- a
+# The crate has no dependencies. Keep this set tight -- a
 # dependency under any other license fails the gate and forces a conscious
 # review. "MIT" stays allowed so the common "MIT OR Apache-2.0" crate is not
 # refused on license alone; cargo-deny only warns about an unused entry.
 allow = ["MIT", "Apache-2.0"]
+# The crate itself grants no licence (rust/Cargo.toml). Allowed for this crate
+# only, so a dependency declaring the same is still refused.
+exceptions = [{ crate = "aero1553", allow = ["LicenseRef-Proprietary"] }]
 
 [bans]
 # No duplicate versions of a crate (none today) and no wildcard ("*") version

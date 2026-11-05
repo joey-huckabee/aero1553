@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The six enums stay Python `IntEnum` classes, defined in `aero1553.models`.
 //!
 //! A getter that returns one hands back the enum's own member object, looked

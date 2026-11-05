@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! `aero1553._native`: the compiled half of the `aero1553` Python package.
 //!
 //! The Python modules under `python/src/aero1553/` present the package's

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! Record streams: what the reader hands out and what every pipeline stage
 //! (`apply_filters`, `order_rows`, and later the writer and the merge) takes.
 //!

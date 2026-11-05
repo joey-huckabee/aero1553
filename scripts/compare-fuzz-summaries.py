@@ -1,5 +1,4 @@
 #!/usr/bin/env python3
-# SPDX-License-Identifier: Apache-2.0
 """Compare the FUZZ-SUMMARY lines emitted by every fuzz burn-in job.
 
 WHY THIS EXISTS. The L1-ROB-001 byte harnesses share a generator -- same

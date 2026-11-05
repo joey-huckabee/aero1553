@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The streaming pipeline stages: filtering and canonical row order.
 //!
 //! Each takes any record source (see `stream::source`) and returns a

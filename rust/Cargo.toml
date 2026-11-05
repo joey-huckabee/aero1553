@@ -4,7 +4,9 @@ version = "5.10.1"
 edition = "2024"
 rust-version = "1.88"
 description = "Decoder for DDC MIL-STD-1553 MIE binary recording files"
-license = "Apache-2.0"
+# No licence is granted (all rights reserved). SPDX has no id for that, so this
+# is the LicenseRef form, which rust/deny.toml allows for this crate only.
+license = "LicenseRef-Proprietary"
 authors = ["Joey"]
 readme = "README.md"
 

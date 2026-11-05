@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The multi-file merge and DELTA tracking, for `aero1553.merge` and
 //! `aero1553.delta`.
 

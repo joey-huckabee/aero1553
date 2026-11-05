@@ -400,9 +400,9 @@ holds. Measure before writing a number into a comment or a test floor.
 **Every change updates `CHANGELOG.md` under `[Unreleased]`**, and a shipped roadmap item is
 removed from `docs/ROADMAP.md` in the same change.
 
-**Release for a bug fix, a feature, or any new documentation, and only when the maintainer
-asks.** A documentation-only change still gets a release, so the docs a user reads always
-match a tagged version. The process is
+**Release for a bug fix or a feature, and only when the maintainer asks.** A change to
+documentation, CI or repository housekeeping alone does not get a release: it waits under
+`[Unreleased]` and ships with the next change to the program. The process is
 `docs/MAINTAINER-GUIDE.md` section 11: a `release/X.Y.Z` pull request that bumps the version
 everywhere it is declared (the hygiene check lists the places) and rolls `[Unreleased]` into a
 dated section with its compare link; a merge commit; an annotated tag `Aero1553 X.Y.Z` on it;

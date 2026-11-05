@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The tabular views of a record stream: `MieMessage.to_dict()` and
 //! `aero1553.columns()`.
 //!

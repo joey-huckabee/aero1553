@@ -244,4 +244,4 @@ uv --directory python run python ../tests/conformance/run.py
 
 ## License
 
-Apache-2.0 — see [LICENSE](LICENSE).
+No licence is granted. All rights reserved.

@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The decoder's log lines -> Python's `logging`.
 //!
 //! The Rust logger's module path is the Python logger name with `::` for `.`
