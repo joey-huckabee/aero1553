@@ -42,7 +42,7 @@ CSV output is byte-identical between the two — your choice doesn't change the 
 
 ### Rust binary
 
-Each release on GitHub attaches two prebuilt binaries. Download one and run it; there is nothing to install.
+Each release on GitHub attaches two prebuilt binaries. Download one and run it; there is nothing to install. The repository is private, so you need a GitHub account with access to it; `gh release download vX.Y.Z -R joey-huckabee/aero1553` fetches both from a terminal.
 
 | Platform | File | Needs |
 |---|---|---|
