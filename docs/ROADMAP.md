@@ -52,9 +52,9 @@ read.
 
 **What it is.** tablekit (private, `joey-huckabee/tablekit`, 0.6 when assessed
 on 2026-11-05) writes tables as CSV in pandas' format and as Parquet with the
-types Impala reads, so every FATMOPs tool's files agree. The new outputs would
-build tablekit batches (Parquet) or rows (`CsvFormat`, one row at a time into a
-buffer) from the decoded records and let it write them.
+types Impala reads, so every FATMOPs tool's files agree. aero1553 would write
+each CSV a row at a time with tablekit's row writer (`RowWriter`, one method per
+column, no per-cell dispatch) and Parquet as batches.
 
 **Condition: it must hold aero1553's performance.** It is adopted only if:
 
@@ -66,19 +66,26 @@ buffer) from the decoded records and let it write them.
   does (`AGENTS.md`, "Streaming CSV");
 - output is byte-identical at every `--threads` count (`L2-WRT-027`).
 
-**The vendor CSV stays on aero1553's own writer.** The 46-column CSV must match
-DDC's output byte for byte (`L1-OUT-001`), and tablekit cannot write it:
+**The vendor CSV can move to tablekit too, once it holds the bar above.** The
+46-column CSV must match DDC's output byte for byte (`L1-OUT-001`): 4-digit
+upper-case hex words (`0400`), `DELTA` with six decimals (`0.000000`), text such
+as `11R`. tablekit's `CsvFormat::row` could not write that without formatting
+each cell twice, and measured 3.7x to 5.6x aero1553's writer. The change
+proposed to tablekit (tablekit PR [#18](https://github.com/joey-huckabee/tablekit/pull/18)) adds what it needs:
 
-- it writes `True` / `False` and NumPy's shortest float (`0.0`), while the
-  vendor file has 4-digit upper-case hex words (`0400`), `DELTA` with six
-  decimals (`0.000000`) and fixed text such as `11R`. Only text columns could
-  carry those, which means formatting each cell twice;
-- `parallel.rs` already renders rows to bytes on worker threads; replacing it
-  buys nothing and puts every conformance oracle at risk.
+- **Cell formats**: hexadecimal (`HexUpper(4)`) and fixed decimals (`Fixed(6)`)
+  per column, checked against pandas and Python's own formatting;
+- **a row writer** that writes each cell straight into the row, named for its
+  type and format, with a separator after each cell rather than a test before
+  it.
 
-tablekit is for the **new** outputs only: per-message-type CSVs and Parquet.
-Two CSV dialects in one tool must each be documented with the mode that writes
-it.
+Measured on 2026-11-05 on the 21 MB golden recording (460,575 records),
+rendering only, one thread, on the sandbox's ARM host: aero1553's writer
+112.6 ns per record, tablekit's row writer 109.0 ns (0.97x), 71 MB of output
+byte-identical. Callgrind counts 1,787 against 1,876 instructions per record
+(1.05x). Before the move, the full gates above must pass on CI x86, with
+`parallel.rs` keeping its threads and only the per-record rendering changing.
+Moving it would put every CSV the tool writes on one library.
 
 **What aero1553 must change to take it.**
 
@@ -119,11 +126,15 @@ it.
 3. **Row groups by size, not by batch** -- already item 2 on tablekit's
    roadmap. aero1553 needs a stated memory cap for a Parquet row group, like
    `max_sort_group`, so the cap must be tablekit's to enforce.
-4. **CI.** tablekit has none; aero1553 gates every push. At least fmt, clippy,
-   the tests, the MSRV build and the pyarrow round-trip should run on every
-   push, and releases should be tagged so aero1553 can pin one.
+4. **Tagged releases.** tablekit is private and, by its own rule, has no CI:
+   its checks are run locally before each push (its `README.md`). aero1553 pins
+   a dependency by tag and runs its own gates on every build that uses it, so
+   what it needs from tablekit is a tag per release, not CI. (This roadmap
+   first asked for CI there; that contradicted tablekit's rules.)
 5. **A licence** (even a proprietary one) in its `Cargo.toml`, so dependents'
    licence gates can name it rather than special-case "unlicensed".
+6. **Cell formats and a row writer** for the vendor CSV -- proposed in
+   tablekit PR [#18](https://github.com/joey-huckabee/tablekit/pull/18), with the figures above.
 
 ## Data-word decoder (next feature)
 
