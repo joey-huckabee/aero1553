@@ -33,13 +33,16 @@ shared behavior) holds at any compatible version pair. See
   available on a private repository owned by a personal account.
 - **SonarCloud analysis.** `.github/workflows/sonarcloud.yml` and the README's
   quality-gate badge are gone, ahead of the repository becoming private.
-  CodeQL, clippy (pedantic), pylint, ruff, mypy, bandit and vulture still run
+  clippy (pedantic), pylint, ruff, mypy, bandit and vulture still run
   on every push. SonarCloud was the only check on Python cognitive complexity;
   nothing replaces it. The SonarCloud section of `docs/ROADMAP.md`, which only
   recorded resolved findings, is removed; `CHANGELOG.md` keeps that history.
 
 ### Changed
 
+- **Release rule.** A documentation, CI or housekeeping change alone no longer
+  gets a release; it waits under `[Unreleased]` for the next bug fix or
+  feature (`AGENTS.md`, `docs/MAINTAINER-GUIDE.md` section 11).
 - **`scripts/offline-bundle.py` signs in to GitHub for the release binaries**,
   so it works on the private repository. It uses `GH_TOKEN`, `GITHUB_TOKEN` or
   the GitHub CLI's sign-in (`gh auth token`), sends the token only to

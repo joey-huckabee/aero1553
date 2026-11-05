@@ -630,7 +630,7 @@ When coverage is consistently above the floor by >2pp, bump it. For Rust, edit t
 
 ## 11. Releasing
 
-Every artifact below can also be built without a network: see [`BUILDING.md`](BUILDING.md), whose scripts CI runs on every push. A release follows any bug fix, feature or documentation change, when the maintainer asks.
+Every artifact below can also be built without a network: see [`BUILDING.md`](BUILDING.md), whose scripts CI runs on every push. A release follows a bug fix or a feature, when the maintainer asks; a documentation, CI or housekeeping change waits under `[Unreleased]` for the next one.
 
 ### Rust crate
 
