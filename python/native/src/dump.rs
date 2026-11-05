@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The hex dump, for `aero1553.dump`.
 //!
 //! The core crate's `hex_dump_raw` / `hex_dump_records` write to any `Write`;

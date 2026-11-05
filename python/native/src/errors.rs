@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! `MieError` -> the matching `aero1553.exceptions` class.
 //!
 //! The Python exception classes stay the Python package's own: every variant

@@ -96,4 +96,4 @@ rust/
 
 ## License
 
-Apache-2.0 — see [LICENSE](../LICENSE).
+No licence is granted. All rights reserved.

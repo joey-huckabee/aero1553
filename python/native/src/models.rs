@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The record types a reader yields: `MieMessage` and the values it holds.
 //!
 //! Each is a frozen class holding the decoder's own struct inline, so creating

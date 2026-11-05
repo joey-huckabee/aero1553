@@ -21,6 +21,16 @@ shared behavior) holds at any compatible version pair. See
 
 ### Removed
 
+- **The Apache-2.0 licence.** The repository is now private and grants no
+  licence: all rights reserved. `LICENSE` and `python/LICENSE` are deleted,
+  along with the SPDX headers and the Python package's `license` /
+  `license-files`. `rust/Cargo.toml` declares `LicenseRef-Proprietary`, which
+  `rust/deny.toml` allows for this crate only, so a dependency declaring it is
+  still refused. The hygiene check that kept `python/LICENSE` identical to the
+  root copy is removed. Releases up to 5.10.1 were published under Apache-2.0
+  and stay so.
+- **CodeQL.** `.github/workflows/codeql.yml` is deleted: code scanning is not
+  available on a private repository owned by a personal account.
 - **SonarCloud analysis.** `.github/workflows/sonarcloud.yml` and the README's
   quality-gate badge are gone, ahead of the repository becoming private.
   CodeQL, clippy (pedantic), pylint, ruff, mypy, bandit and vulture still run

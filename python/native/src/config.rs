@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The TOML config loader, for `aero1553.config`.
 //!
 //! `DecoderConfig` and `FilterConfig` stay Python dataclasses -- they are

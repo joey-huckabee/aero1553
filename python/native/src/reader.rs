@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The native reader behind `aero1553.reader.MieFileReader`.
 //!
 //! `MieFileReader` itself stays a small Python class so its constructor keeps a

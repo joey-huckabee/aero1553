@@ -522,21 +522,7 @@ else
     fi
 fi
 
-# ── 21. The Python package ships the repository LICENSE ──────────────
-# The license text sits at the repository root, outside python/, and PEP 639
-# forbids a `license-files` path outside the project directory -- so through
-# v3.0.0 neither the wheel nor the sdist carried it at all, only the SPDX id.
-# python/LICENSE is a COPY, and a copy is a second source of truth: this keeps
-# it identical to the original, and keeps pyproject.toml declaring it.
-step "python/LICENSE is identical to LICENSE and declared in pyproject.toml"
-if ! cmp -s LICENSE python/LICENSE; then
-    bad "python/LICENSE differs from (or is missing beside) the root LICENSE -- cp LICENSE python/LICENSE"
-fi
-if ! grep -qE '^license-files *= *\["LICENSE"\]' python/pyproject.toml; then
-    bad "python/pyproject.toml does not declare license-files = [\"LICENSE\"]"
-fi
-
-# ── 22. The Python extension is built like the Rust binary ────────────
+# ── 21. The Python extension is built like the Rust binary ────────────
 # Cargo takes [profile.release] from the crate being BUILT, so the binding
 # crate (python/native) needs its own copy of the core crate's profile. Before
 # it had one, a decode from Python ran 17% behind the binary built from the

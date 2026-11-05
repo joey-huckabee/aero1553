@@ -1,5 +1,3 @@
-// SPDX-License-Identifier: Apache-2.0
-
 //! The CSV writer, for `aero1553.writer`.
 //!
 //! A file destination is the core crate's `write_csv` / `write_csv_split`
