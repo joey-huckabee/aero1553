@@ -212,6 +212,7 @@ def test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci() -> No
     )
 
 
+@pytest.mark.requirement("L3-RS-021")
 def test_offline_builds_are_proven_in_ci() -> None:
     """CI SHALL gather a bundle and build from it offline on both platforms, with the
     network cut on Linux and the bundled Rust installer on both, running the scripts
