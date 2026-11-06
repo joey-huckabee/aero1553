@@ -41,7 +41,7 @@ path = "src/bin/aero1553.rs"
 # memmap2 until 5.0.0; positional reads measured within noise of the map.
 [dependencies]
 # EXPERIMENT (branch exp/tablekit-row-writer, not for merging): the vendor CSV
-# rendered through tablekit's row writer. Vendored at tablekit PR #18's commit;
+# rendered through tablekit's row writer. Vendored at tablekit PR #18 (92119e2);
 # by tag (v0.7.0) once released.
 tablekit = { path = "../third_party/tablekit/crates/tablekit", version = "0.6.0" }
 tablekit-csv = { path = "../third_party/tablekit/crates/tablekit-csv", version = "0.6.0" }
