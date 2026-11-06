@@ -19,6 +19,15 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **`scripts/sles-check.sh`**: CI's whole check of the SLES 12 SP5 binary as one script
+  (`L3-RS-018`): the glibc 2.22 symbol check, the tests under a simulated kernel 4.12, the
+  conformance suite, and the run on SUSE's SLES 12 SP5 userland. The `rust-glibc-2-22` job
+  now runs it, so a run on any x86-64 Linux with Docker, WSL2 included, is CI's check
+  (`docs/BUILDING.md`). The wiring test reads the checks from the script, and fails if one
+  is removed.
+
 ### Removed
 
 - **The Apache-2.0 licence.** The repository is now private and grants no

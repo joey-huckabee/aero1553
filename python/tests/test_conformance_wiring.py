@@ -183,24 +183,32 @@ def test_glibc_2_22_binary_is_built_checked_and_conformance_tested_in_ci() -> No
     """CI SHALL build the Rust binary for SLES 12 SP5 (glibc 2.22, kernel
     4.12) with a pinned cargo-libc, reject a symbol newer than GLIBC_2.22, run
     the tests under the simulated kernel, and run the conformance suite
-    against that binary rather than a dev build."""
-    body = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
-    assert re.search(r"CARGO_LIBC_VERSION: \d+\.\d+\.\d+\n", body), "cargo-libc is not pinned"
-    assert "cargo libc build --distro sles-12-sp5" in body, "no SLES 12 SP5 build in CI"
-    assert "--max-glibc 2.22" in body, "CI does not check the binary's glibc symbol versions"
-    assert "cargo libc test --distro sles-12-sp5 --runner local" in body, (
-        "CI does not run the tests under the simulated SLES 12 SP5 kernel"
+    against that binary rather than a dev build, and on SUSE's SLES 12 SP5
+    userland. The checks live in scripts/sles-check.sh, which CI runs, so a
+    local run of the script is the CI check."""
+    ci = (_REPO_ROOT / ".github" / "workflows" / "ci.yml").read_text(encoding="utf-8")
+    script = (_REPO_ROOT / "scripts" / "sles-check.sh").read_text(encoding="utf-8")
+    job = ci[ci.index("  rust-glibc-2-22:") : ci.index("  rust-windows-x64:")]
+    assert re.search(r"CARGO_LIBC_VERSION: \d+\.\d+\.\d+\n", job), "cargo-libc is not pinned"
+    assert "cargo libc build --distro sles-12-sp5" in job, "no SLES 12 SP5 build in CI"
+    assert "bash scripts/sles-check.sh --no-build" in job, "CI does not run scripts/sles-check.sh"
+    # The script reads the pin from ci.yml, so the two cannot disagree.
+    assert "CARGO_LIBC_VERSION" in script, "the script does not check the pinned cargo-libc"
+    assert "--max-glibc 2.22" in script, "the binary's glibc symbol versions are not checked"
+    assert "cargo libc test --distro sles-12-sp5 --runner local" in script, (
+        "the tests do not run under the simulated SLES 12 SP5 kernel"
     )
-    pinned = r"SLES_IMAGE: registry\.suse\.com/suse/sles12sp5@sha256:[0-9a-f]{64}\n"
-    assert re.search(pinned, body), "the SLES 12 SP5 userland image is not pinned by digest"
-    assert '--target-libgcc "$sles/lib64/libgcc_s.so.1"' in body, (
-        "CI does not check the binary's libgcc_s needs against SUSE's libgcc_s.so.1"
+    pinned = r"SLES_IMAGE=registry\.suse\.com/suse/sles12sp5@sha256:[0-9a-f]{64}\n"
+    assert re.search(pinned, script), "the SLES 12 SP5 userland image is not pinned by digest"
+    assert '--target-libgcc "$sles/lib64/libgcc_s.so.1"' in script, (
+        "the binary's libgcc_s needs are not checked against SUSE's libgcc_s.so.1"
     )
-    assert '--rust-bin "$RUNNER_TEMP/on-sles"' in body, (
-        "CI does not run the conformance suite on SUSE's glibc and libgcc_s"
+    assert "LD_DEBUG=bindings" in script, "the GCC_* imports are not checked to bind to SUSE's"
+    assert '--rust-bin "$on_sles"' in script, (
+        "the conformance suite does not run on SUSE's glibc and libgcc_s"
     )
-    assert "--rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553" in body, (
-        "CI does not run the conformance suite against the glibc 2.22 binary"
+    assert '--rust-bin "$BIN"' in script, (
+        "the conformance suite does not run against the glibc 2.22 binary"
     )
 
 

@@ -188,59 +188,16 @@ jobs:
           --artifact target/x86_64-unknown-linux-gnu/release/aero1553
           -- --release --locked
 
-      - name: No symbol newer than GLIBC_2.22
-        run: cargo libc inspect rust/target/x86_64-unknown-linux-gnu/release/aero1553 --max-glibc 2.22
-
-      - name: Tests under a simulated kernel 4.12
-        working-directory: rust
-        run: cargo libc test --distro sles-12-sp5 --runner local -- --release --locked
-
-      - name: Conformance suite against the shipping binary
-        run: >
-          python3 tests/conformance/run.py --only rust
-          --rust-bin rust/target/x86_64-unknown-linux-gnu/release/aero1553
-
-      - name: SLES 12 SP5 userland
-        # SUSE's public SLES 12 SP5 base image, pinned by digest (SLES 12 SP5
-        # Base Container 12.5.6.11.20, linux/amd64): its glibc 2.22 and its
-        # libgcc_s.so.1 are those of a SLES 12 SP5 host. The binary's libgcc_s
-        # requirements are checked against SUSE's file, then the conformance
-        # suite runs on SUSE's loader, glibc and libgcc_s. The kernel is the
-        # runner's; the simulated-kernel tests above cover 4.12.
-        env:
-          SLES_IMAGE: registry.suse.com/suse/sles12sp5@sha256:4c7d476a692d4da927397d7fe4e6e9aaa93a2dea6927a69a45cb9a1fcd56ba35
-        run: |
-          bin=$GITHUB_WORKSPACE/rust/target/x86_64-unknown-linux-gnu/release/aero1553
-          sles=$RUNNER_TEMP/sles12sp5
-          mkdir -p "$sles"
-          cid=$(docker create "$SLES_IMAGE" /bin/true)
-          docker export "$cid" | tar -x -C "$sles" --no-same-owner --exclude='dev/*'
-          docker rm "$cid" >/dev/null
-          grep -E '^(NAME|VERSION)=' "$sles/etc/os-release"
-          # cargo-libc's comparison: "missing" (2) fails. On a stripped binary
-          # 0.5.0 reports "unresolved" (3) for the symbols, though the version
-          # nodes match; the binding check below covers the symbols.
-          rc=0
-          cargo libc inspect "$bin" --target-libgcc "$sles/lib64/libgcc_s.so.1" --max-glibc 2.22 || rc=$?
-          case $rc in
-            0) ;;
-            3) echo "::notice::cargo-libc left the libgcc_s symbol comparison unresolved (stripped binary); see the binding check" ;;
-            *) exit "$rc" ;;
-          esac
-          printf '#!/bin/sh\nexec "%s" --library-path "%s" "%s" "$@"\n' \
-            "$sles/lib64/ld-linux-x86-64.so.2" "$sles/lib64:$sles/usr/lib64" "$bin" > "$RUNNER_TEMP/on-sles"
-          chmod +x "$RUNNER_TEMP/on-sles"
-          "$RUNNER_TEMP/on-sles" --version
-          # The binary is linked BIND_NOW, so SUSE's loader binds every import at
-          # start-up: each GCC_* import must bind to SUSE's libgcc_s.so.1.
-          want=$(objdump -T "$bin" | awk '/\(GCC_/ {print $NF}' | sort)
-          got=$(LD_DEBUG=bindings "$RUNNER_TEMP/on-sles" --version 2>&1 >/dev/null \
-            | grep -F "binding file $bin [0] to " \
-            | sed -n "s/.*\/libgcc_s\.so\.1 \[0\]: normal symbol \`\([^']*\)'.*/\1/p" | sort -u)
-          test -n "$want"
-          diff <(echo "$want") <(echo "$got")
-          echo "all $(echo "$want" | wc -l) GCC_* imports bind to SUSE's libgcc_s.so.1"
-          python3 tests/conformance/run.py --only rust --rust-bin "$RUNNER_TEMP/on-sles"
+      - name: Check on glibc 2.22, a simulated kernel 4.12 and SUSE's SLES 12 SP5 userland
+        # scripts/sles-check.sh is the whole check, so a run on any x86-64 Linux with
+        # Docker (WSL2 included) is this job's check: no symbol newer than GLIBC_2.22;
+        # the tests with every syscall kernel 4.12 lacks returning ENOSYS (cargo-libc's
+        # tier 2: a simulation); the conformance suite against the binary that ships; and,
+        # on SUSE's public SLES 12 SP5 base image pinned by digest, SUSE's libgcc_s checked
+        # against the binary, every GCC_* import bound to it at start-up, and the
+        # conformance suite run on SUSE's loader, glibc and libgcc_s. The kernel is the
+        # runner's; a real SLES host or VM is the only test of SUSE's kernel.
+        run: bash scripts/sles-check.sh --no-build
 
       - name: Upload binary
         uses: actions/upload-artifact@v6
