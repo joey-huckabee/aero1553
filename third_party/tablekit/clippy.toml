@@ -1,0 +1,2 @@
+# Proper names in documentation that are not code ("..": keep clippy's own list too).
+doc-valid-idents = ["NumPy", ".."]

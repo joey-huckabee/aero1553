@@ -1,0 +1,20 @@
+[package]
+name = "tablekit-profile"
+description = "Validated, explicit SQL and Parquet target profiles."
+version = "0.6.1"
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablekit.workspace = true
+serde = { version = "1.0", features = ["derive"] }
+toml = "0.7.8"
+
+[build-dependencies]
+toml = "0.7.8"
+
+[lints]
+workspace = true

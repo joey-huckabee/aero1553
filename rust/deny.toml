@@ -23,7 +23,16 @@ allow = ["MIT", "Apache-2.0"]
 # only, so a dependency declaring the same is still refused.
 exceptions = [{ crate = "aero1553", allow = ["LicenseRef-Proprietary"] }]
 
+# EXPERIMENT (exp/tablekit-row-writer): tablekit's crates are private
+# (`publish = false`) and declare no licence; ignore them here as cargo-deny
+# ignores any unpublished crate. Adoption needs a decision on tablekit's licence.
+[licenses.private]
+ignore = true
+
 [bans]
+# EXPERIMENT: tablekit-csv's dependency on tablekit is a path within its own
+# (private) workspace.
+allow-wildcard-paths = true
 # No duplicate versions of a crate (none today) and no wildcard ("*") version
 # requirements — both keep the dependency surface predictable.
 multiple-versions = "deny"

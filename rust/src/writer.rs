@@ -14,8 +14,8 @@
 use std::fs::{File, OpenOptions};
 use std::io::{self, BufWriter, Write};
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, LazyLock};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use crate::error::{MieError, MieResult};
@@ -26,6 +26,8 @@ use crate::models::{
 use crate::parallel::render_all;
 pub use crate::parallel::{THREADS_MAX, THREADS_MIN, default_threads};
 use crate::{log_info, log_warn};
+use tablekit::{DataType, Field};
+use tablekit_csv::{CellFormat, CsvFormat, CsvOptions, LineEnding, RowWriter, TextBuilder};
 
 // ── Path identity (L2-WRT-014) ────────────────────────────────────────
 
@@ -585,29 +587,6 @@ impl<W: Write> CsvWriter<W> {
     }
 }
 
-/// Write a CSV field with RFC4180 minimal quoting, matching Python's
-/// `csv.QUOTE_MINIMAL`: a value containing the delimiter (`,`), a double quote,
-/// or a line break is wrapped in double quotes with internal quotes doubled;
-/// plain values are written verbatim. Only the MUX cell can carry such a value,
-/// so this keeps MUX output byte-identical across implementations.
-fn write_csv_field<W: Write>(out: &mut W, value: &str) -> std::io::Result<()> {
-    if value.contains([',', '"', '\n', '\r']) {
-        out.write_all(b"\"")?;
-        let mut buf = [0u8; 4];
-        for ch in value.chars() {
-            if ch == '"' {
-                out.write_all(b"\"\"")?;
-            } else {
-                out.write_all(ch.encode_utf8(&mut buf).as_bytes())?;
-            }
-        }
-        out.write_all(b"\"")?;
-    } else {
-        out.write_all(value.as_bytes())?;
-    }
-    Ok(())
-}
-
 /// Turn a [`CalendarError`] into the operator-facing `detail` of a
 /// [`MieError::CalendarUnavailable`], naming the record it came from.
 fn describe_calendar_error(err: CalendarError, file_offset: u64) -> String {
@@ -636,28 +615,43 @@ fn describe_calendar_error(err: CalendarError, file_offset: u64) -> String {
 /// ~30 rows: 422,088 of them for a 16-file merge, most of its kernel time.
 const OUTPUT_BUFFER: usize = 256 * 1024;
 
-const HEX: &[u8; 16] = b"0123456789ABCDEF";
-
-/// Append `w` as four uppercase hex digits, as `{w:04X}` would.
-fn push_hex4(row: &mut Vec<u8>, w: u16) {
-    row.extend_from_slice(&[
-        HEX[usize::from(w >> 12)],
-        HEX[usize::from((w >> 8) & 0xF)],
-        HEX[usize::from((w >> 4) & 0xF)],
-        HEX[usize::from(w & 0xF)],
-    ]);
-}
-
-/// Append `n` in decimal, as `{n}` would.
-fn push_u8(row: &mut Vec<u8>, n: u8) {
-    if n >= 100 {
-        row.push(b'0' + n / 100);
-    }
-    if n >= 10 {
-        row.push(b'0' + n / 10 % 10);
-    }
-    row.push(b'0' + n % 10);
-}
+/// The 46 columns as tablekit writes them (EXPERIMENT, exp/tablekit-row-writer): the
+/// header's names, the vendor's hexadecimal words and six-decimal `DELTA` as cell formats,
+/// LF line endings. Only the rows go through it; [`CSV_HEADER`] is still written as is.
+#[expect(
+    clippy::expect_used,
+    reason = "built from constants; vendor_format_builds proves it (experiment: adoption removes the panic path)"
+)]
+static VENDOR_FORMAT: LazyLock<CsvFormat> = LazyLock::new(|| {
+    let fields = CSV_HEADER
+        .trim_end()
+        .split(',')
+        .map(|name| Field {
+            name: name.to_owned(),
+            data_type: match name {
+                "RT" => DataType::U8,
+                "DELTA" => DataType::F64,
+                "STAT" | "CMD" | "ERROR_CODE" => DataType::U16,
+                _ if name.starts_with("WD") => DataType::U16,
+                _ => DataType::Text,
+            },
+        })
+        .collect::<Vec<_>>();
+    let cell_formats = fields
+        .iter()
+        .filter_map(|f| match f.data_type {
+            DataType::U16 => Some((f.name.clone(), CellFormat::HexUpper(4))),
+            DataType::F64 => Some((f.name.clone(), CellFormat::Fixed(6))),
+            _ => None,
+        })
+        .collect();
+    let options = CsvOptions {
+        line_ending: LineEnding::Lf,
+        cell_formats,
+        ..CsvOptions::default()
+    };
+    CsvFormat::new(fields, options).expect("the vendor columns and formats are fixed and valid")
+});
 
 /// Append one complete CSV row for `msg` to `row`.
 ///
@@ -675,101 +669,60 @@ pub(crate) fn render_message<'a>(
     render: TimeRender,
     mux: Option<&mut MuxCells<'a>>,
 ) -> MieResult<()> {
-    match msg.timestamp {
-        // The default rendering, written without an intermediate String.
-        Timestamp::Irig(t) if render.format == OutputTimeFormat::Doy => {
-            push_irig_doy(row, &t);
-        }
-        _ => {
-            let timestamp =
-                msg.timestamp
-                    .format_with(render)
-                    .map_err(|e| MieError::CalendarUnavailable {
-                        detail: describe_calendar_error(e, msg.file_offset),
-                    })?;
-            row.extend_from_slice(timestamp.as_bytes());
-        }
+    let formatted =
+        match msg.timestamp {
+            // The default rendering, written without an intermediate String.
+            Timestamp::Irig(_) if render.format == OutputTimeFormat::Doy => None,
+            _ => Some(msg.timestamp.format_with(render).map_err(|e| {
+                MieError::CalendarUnavailable {
+                    detail: describe_calendar_error(e, msg.file_offset),
+                }
+            })?),
+        };
+    let mut cells = VENDOR_FORMAT.begin_row(row);
+    match (formatted, msg.timestamp) {
+        (Some(text), _) => cells.text(&text),
+        (None, Timestamp::Irig(t)) => cells.text_with(|b| push_irig_doy(b, &t)),
+        // `formatted` is `None` only for IRIG; this arm is for completeness.
+        (None, ts) => cells.text(&ts.format()),
     }
-    render_fields(row, msg, mux);
+    render_fields(&mut cells, msg, mux);
+    // The cells written are fixed by `render_fields` (unit-tested), so the count is right.
+    let finished = cells.finish();
+    debug_assert!(finished.is_ok(), "{finished:?}");
     Ok(())
 }
 
 /// Render one CSV row into `row` (appended; the caller clears it).
-/// `timestamp` is rendered by the caller (see [`CsvWriter::write_message`]) so
-/// that a failed calendar resolution cannot leave a partly-written row behind.
-/// Building the row in memory and writing it once replaces ~40 small writes
-/// through `core::fmt` per row.
 #[cfg(test)]
 fn render_row(row: &mut Vec<u8>, msg: &MieMessage, timestamp: &str) {
-    row.extend_from_slice(timestamp.as_bytes());
-    render_fields(row, msg, None);
-}
-
-/// Append `n` as exactly `width` decimal digits (`n` must fit).
-fn push_padded(row: &mut Vec<u8>, mut n: u32, width: usize) {
-    let start = row.len();
-    row.resize(start + width, b'0');
-    for slot in row[start..].iter_mut().rev() {
-        *slot = b'0' + (n % 10) as u8;
-        n /= 10;
-    }
+    let mut cells = VENDOR_FORMAT.begin_row(row);
+    cells.text(timestamp);
+    render_fields(&mut cells, msg, None);
+    let finished = cells.finish();
+    debug_assert!(finished.is_ok(), "{finished:?}");
 }
 
 /// `DAY:HH:MM:SS.uuuuuu`, byte-identical to [`IrigTimestamp::format`].
-fn push_irig_doy(row: &mut Vec<u8>, t: &IrigTimestamp) {
-    let day = u32::from(t.day);
-    let width = if day >= 100 {
-        3
-    } else if day >= 10 {
-        2
-    } else {
-        1
-    };
-    push_padded(row, day, width);
-    row.push(b':');
-    push_padded(row, u32::from(t.hour), 2);
-    row.push(b':');
-    push_padded(row, u32::from(t.minute), 2);
-    row.push(b':');
-    push_padded(row, u32::from(t.second), 2);
-    row.push(b'.');
-    push_padded(row, t.microsecond % 1_000_000, 6);
-}
-
-/// `DELTA` as `{d:.6}` would write it. A `DELTA` is a whole number of
-/// microseconds divided by 10^6, so when `d` round-trips through that integer
-/// the integer's digits ARE the correctly rounded six-place decimal; anything
-/// else (negative, huge, not a whole microsecond) takes `core::fmt`.
-fn push_delta(row: &mut Vec<u8>, d: f64) {
-    if d.is_sign_positive() && d < 1.0e9 {
-        #[expect(
-            clippy::cast_possible_truncation,
-            clippy::cast_sign_loss,
-            reason = "guarded: finite, non-negative, below 10^15 microseconds"
-        )]
-        let us = (d * 1_000_000.0).round() as u64;
-        #[expect(clippy::cast_precision_loss, reason = "us < 2^50, exact in f64")]
-        let back = us as f64 / 1_000_000.0;
-        if back.to_bits() == d.to_bits() {
-            let whole = us / 1_000_000;
-            // Infallible: writing to a Vec never errors.
-            let _ = write!(row, "{whole}");
-            row.push(b'.');
-            push_padded(row, (us % 1_000_000) as u32, 6);
-            return;
-        }
-    }
-    // Infallible: writing to a Vec never errors.
-    let _ = write!(row, "{d:.6}");
+fn push_irig_doy(b: &mut TextBuilder<'_>, t: &IrigTimestamp) {
+    b.digits(u64::from(t.day), 1);
+    b.push(b':');
+    b.digits(u64::from(t.hour), 2);
+    b.push(b':');
+    b.digits(u64::from(t.minute), 2);
+    b.push(b':');
+    b.digits(u64::from(t.second), 2);
+    b.push(b'.');
+    b.digits(u64::from(t.microsecond % 1_000_000), 6);
 }
 
 /// How many files' `MUX` cells one [`MuxCells`] keeps. A merge of more files
 /// writes the cells of the rest from their records, as before.
 const MUX_CELLS: usize = 16;
 
-/// The `MUX` cells a rendering thread has rendered, one per file, kept so that
-/// later records of the same file copy their cell instead of reading the
-/// file's shared `Arc<String>` (L2-WRT-027).
+/// The `MUX` values a rendering thread has seen, one per file, copied so that
+/// later records of the same file read the copy instead of the file's shared
+/// `Arc<String>` (L2-WRT-027).
 ///
 /// Every record of a file holds a clone of one `Arc`, and the reference count
 /// shares a cache line with the string's length. The decoding thread writes
@@ -782,113 +735,106 @@ const MUX_CELLS: usize = 16;
 /// allocation cannot be freed and its address reused by another file's value
 /// while they compare against it.
 pub(crate) struct MuxCells<'a> {
-    /// Each file's `Arc` and where its rendered cell sits in `bytes`.
+    /// Each file's `Arc` and where its copied value sits in `text`.
     cells: Vec<(&'a Arc<String>, usize, usize)>,
-    bytes: Vec<u8>,
+    text: String,
 }
 
 impl<'a> MuxCells<'a> {
     pub(crate) const fn new() -> Self {
         Self {
             cells: Vec::new(),
-            bytes: Vec::new(),
+            text: String::new(),
         }
     }
 
-    fn push(&mut self, row: &mut Vec<u8>, mux: &'a Arc<String>) {
+    fn write(&mut self, cells: &mut RowWriter<'_, '_>, mux: &'a Arc<String>) {
         if let Some(&(_, start, end)) = self.cells.iter().find(|c| Arc::ptr_eq(c.0, mux)) {
-            row.extend_from_slice(&self.bytes[start..end]);
+            cells.text(&self.text[start..end]);
         } else if self.cells.len() < MUX_CELLS {
-            let start = self.bytes.len();
-            // Infallible: writing to a Vec never errors.
-            let _ = write_csv_field(&mut self.bytes, mux);
-            self.cells.push((mux, start, self.bytes.len()));
-            row.extend_from_slice(&self.bytes[start..]);
+            let start = self.text.len();
+            self.text.push_str(mux);
+            self.cells.push((mux, start, self.text.len()));
+            cells.text(&self.text[start..]);
         } else {
-            // Infallible: writing to a Vec never errors.
-            let _ = write_csv_field(row, mux);
+            cells.text(mux);
         }
     }
 }
 
-/// Render every column after `TIME_STAMP`, from its separating comma to the
-/// newline.
-fn render_fields<'a>(row: &mut Vec<u8>, msg: &'a MieMessage, cell: Option<&mut MuxCells<'a>>) {
-    row.push(b',');
-
+/// Write every column after `TIME_STAMP`.
+fn render_fields<'a>(
+    cells: &mut RowWriter<'_, '_>,
+    msg: &'a MieMessage,
+    mux: Option<&mut MuxCells<'a>>,
+) {
     // RT, then MSG (`<SA><T|R>`; both empty for SPURIOUS_DATA)
     if let Some(cw) = msg.command_word {
-        push_u8(row, cw.rt);
-        row.push(b',');
-        push_u8(row, cw.subaddress);
-        row.push(match cw.direction {
-            crate::models::Direction::Transmit => b'T',
-            crate::models::Direction::Receive => b'R',
+        cells.u8(cw.rt);
+        cells.text_with(|b| {
+            b.digits(u64::from(cw.subaddress), 1);
+            b.push(match cw.direction {
+                crate::models::Direction::Transmit => b'T',
+                crate::models::Direction::Receive => b'R',
+            });
         });
-        row.push(b',');
     } else {
-        row.extend_from_slice(b",,");
+        cells.missing();
+        cells.missing();
     }
 
     // WD01..WD32: the words present, then an empty cell for each absent one.
     let words = msg.data_words.as_slice();
     for &w in words.iter().take(MAX_DATA_WORDS) {
-        push_hex4(row, w);
-        row.push(b',');
+        cells.hex::<4>(w);
     }
     for _ in words.len().min(MAX_DATA_WORDS)..MAX_DATA_WORDS {
-        row.push(b',');
+        cells.missing();
     }
 
-    // STAT
-    if let Some(s) = msg.status_word() {
-        push_hex4(row, s);
+    // STAT, CMD
+    match msg.status_word() {
+        Some(s) => cells.hex::<4>(s),
+        None => cells.missing(),
     }
-    row.push(b',');
-
-    // CMD
-    if let Some(cw) = msg.command_word {
-        push_hex4(row, cw.raw);
+    match msg.command_word {
+        Some(cw) => cells.hex::<4>(cw.raw),
+        None => cells.missing(),
     }
-    row.push(b',');
 
     // MUX (L2-WRT-020: derived from the file name; empty when disabled or the
     // configured field is absent), then TERM_NAME (always empty).
-    match (msg.mux.as_ref(), cell) {
-        (Some(mux), Some(cell)) => cell.push(row, mux),
-        (Some(mux), None) => {
-            // Infallible: writing to a Vec never errors.
-            let _ = write_csv_field(row, mux);
-        }
-        (None, _) => {}
+    match (msg.mux.as_ref(), mux) {
+        (Some(value), Some(mux)) => mux.write(cells, value),
+        (Some(value), None) => cells.text(value),
+        (None, _) => cells.missing(),
     }
-    row.extend_from_slice(b",,");
+    cells.missing();
 
     // BUS
-    row.extend_from_slice(msg.bus().as_str().as_bytes());
-    row.push(b',');
+    cells.text(msg.bus().as_str());
 
-    // DELTA — empty cell when delta is None (SPURIOUS_DATA, uncalibrated
+    // DELTA -- empty cell when delta is None (SPURIOUS_DATA, uncalibrated
     // Standard timestamps, or non-monotonic timestamps).
-    if let Some(d) = msg.delta.get() {
-        push_delta(row, d);
+    match msg.delta.get() {
+        Some(d) => cells.fixed::<6>(d),
+        None => cells.missing(),
     }
-    row.push(b',');
 
-    // IM_GAP, RCV_GAP, XMT_GAP (always empty) — the tail of the 44-column
+    // IM_GAP, RCV_GAP, XMT_GAP (always empty) -- the tail of the 44-column
     // vendor block (L2-WRT-001).
-    row.extend_from_slice(b",,,");
+    cells.missing();
+    cells.missing();
+    cells.missing();
 
-    // ERROR, then ERROR_CODE — decoder-added columns with no vendor
+    // ERROR, then ERROR_CODE -- decoder-added columns with no vendor
     // counterpart, appended AFTER the vendor block so column N of a decoded
     // CSV is column N of the vendor CSV for all 44 (L1-OUT-001).
-    row.extend_from_slice(msg.error_label().as_bytes());
-    row.push(b',');
-
-    if let Some(c) = msg.error_word() {
-        push_hex4(row, c);
+    cells.text(msg.error_label());
+    match msg.error_word() {
+        Some(c) => cells.hex::<4>(c),
+        None => cells.missing(),
     }
-    row.push(b'\n');
 }
 
 // ── Top-level entry points matching the Python API ────────────────────
@@ -1491,7 +1437,6 @@ mod tests {
             seed ^= seed << 17;
             seed
         };
-        let mut row = Vec::new();
         let mut deltas: Vec<f64> = vec![0.0, -0.0, 1e-6, 0.5e-6, 1.5e-6, 2.5e-6, 0.123_456_5];
         deltas.extend([
             86_399.999_999,
@@ -1507,11 +1452,36 @@ mod tests {
             deltas.push(us as f64 / 1_000_000.0);
             deltas.push(f64::from_bits(next() >> 2));
         }
+        // One-column formats, so each cell is checked on its own; the line ending is LF.
+        let one = |data_type, format| {
+            let field = Field {
+                name: "c".into(),
+                data_type,
+            };
+            let options = CsvOptions {
+                line_ending: LineEnding::Lf,
+                cell_formats: vec![("c".into(), format)],
+                ..CsvOptions::default()
+            };
+            CsvFormat::new(vec![field], options).unwrap()
+        };
+        let (delta_format, text_format, hex_format, u8_format) = (
+            one(DataType::F64, CellFormat::Fixed(6)),
+            one(DataType::Text, CellFormat::Default),
+            one(DataType::U16, CellFormat::HexUpper(4)),
+            one(DataType::U8, CellFormat::Default),
+        );
+        let cell = |format: &CsvFormat, write: &dyn Fn(&mut RowWriter<'_, '_>)| {
+            let mut out = Vec::new();
+            let mut cells = format.begin_row(&mut out);
+            write(&mut cells);
+            cells.finish().unwrap();
+            out.pop(); // the LF
+            String::from_utf8(out).unwrap()
+        };
         for d in deltas {
-            row.clear();
-            push_delta(&mut row, d);
             assert_eq!(
-                String::from_utf8_lossy(&row),
+                cell(&delta_format, &|c| c.fixed::<6>(d)),
                 format!("{d:.6}"),
                 "delta {d:e}"
             );
@@ -1526,17 +1496,24 @@ mod tests {
                 microsecond: ((v >> 26) % 2_000_000) as u32,
                 freerun: false,
             };
-            row.clear();
-            push_irig_doy(&mut row, &t);
-            assert_eq!(String::from_utf8_lossy(&row), t.format());
-            row.clear();
-            push_hex4(&mut row, v as u16);
-            push_u8(&mut row, v as u8);
             assert_eq!(
-                String::from_utf8_lossy(&row),
-                format!("{:04X}{}", v as u16, v as u8)
+                cell(&text_format, &|c| c.text_with(|b| push_irig_doy(b, &t))),
+                t.format()
             );
+            assert_eq!(
+                cell(&hex_format, &|c| c.hex::<4>(v as u16)),
+                format!("{:04X}", v as u16)
+            );
+            assert_eq!(cell(&u8_format, &|c| c.u8(v as u8)), format!("{}", v as u8));
         }
+    }
+
+    /// The 46 columns, their types and their cell formats are a valid tablekit format, with
+    /// the header's names in order.
+    #[test]
+    fn vendor_format_builds() {
+        let names: Vec<_> = VENDOR_FORMAT.schema().iter().map(|f| f.name.as_str()).collect();
+        assert_eq!(names.join(","), CSV_HEADER.trim_end());
     }
 
     /// Requirements: L2-WRT-020

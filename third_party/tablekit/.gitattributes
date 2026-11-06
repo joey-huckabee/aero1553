@@ -1,0 +1,16 @@
+# Line endings are normalized to LF, in the repository and in the working tree.
+#
+# Without this file, and with core.autocrlf=false, whatever a tool happens to write is what
+# gets committed. A script that rewrites a CRLF file with LF endings then turns a two-line
+# edit into a whole-file diff, which hides the real change and makes the history useless for
+# blame. `eol=lf` additionally keeps the working tree LF, so what is on disk is what is
+# committed.
+
+* text=auto eol=lf
+
+# Hooks must stay LF to run under sh.
+.githooks/* text eol=lf
+
+# Expected output is compared byte for byte: CSV lines end in CRLF by design, and Parquet is
+# binary. Never convert either.
+testdata/** -text

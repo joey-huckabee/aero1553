@@ -1,0 +1,101 @@
+# Baseline matching the approved SQL and tablekit Parquet format.
+# Cluster-specific validation is still required; this is not a claim about every CDP release.
+schema_version = 1
+id = "cloudera-impala-hive-v1"
+
+[sql]
+database_prefix = "cmm_"
+path_separator = "_"
+max_identifier = 128
+missing_version = "(no sims_bc_name)"
+header = "-- Impala tables for the CMM messages of {package} {version}.\n-- Made from the XML; regenerate rather than edit, and do not commit.\n\n"
+table_comment = "label {label}, {message_name} ({qualified_type}), {size} bytes"
+
+[sql.comments]
+field = "{source_path}: {xml_type}"
+text = "{source_path}: {xml_type}[{count}]"
+enum_name = "{source_path}: {xml_type} name"
+enum_alias = "{source_path}: {xml_type} name, the first where a number has several"
+enum_code = "{source_path}: {xml_type} number"
+
+[[sql.record_columns]]
+name = "record_time"
+data_type = "float64"
+comment = "time of the record, in seconds"
+
+[[sql.partition_columns]]
+name = "venue"
+data_type = "text"
+comment = "partition: venue"
+[[sql.partition_columns]]
+name = "sdl_name"
+data_type = "text"
+comment = "partition: SDL name"
+[[sql.partition_columns]]
+name = "mission_date"
+data_type = "text"
+comment = "partition: mission date"
+[[sql.partition_columns]]
+name = "mission_desc"
+data_type = "text"
+comment = "partition: mission description"
+[[sql.partition_columns]]
+name = "tail_name"
+data_type = "text"
+comment = "partition: tail name"
+[[sql.partition_columns]]
+name = "test_num"
+data_type = "text"
+comment = "partition: test number"
+
+[mappings.bool]
+sql = "BOOLEAN"
+physical = "BOOLEAN"
+logical = "NONE"
+[mappings.int8]
+sql = "TINYINT"
+physical = "INT32"
+logical = "INTEGER(8,signed)"
+[mappings.int16]
+sql = "SMALLINT"
+physical = "INT32"
+logical = "INTEGER(16,signed)"
+[mappings.int32]
+sql = "INT"
+physical = "INT32"
+logical = "INTEGER(32,signed)"
+[mappings.int64]
+sql = "BIGINT"
+physical = "INT64"
+logical = "INTEGER(64,signed)"
+[mappings.uint8]
+sql = "SMALLINT"
+physical = "INT32"
+logical = "INTEGER(16,signed)"
+[mappings.uint16]
+sql = "INT"
+physical = "INT32"
+logical = "INTEGER(32,signed)"
+[mappings.uint32]
+sql = "BIGINT"
+physical = "INT64"
+logical = "INTEGER(64,signed)"
+[mappings.uint64]
+sql = "DECIMAL(20,0)"
+physical = "FIXED_LEN_BYTE_ARRAY"
+logical = "DECIMAL"
+length = 9
+precision = 20
+scale = 0
+[mappings.float32]
+sql = "FLOAT"
+physical = "FLOAT"
+logical = "NONE"
+[mappings.float64]
+sql = "DOUBLE"
+physical = "DOUBLE"
+logical = "NONE"
+[mappings.text]
+sql = "STRING"
+physical = "BYTE_ARRAY"
+logical = "STRING"

@@ -1,0 +1,5 @@
+# Local agent settings
+.claude/settings.local.json
+
+# Build output
+/target

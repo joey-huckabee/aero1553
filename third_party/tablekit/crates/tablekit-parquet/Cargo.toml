@@ -1,0 +1,20 @@
+[package]
+name = "tablekit-parquet"
+description = "Writes tablekit tables as Parquet, with the types Impala reads."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+publish.workspace = true
+
+[dependencies]
+tablekit.workspace = true
+tablekit-profile.workspace = true
+parquet.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tablekit-csv.workspace = true
