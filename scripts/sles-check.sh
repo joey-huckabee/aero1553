@@ -44,8 +44,13 @@ for tool in cargo-libc python3 docker objdump; do
     command -v "$tool" >/dev/null || { echo "sles-check: $tool not found (see the header of $0)" >&2; exit 1; }
 done
 pinned=$(sed -n 's/^ *CARGO_LIBC_VERSION: *//p' "$ROOT/.github/workflows/ci.yml" | head -1)
-have=$(cargo install --list | sed -n 's/^cargo-libc v\([^ :]*\).*/\1/p')
-if [[ $have != "$pinned" ]]; then
+# The version the tool reports, else what `cargo install` recorded. CI restores the tool
+# from a cache, so `cargo install --list` alone does not see it there.
+have=$(cargo libc --version 2>/dev/null | grep -oE '[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+[[ -n $have ]] || have=$(cargo install --list | sed -n 's/^cargo-libc v\([^ :]*\).*/\1/p')
+if [[ -z $have ]]; then
+    notice "could not tell cargo-libc's version; CI pins $pinned"
+elif [[ $have != "$pinned" ]]; then
     echo "sles-check: cargo-libc $have, but CI pins $pinned: cargo install --locked cargo-libc@$pinned" >&2
     exit 1
 fi
