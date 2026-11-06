@@ -73,8 +73,17 @@ python3 "$ROOT/tests/conformance/run.py" --only rust --rust-bin "$BIN"
 
 say "sles: SUSE's SLES 12 SP5 userland"
 work=$(mktemp -d)
+# SUSE's image unpacks some directories without write permission, so they are made
+# writable before removal; and the clean-up never changes the script's result.
 cleanup() {
-    if ((keep)); then echo "kept $work"; else rm -rf "$work"; fi
+    local rc=$?
+    if ((keep)); then
+        echo "kept $work"
+    else
+        chmod -R u+w "$work" 2>/dev/null || true
+        rm -rf "$work" 2>/dev/null || echo "note: could not remove $work" >&2
+    fi
+    exit "$rc"
 }
 trap cleanup EXIT
 sles=$work/sles12sp5
