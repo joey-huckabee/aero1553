@@ -878,24 +878,31 @@ impl TextBuilder<'_> {
     pub fn digits(&mut self, n: u64, width: usize) {
         // Laid out in a buffer on the stack, already zero-padded, then copied whole -- a
         // copy of a fixed size, which compiles to a few stores -- and the output trimmed
-        // to length. A copy of the digits alone has a length known only when running, and
-        // each was a `memcpy` call (callgrind, a 46-column row with a built timestamp).
+        // to length: a copy of a length known only when running was a `memcpy` call per
+        // cell. A number that fits `width` fills exactly `width` places, straight-line code
+        // where the width is a constant; a wider one counts its digits first.
         const ROOM: usize = 20; // u64::MAX has 20 digits
-        let count = n.checked_ilog10().map_or(1, |log| log as usize + 1);
         if width > ROOM {
-            for _ in count..width {
-                self.out.push(b'0');
-            }
-            self.out
-                .extend_from_slice(itoa::Buffer::new().format(n).as_bytes());
+            wide_digits(self.out, n, width);
             return;
         }
-        let total = count.max(width);
         let mut buffer = [b'0'; ROOM];
+        let mut total = width;
         let mut rest = n;
-        for slot in buffer[..total].iter_mut().rev().take(count) {
+        for slot in buffer[..total].iter_mut().rev() {
             *slot = b'0' + u8::try_from(rest % 10).unwrap_or(0);
             rest /= 10;
+        }
+        if rest != 0 || total == 0 {
+            total = n
+                .checked_ilog10()
+                .map_or(1, |log| log as usize + 1)
+                .max(width);
+            rest = n;
+            for slot in buffer[..total].iter_mut().rev() {
+                *slot = b'0' + u8::try_from(rest % 10).unwrap_or(0);
+                rest /= 10;
+            }
         }
         let start = self.out.len();
         self.out.extend_from_slice(&buffer);
@@ -1075,6 +1082,17 @@ fn whole_units(v: f64, scale: u64) -> Option<u64> {
     #[expect(clippy::cast_precision_loss, reason = "units < 2^53, exact in f64")]
     let back = units as f64 / scale_f;
     (back.to_bits() == v.to_bits()).then_some(units)
+}
+
+/// [`TextBuilder::digits`] for a width over 20, padding beyond any `u64`'s digits.
+#[cold]
+fn wide_digits(out: &mut Vec<u8>, n: u64, width: usize) {
+    let mut buffer = itoa::Buffer::new();
+    let text = buffer.format(n);
+    for _ in text.len()..width {
+        out.push(b'0');
+    }
+    out.extend_from_slice(text.as_bytes());
 }
 
 /// `True` or `False`. Four bytes are always copied (`True` or `Fals`) and the `e` of `False`
