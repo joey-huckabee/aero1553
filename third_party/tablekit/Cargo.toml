@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/tablekit", "crates/tablekit-csv", "crates/tablekit-parquet", "crates/tablekit-profile"]
+members = ["crates/tablekit", "crates/tablekit-csv"]
 
 [workspace.package]
 version = "0.6.0"
@@ -13,17 +13,12 @@ publish = false
 [workspace.dependencies]
 tablekit = { path = "crates/tablekit" }
 tablekit-csv = { path = "crates/tablekit-csv" }
-tablekit-profile = { path = "crates/tablekit-profile" }
 # Shortest float digits (zmij: Victor Zverovich's algorithm, ties to even, as NumPy) and
 # integer digits (itoa), formatted on the stack: the CSV hot path. Both ported or written by
 # David Tolnay, widely used, no dependencies of their own. zmij is exact (=) because a new
 # version could change digits; the NumPy corpus test must pass before moving it.
 zmij = "=1.0.23"
 itoa = "1.0.18"
-# 59.3.0 (2026-09-01): 60.0.0 needs Rust 1.88, and 59.3.1 was under two weeks old when this
-# was chosen. Exact, so every user resolves the same writer. No Arrow layer: the column
-# writers are used directly. Snappy only, the compression Impala uses by default.
-parquet = { version = "=59.3.0", default-features = false, features = ["snap", "flate2-rust_backend", "zstd"] }
 
 [workspace.lints.rust]
 unsafe_code = "forbid"

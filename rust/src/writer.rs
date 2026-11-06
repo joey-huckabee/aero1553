@@ -1512,7 +1512,11 @@ mod tests {
     /// the header's names in order.
     #[test]
     fn vendor_format_builds() {
-        let names: Vec<_> = VENDOR_FORMAT.schema().iter().map(|f| f.name.as_str()).collect();
+        let names: Vec<_> = VENDOR_FORMAT
+            .schema()
+            .iter()
+            .map(|f| f.name.as_str())
+            .collect();
         assert_eq!(names.join(","), CSV_HEADER.trim_end());
     }
 
