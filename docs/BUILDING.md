@@ -165,6 +165,25 @@ cargo libc inspect target/x86_64-unknown-linux-gnu/release/aero1553 --max-glibc 
 uv --directory python build
 ```
 
+### Checking the SLES 12 SP5 binary as CI does, WSL2 included
+
+`scripts/sles-check.sh` is CI's whole check of that binary, so running it on any x86-64
+Linux with Docker -- WSL2 on a Windows machine included -- gives CI's result:
+
+```bash
+sudo apt install clang gcc binutils python3 docker.io   # or Docker Desktop's WSL integration
+cargo install --locked cargo-libc@0.5.0                  # the version CI pins
+bash scripts/sles-check.sh                               # builds, then checks
+```
+
+It builds the binary with cargo-libc, rejects a symbol newer than GLIBC_2.22, runs the
+tests with every syscall kernel 4.12 lacks returning ENOSYS (a simulation), runs the
+conformance suite against the binary, then pulls SUSE's SLES 12 SP5 base image (pinned by
+digest), checks SUSE's `libgcc_s.so.1` against the binary, checks every `GCC_*` import binds
+to it at start-up, and runs the conformance suite on SUSE's loader, glibc and `libgcc_s`.
+What it cannot cover is SUSE's kernel under that userland: that needs a real SLES 12 SP5
+host or VM.
+
 ## 6. Troubleshooting
 
 | Message | Cause and fix |
