@@ -40,6 +40,13 @@ path = "src/bin/aero1553.rs"
 # input are hand-rolled on std (L3-RS-002). The reader streamed through
 # memmap2 until 5.0.0; positional reads measured within noise of the map.
 [dependencies]
+# tablekit's CSV writer (L3-RS-002): the vendor CSV's rows are written through
+# tablekit-csv's row writer, so every FATMOPs tool's CSV comes from one library.
+# Vendored in third_party/tablekit at a tablekit tag (scripts/vendor-tablekit.py),
+# not fetched: tablekit is private, and a vendored copy builds anywhere, offline
+# included. Its own dependencies are itoa and zmij.
+tablekit = { path = "../third_party/tablekit/crates/tablekit", version = "0.6.0" }
+tablekit-csv = { path = "../third_party/tablekit/crates/tablekit-csv", version = "0.7.0" }
 
 # Lint policy lives here so plain `cargo build` / `cargo clippy` enforce it, not
 # just the CI flags. All three pass clean today; they formalize practices the
@@ -149,7 +156,7 @@ codegen-units = 1
 strip = "symbols"
 
 # The Rust half of the performance suite (perf/README.md). Hand-rolled:
-# no benchmark framework, so the crate keeps no dependencies.
+# no benchmark framework, and no dev-dependencies.
 [[bench]]
 name = "perf"
 harness = false

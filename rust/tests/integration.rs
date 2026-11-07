@@ -748,7 +748,7 @@ fn header_skip_via_proprietary_prefix() {
 // ── L1-ROB-001 fuzz harness ──────────────────────────────────────────────
 //
 // Deterministic xorshift64 PRNG keeps the tests fully reproducible and avoids
-// pulling in `rand` (the crate stays free of external deps, per L3-RS-002).
+// pulling in `rand` (the crate keeps its dependencies to its CSV writer, per L3-RS-002).
 // Every iteration generates a random byte sequence, writes it to a temp file,
 // drives it through the decoder, and asserts that ANY outcome other than a
 // panic is acceptable — `Err(MieError::*)` items are the *expected* response to
@@ -1041,7 +1041,7 @@ fn dump_arbitrary_bytes_never_panics() {
             // path, not a panic. We sink output into a Vec and discard it,
             // clearing between the two so each dump's output size is its own.
             // clippy::naive_bytecount suggests the `bytecount` crate. This crate
-            // has no external dependencies by policy (L3-RS-002), and a
+            // keeps its dependencies to its CSV writer (L3-RS-002), and a
             // line count in a test harness is nowhere near a reason to add
             // one — the fuzzed dumps here are at most a few hundred bytes.
             #[allow(clippy::naive_bytecount)]

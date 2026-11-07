@@ -7,8 +7,9 @@ native release binary.
 Edition 2024, MSRV 1.88. The floor comes from this crate's own source: edition
 2024 requires only 1.85. What needs 1.88 is **let-chains** (`if let` / `while
 let` joined by `&&`), which the decoder uses at seven sites; `is_multiple_of`
-independently needs 1.87. The crate has no external dependencies; argument
-parsing, CSV writing, TOML config, logging, error types and file input are all
+independently needs 1.87. The crate's one dependency is tablekit's CSV writer
+(`tablekit-csv`, vendored in `../third_party/tablekit`, with `itoa` and `zmij`);
+argument parsing, TOML config, logging, error types and file input are
 hand-rolled on `std`.
 
 Shared documentation — the project overview, CLI reference, configuration

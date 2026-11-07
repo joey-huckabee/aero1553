@@ -36,7 +36,7 @@ python3 scripts/offline-bundle.py ../aero1553-bundle --ref v5.10.1
 | In the bundle | What it is |
 |---|---|
 | `source/` | the repository at the ref |
-| `vendor/`, `.cargo/config.toml` | every crate the Python extension and cargo-libc need, and the setting that makes Cargo use them and never the network. The CLI itself needs no crate at all. |
+| `vendor/`, `.cargo/config.toml` | every crate the CLI, the Python extension and cargo-libc need, and the setting that makes Cargo use them and never the network. The CLI needs only `itoa` and `zmij` from crates.io; its CSV writer, tablekit's, is part of `source/` (`third_party/tablekit`). |
 | `cargo-libc-<version>/` | cargo-libc's source, the version CI pins (Linux only) |
 | `wheels/` | maturin, the Python build tool, one wheel per platform |
 | `toolchains/` | the Rust standalone installers: `rust-<version>-x86_64-pc-windows-msvc.msi` and `rust-<version>-x86_64-unknown-linux-gnu.tar.xz` |

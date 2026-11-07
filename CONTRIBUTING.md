@@ -218,8 +218,9 @@ committed `*.mie` recording with nothing downstream to catch it.
   before publishing a release.
 - `cargo build --release` is **not** in the hook because debug builds
   exercise the same code path. Release builds are a release-time concern.
-- `cargo audit` (CVE check) is **not** wired up because the crate has
-  no dependencies. Revisit if that changes.
+- `cargo audit` (CVE check) is **not** wired up: `cargo deny check`
+  already checks the RustSec advisories for the crate's few dependencies
+  (tablekit's vendored CSV writer and its `itoa` and `zmij`).
 
 ## Daily commands
 
@@ -592,9 +593,10 @@ Body conventions:
 
 These are codified in `AGENTS.md`; the highlights:
 
-- **No external dependencies.** The crate has none. Adding a crate
-  requires justification — argument parsing, CSV, TOML, logging,
-  error types and file input are all hand-rolled by design.
+- **One dependency, vendored.** The crate's only dependency is the
+  maintainer's tablekit CSV writer (`third_party/tablekit`, with `itoa`
+  and `zmij`). Adding another requires justification — argument parsing,
+  TOML, logging, error types and file input are hand-rolled by design.
 - **Streaming CSV.** Don't introduce `Vec<MieMessage>` or row-level
   buffering in `writer.rs` — constant memory is the design point.
 - **`DataWords` is fixed-capacity.** MIL-STD-1553B caps a transaction

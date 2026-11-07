@@ -1,0 +1,7 @@
+# tablekit v0.7.0 (commit b8d40244194830ad9867e2f8a4af933e40e202a2), vendored by scripts/vendor-tablekit.py
+76655078d158ea98ed1904bf054ea724f54905b5cf0e895725ae4dca34aa4f06  Cargo.toml
+bfeb5864818f6b6ceab265bc54c151af0236220ae869db021eaba8d3e334cac0  crates/tablekit-csv/Cargo.toml
+a577d3d3da11984488be2e6d546baa0ed2d09878fc0c64db06055e731fee5e84  crates/tablekit-csv/src/float.rs
+e01c156c2695b78daae2ea486359d513cc47c48c7aa1d37b904419fe1ced8e14  crates/tablekit-csv/src/lib.rs
+14894915ee6f3e93b53bd88a0b2542cdbabcd9b878ecd066d26cf7e30bf140a0  crates/tablekit/Cargo.toml
+4ad7b007f0ab753540d10f279a90fbf7264a7206ea1519ee6c48eb3f7cd02682  crates/tablekit/src/lib.rs

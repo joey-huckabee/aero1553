@@ -106,7 +106,7 @@ The `MUX` column value (L2-WRT-020) is resolved **once per input file** from its
   └───────────────────────────────┘    └───────────┘
 ```
 
-The Rust crate has no external dependencies (per `L3-RS-002`; `memmap2` was dropped in 5.0.0). Argument parsing, CSV emission, TOML parsing, logging, error types and file input are all hand-rolled. The Python package's CSV writer and config loader are the Rust ones, run through its compiled extension (`L3-PY-004`, `L3-PY-005`), so the package declares no runtime dependency.
+The Rust crate's one dependency is tablekit's CSV writer (per `L3-RS-002`): `writer.rs` renders each row through `tablekit_csv::RowWriter`, with the vendor's hexadecimal words and six-decimal `DELTA` as cell formats. tablekit is the maintainer's own library, vendored in `third_party/tablekit` at a tag; it brings `itoa` and `zmij`. Argument parsing, TOML parsing, logging, error types and file input are hand-rolled (`memmap2` was dropped in 5.0.0). The Python package's CSV writer and config loader are the Rust ones, run through its compiled extension (`L3-PY-004`, `L3-PY-005`), so the package declares no runtime dependency.
 
 ---
 

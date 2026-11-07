@@ -636,7 +636,7 @@ The Python package's `aero1553.config.load_config` is the Rust loader described 
 
 ### Rust hand-rolled TOML parser (accepted subset)
 
-To preserve the crate's zero-dependency design, Rust parses TOML with a hand-rolled reader that accepts a deliberately small subset — everything the decoder's schema needs, and nothing more:
+To keep the crate's dependencies to its CSV writer, Rust parses TOML with a hand-rolled reader that accepts a deliberately small subset — everything the decoder's schema needs, and nothing more:
 
 - `[section]` headers (a simple identifier — letters, digits, underscore) and `key = value` pairs, one per line, where the key is a simple identifier;
 - values:

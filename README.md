@@ -183,7 +183,8 @@ All 10 MIL-STD-1553 message formats plus SPURIOUS_DATA:
 ## Project Structure
 
 ```
-rust/                Rust crate (no dependencies) — see rust/README.md
+rust/                Rust crate (one dependency: tablekit's CSV writer, vendored) — see rust/README.md
+third_party/tablekit tablekit's CSV writer, vendored at a tag
 
 config/
 └── default.toml     Fully commented reference configuration

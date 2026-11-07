@@ -1,9 +1,10 @@
 # cargo-deny configuration — supply-chain gate for the crate's dependency tree.
 # Run: `cargo deny check` (from rust/). Docs: https://embarkstudios.github.io/cargo-deny/
 #
-# The crate has no dependencies (since 5.0.0, when memmap2 was dropped), so this
-# gate is a tripwire: it fails the first time a dependency arrives carrying a
-# RustSec advisory, an incompatible license, or a source other than crates.io.
+# The crate's one dependency is tablekit's CSV writer, vendored in
+# third_party/tablekit, which brings itoa and zmij from crates.io. This gate fails
+# when a dependency arrives carrying a RustSec advisory, an incompatible license,
+# or a source other than crates.io and that path.
 
 [advisories]
 version = 2
@@ -14,7 +15,7 @@ yanked = "deny"
 
 [licenses]
 version = 2
-# The crate has no dependencies. Keep this set tight -- a
+# Keep this set tight -- a
 # dependency under any other license fails the gate and forces a conscious
 # review. "MIT" stays allowed so the common "MIT OR Apache-2.0" crate is not
 # refused on license alone; cargo-deny only warns about an unused entry.
@@ -23,7 +24,18 @@ allow = ["MIT", "Apache-2.0"]
 # only, so a dependency declaring the same is still refused.
 exceptions = [{ crate = "aero1553", allow = ["LicenseRef-Proprietary"] }]
 
+# tablekit (vendored in third_party/tablekit) is the maintainer's own private
+# library: its crates are unpublished (`publish = false`) and declare no licence
+# (`UNLICENSED`), so they are not checked against the list above. Every crate from
+# crates.io still is.
+[licenses.private]
+ignore = true
+
 [bans]
+# tablekit-csv's dependency on tablekit is a path within tablekit's own (private,
+# vendored) workspace; a path dependency of an unpublished crate is not a wildcard
+# from a registry.
+allow-wildcard-paths = true
 # No duplicate versions of a crate (none today) and no wildcard ("*") version
 # requirements — both keep the dependency surface predictable.
 multiple-versions = "deny"

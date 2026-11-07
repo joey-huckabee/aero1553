@@ -21,6 +21,9 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- **`scripts/vendor-tablekit.py`**: vendors tablekit's CSV crates at a tag (`update`) and
+  checks the vendored copy is exactly that tag (`check`, in repo-hygiene and so in CI).
+
 - **`scripts/sles-check.sh`**: CI's whole check of the SLES 12 SP5 binary as one script
   (`L3-RS-018`): the glibc 2.22 symbol check, the tests under a simulated kernel 4.12, the
   conformance suite, and the run on SUSE's SLES 12 SP5 userland. The `rust-glibc-2-22` job
@@ -49,6 +52,20 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **The CSV rows are written by tablekit's CSV writer** (`L3-RS-002`). tablekit is the
+  maintainer's table writer shared by the FATMOPs tools; `writer.rs` now renders each row
+  through `tablekit_csv::RowWriter` over the 46 columns, with the hexadecimal words as
+  `CellFormat::HexUpper(4)` and `DELTA` as `CellFormat::Fixed(6)`, instead of its own
+  renderer. **The output is unchanged, byte for byte**: the 224 conformance cases on both
+  CLIs, the golden pins, and a 71 MB decode of the golden recording at every thread count.
+  Speed against 5.10.1 on that decode, aarch64: equal with the default two rendering
+  threads, 1.4% slower with `--threads 0` (instructions and wall time agree); x86 figures
+  are in the pull request. tablekit-csv 0.7.0 is vendored in `third_party/tablekit` (only
+  `tablekit` and `tablekit-csv`; `scripts/vendor-tablekit.py`, checked by repo-hygiene), so
+  the crate's dependencies are now tablekit-csv and its `itoa` and `zmij`; the build, the
+  offline bundle and the SLES 12 SP5 binary need no credential and no network for it.
+  `rust/deny.toml` ignores unpublished crates (tablekit's declare no licence) and allows
+  their workspace's path dependencies.
 - **Roadmap: the vendor CSV can move to tablekit too** (`docs/ROADMAP.md`).
   tablekit PR #18 adds cell formats (hexadecimal, fixed decimals) and a
   cell-at-a-time row writer; on the golden recording it rendered the 46-column

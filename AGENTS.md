@@ -7,7 +7,8 @@ own recording software, so a decoded file can be diffed against vendor output fo
 ## Layout
 
 ```
-rust/                 the decoder: one crate, no external dependencies
+rust/                 the decoder: one crate; its one dependency is tablekit-csv
+third_party/tablekit/ tablekit's CSV writer, vendored at a tag (scripts/vendor-tablekit.py)
   src/                the pipeline (see Architecture) and the CLI
   tests/              integration.rs (library API), cli.rs (spawns the built binary)
   benches/, examples/ the Rust half of the performance suite; synthetic-recording tools
@@ -271,10 +272,15 @@ be added without classifying it on both sides.
 
 ## Conventions worth preserving
 
-- **No external dependencies.** The crate has none (`memmap2` was dropped in 5.0.0). Adding a
-  crate requires justification: argument parsing, CSV, TOML, logging, error types and file
-  input are all hand-rolled by design, and the maintainer values keeping it that way. Build
-  tools that run only in CI (cargo-libc) are not crate dependencies.
+- **One dependency, vendored** (`L3-RS-002`). The crate's only dependency is tablekit-csv, the
+  maintainer's own CSV writer shared by the FATMOPs tools, which brings `itoa` and `zmij`. It
+  is vendored in `third_party/tablekit` at a tablekit tag, never fetched: tablekit is private,
+  and a vendored copy builds anywhere, offline included. Don't edit it there --
+  `scripts/vendor-tablekit.py check` (hygiene, CI) fails on any change; change tablekit
+  upstream, tag it, and `update`. Adding any other crate requires justification: argument
+  parsing, TOML, logging, error types and file input are hand-rolled by design, and the
+  maintainer values keeping it that way. Build tools that run only in CI (cargo-libc) are not
+  crate dependencies.
 - **The input is streamed, never mapped or read whole.** `source.rs`'s `Window` bounds memory
   per open input to the window, independent of file size; `dump` reads through the same module.
   Before calling a sync helper, make the window reach as far as that helper can look: the

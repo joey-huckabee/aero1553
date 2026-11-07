@@ -1,7 +1,7 @@
 //! The Rust half of the performance suite (`perf/README.md`).
 //!
-//! Hand-rolled, like the rest of the crate: no benchmark framework, so the
-//! crate keeps no dependencies, dev-dependencies included.
+//! Hand-rolled, like the rest of the crate: no benchmark framework and no
+//! dev-dependencies.
 //! One invocation times one case and prints one JSON line; `perf/run.py`
 //! drives every case of both implementations, checks each result against the
 //! golden pins (`tests/golden/golden.json`), and writes the report.
