@@ -18,14 +18,11 @@ machine's glibc or newer, so build it on the oldest system that will install it.
 
 ## 1. On a connected machine: gather the bundle
 
-You need Python 3.10 or later, `git`, Rust (from [rustup.rs](https://rustup.rs)) and the
-GitHub CLI ([cli.github.com](https://cli.github.com)). The repository is private, so sign in
-once with an account that can read it, then clone it and check out the release you want to
-build:
+You need Python 3.10 or later, `git` and Rust (from [rustup.rs](https://rustup.rs)). Clone the
+repository and check out the release you want to build:
 
 ```bash
-gh auth login
-gh repo clone joey-huckabee/aero1553
+git clone https://github.com/joey-huckabee/aero1553.git
 cd aero1553
 git checkout v5.11.0            # the release to build; or stay on main
 python3 scripts/offline-bundle.py ../aero1553-bundle --ref v5.11.0
@@ -46,8 +43,9 @@ python3 scripts/offline-bundle.py ../aero1553-bundle --ref v5.11.0
 
 Every download is checked against the SHA-256 its publisher gives: crates.io, PyPI,
 static.rust-lang.org, and the release notes on GitHub. The release binaries are fetched
-with your GitHub sign-in (`gh auth token`, or a token in `GH_TOKEN`); without one the script
-leaves them out and says so, and the build still works, without the comparison. Options:
+anonymously, or with your GitHub sign-in if there is one (`gh auth token`, or a token in
+`GH_TOKEN`), which lifts GitHub's rate limit; if they cannot be fetched the script leaves them
+out and says so, and the build still works, without the comparison. Options:
 
 - `--platform windows` or `--platform linux` gathers for one platform only (smaller).
 - `--rust 1.99.1` picks the Rust version; the default is the connected machine's `rustc`.
@@ -188,7 +186,7 @@ host or VM.
 
 | Message | Cause and fix |
 |---|---|
-| `skipped: no GitHub release for vX.Y.Z (HTTP Error 404 ...)` | The script could not sign in to the private repository. Run `gh auth login`, or set `GH_TOKEN`, and gather again. |
+| `skipped: no GitHub release for vX.Y.Z (HTTP Error 404 ...)` | No release has that tag, or GitHub refused the request (its anonymous rate limit, for one). Check the tag; `gh auth login` or `GH_TOKEN` lifts the limit. |
 | `offline-build: the bundle is damaged or incomplete` / `file(s) damaged or missing` | A file changed in transit. Copy the bundle again; `SHA256SUMS` names the files. |
 | `failed to download` or `no matching package` from Cargo | Cargo ran outside the bundle, so it did not find `aero1553-bundle/.cargo/config.toml`. Use the scripts, or run Cargo from inside the bundle directory. |
 | `linker 'link.exe' not found` | The Visual Studio Build Tools (C++ workload) are not installed. See section 2. |

@@ -1,5 +1,7 @@
 # Aero1553
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=aero1553&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=aero1553)
+
 Decoder for DDC MIL-STD-1553 MIE binary recording files.
 
 Aero1553 reads proprietary binary files produced by Data Device Corporation (DDC) MIL-STD-1553 PCI recording cards and outputs decoded messages in CSV format compatible with DDC's own recording software output.

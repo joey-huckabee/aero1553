@@ -95,8 +95,8 @@ skip_covered = false
 fail_under = 92
 
 # Pylint lints the package source (src/aero1553). Genuine correctness/hygiene
-# checks stay on; checks that conflict with deliberate design choices are
-# disabled below. Run: `uv run pylint src` (from python/).
+# checks stay on; checks that conflict with deliberate design choices or
+# duplicate SonarCloud are disabled below. Run: `uv run pylint src` (from python/).
 [tool.pylint.main]
 # Type stubs (the compiled extension's `_native.pyi`) are read by mypy, which
 # is where they are checked. None of pylint's checks apply to a declaration
@@ -119,8 +119,9 @@ disable = [
     # cycles and keep CLI startup cheap (mirrors the Rust crate's structure).
     "import-outside-toplevel",
     # Size/complexity heuristics with low default thresholds. A binary decoder
-    # is legitimately branchy. (SonarCloud gated cognitive complexity until it
-    # was removed in 5.10.2; nothing gates it now.)
+    # is legitimately branchy, and cognitive complexity is already gated by
+    # SonarCloud (python:S3776) — keeping these would be duplicate, lower-signal
+    # noise.
     "too-many-branches",
     "too-many-locals",
     "too-many-return-statements",
