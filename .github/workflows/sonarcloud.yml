@@ -1,0 +1,393 @@
+# This workflow uses actions that are not certified by GitHub.
+# They are provided by a third-party and are governed by
+# separate terms of service, privacy policy, and support
+# documentation.
+
+# This workflow helps you trigger a SonarCloud analysis of your code and populates
+# GitHub Code Scanning alerts with the vulnerabilities found.
+# Free for open source project.
+
+# 1. Login to SonarCloud.io using your GitHub account
+
+# 2. Import your project on SonarCloud
+#     * Add your GitHub organization first, then add your repository as a new project.
+#     * Please note that many languages are eligible for automatic analysis,
+#       which means that the analysis will start automatically without the need to set up GitHub Actions.
+#     * This behavior can be changed in Administration > Analysis Method.
+#
+# 3. Follow the SonarCloud in-product tutorial
+#     * a. Copy/paste the Project Key and the Organization Key into the args parameter below
+#          (You'll find this information in SonarCloud. Click on "Information" at the bottom left)
+#
+#     * b. Generate a new token and add it to your Github repository's secrets using the name SONAR_TOKEN
+#          (On SonarCloud, click on your avatar on top-right > My account > Security
+#           or go directly to https://sonarcloud.io/account/security/)
+
+# Feel free to take a look at our documentation (https://docs.sonarcloud.io/getting-started/github/)
+# or reach out to our community forum if you need some help (https://community.sonarsource.com/c/help/sc/9)
+
+# The scanner arguments (sources, tests, exclusions, Rust LCOV + Python XML
+# coverage paths) live in the "Analyze with SonarCloud (runner)" step below.
+# projectKey / organization / token come from repository secrets — see the
+# Setup notes below; nothing is hardcoded to a specific org here.
+#
+# Setup (one-time, per the SonarCloud onboarding tutorial):
+#   1. On SonarCloud, add your GitHub org and import this repo as a project.
+#   2. Administration > Analysis Method: turn OFF "Automatic Analysis"
+#      (it conflicts with this CI-based scan and will reject the upload).
+#   3. Add repo secrets: SONAR_TOKEN, SONAR_PROJECT_KEY, SONAR_ORGANIZATION.
+# Until those secrets exist, every analysis step is skipped (safe no-op).
+name: Analyze with SonarCloud
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+
+  # Run on PRs targeting main
+  pull_request:
+    branches: [ main ]
+
+  # Run on Pushes targeting main
+  push:
+    branches: [ main ]
+
+  # Weekly scheduled scan (Monday 03:00 UTC)
+  schedule:
+    - cron: '0 3 * * 1'
+
+# ------------------------------------------------------------------------------
+# Permissions
+# ------------------------------------------------------------------------------
+# contents: read        → required to clone repository
+# pull-requests: read   → allows SonarCloud PR decoration
+# NOTE: security-events: write is implicitly required for SARIF upload
+#       (GitHub enables it automatically for codeql-action/upload-sarif)
+permissions:
+  contents: read
+  pull-requests: read # allows SonarCloud to decorate PRs with analysis results
+  security-events: write  # Needed to upload SARIF results to GitHub
+
+jobs:
+  sonarcloud:
+    runs-on: ubuntu-latest
+
+    # ----------------------------------------------------------------------------
+    # Environment variables (from repository secrets)
+    # ----------------------------------------------------------------------------
+    env:
+      SONAR_ORGANIZATION: ${{ secrets.SONAR_ORGANIZATION }}
+      SONAR_PROJECT_KEY: ${{ secrets.SONAR_PROJECT_KEY }}
+      SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }} # Generate a token on Sonarcloud.io, add it to the secrets of this repo with the name SONAR_TOKEN (Settings > Secrets > Actions > add new repository secret)
+
+    steps:
+      # --------------------------------------------------------------------------
+      # Verify required SonarCloud secrets are present (safe logging)
+      # --------------------------------------------------------------------------
+      - name: Check Sonar secrets (safe)
+
+        run: |
+          test -n "$SONAR_ORGANIZATION" && echo "SONAR_ORGANIZATION is set" || echo "SONAR_ORGANIZATION is NOT set"
+          test -n "$SONAR_PROJECT_KEY" && echo "SONAR_PROJECT_KEY is set" || echo "SONAR_PROJECT_KEY is NOT set"
+          test -n "$SONAR_TOKEN" && echo "SONAR_TOKEN is set" || echo "SONAR_TOKEN is NOT set"
+
+      # --------------------------------------------------------------------------
+      # Checkout repository source code
+      # fetch-depth: 0 ensures full git history for Sonar analysis
+      # --------------------------------------------------------------------------
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      # --------------------------------------------------------------------------
+      # Install Rust toolchain (stable) with LLVM tools for coverage support.
+      # This repo pins no rust-toolchain file; it tracks stable (MSRV 1.88).
+      # ---------------------------------------------------------------------------
+      - name: Install Rust (stable + llvm-tools)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools-preview
+
+      # --------------------------------------------------------------------------
+      # Install cargo-llvm-cov (pinned to match .github/workflows/ci.yml)
+      # Used to generate LCOV coverage data for SonarCloud
+      # --------------------------------------------------------------------------
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-llvm-cov@0.8.6
+
+      # --------------------------------------------------------------------------
+      # Cache Cargo dependencies and build artifacts (crate lives under rust/)
+      # Speeds up subsequent workflow runs
+      # --------------------------------------------------------------------------
+      - name: Cache Cargo
+        uses: actions/cache@v5
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            rust/target
+          key: ${{ runner.os }}-cargo-sonar-${{ hashFiles('rust/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-sonar-
+
+      # --------------------------------------------------------------------------
+      # Generate Rust code coverage in LCOV format (consumed by SonarCloud).
+      # The crate lives under rust/, so run there; the cov-lcov alias in
+      # rust/.cargo/config.toml writes rust/lcov.info and excludes the bin shim,
+      # matching the coverage gate in ci.yml.
+      # --------------------------------------------------------------------------
+      - name: Rust coverage (LCOV)
+        working-directory: rust
+        run: cargo cov-lcov
+
+      # --------------------------------------------------------------------------
+      # Python coverage (Cobertura XML) for SonarCloud — mirrors the ci.yml
+      # Python setup. Writes python/coverage.xml (paths resolve under the
+      # checkout, so SonarCloud maps them to python/src/...).
+      # --------------------------------------------------------------------------
+      # uv provisions the interpreter too (python-version sets UV_PYTHON), and
+      # its version is pinned, so a uv release cannot
+      # change a gate's behaviour unattended.
+      - name: Install uv
+        uses: astral-sh/setup-uv@v10.2.0
+        with:
+          version: "0.12.20"
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: python/uv.lock
+
+      # --locked fails if uv.lock is out of date with pyproject.toml rather
+      # than silently re-resolving. The sync also compiles the PyO3 extension
+      # (python/native) with the runner's preinstalled Rust stable.
+      - name: Synchronize locked dependencies
+        run: uv --directory python sync --locked
+
+      - name: Python coverage (XML)
+        run: uv --directory python run pytest --cov --cov-report=xml   # -> python/coverage.xml
+
+      # --------------------------------------------------------------------------
+      # Install SonarScanner CLI (runs on the runner, can access cargo/clippy)
+      # --------------------------------------------------------------------------
+      # Look for newer versions here https://binaries.sonarsource.com/?prefix=Distribution/sonar-scanner-cli/
+      - name: Install SonarScanner
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_PROJECT_KEY != '' && env.SONAR_ORGANIZATION != '' }}
+        run: |
+          cd "$RUNNER_TEMP"
+          curl -sSLo sonar-scanner.zip https://binaries.sonarsource.com/Distribution/sonar-scanner-cli/sonar-scanner-cli-6.2.1.4610-linux-x64.zip
+          unzip -q sonar-scanner.zip
+          SCANNER_DIR=$(find . -maxdepth 1 -type d -name "sonar-scanner-*")
+          echo "$RUNNER_TEMP/$SCANNER_DIR/bin" >> $GITHUB_PATH
+
+      # --------------------------------------------------------------------------
+      # Verify SonarScanner has been installed correctly
+      # --------------------------------------------------------------------------
+      - name: Verify SonarScanner
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_PROJECT_KEY != '' && env.SONAR_ORGANIZATION != '' }}
+        run: sonar-scanner --version
+
+      # --------------------------------------------------------------------------
+      # Run SonarScanner (runner)
+      # Wait for SonarCloud Quality Gate if push to main (default branch)
+      # Uploads code, metrics, coverage, and issues to SonarCloud
+      # --------------------------------------------------------------------------
+      - name: Analyze with SonarCloud (runner)
+        if: ${{ env.SONAR_TOKEN != '' && env.SONAR_PROJECT_KEY != '' && env.SONAR_ORGANIZATION != '' }}
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
+          # Wait for (and fail on) the Quality Gate on PRs as well as on pushes
+          # to the default branch. Waiting only on main is what let a failing
+          # gate ship: a PR's "SonarCloud Code Analysis" check reported success
+          # for merely uploading the scan, so #70, #71, #72 and #73 all merged
+          # green and only turned the main branch red afterwards. The gate is
+          # now enforced before merge, where it can still be acted on.
+          SONAR_QG_WAIT: ${{ github.event_name == 'pull_request' || (github.event_name == 'push' && github.ref_name == github.event.repository.default_branch) }}
+          # Used below to decide whether this run must label itself as a
+          # non-default branch. Read from the repository rather than hard-coded
+          # so renaming the default branch does not silently break the guard.
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          # The declared release version, so the "Previous version" new-code
+          # definition restarts at each release. Without it every analysis
+          # reported the same (absent) version, and "new code" silently meant
+          # "everything since the project's first analysis".
+          version="$(grep -m1 '^version = ' rust/Cargo.toml | cut -d'"' -f2)"
+          args=(
+            "-Dsonar.projectKey=${SONAR_PROJECT_KEY}"
+            "-Dsonar.organization=${SONAR_ORGANIZATION}"
+            "-Dsonar.projectVersion=${version}"
+            # SonarCloud has no UI setting for the display name; an analysis
+            # parameter is the only way to set it, and it applies on the next
+            # main-branch scan. Pinned here so the name lives in code.
+            "-Dsonar.projectName=Aero1553"
+            "-Dsonar.sources=rust/src,python/src"
+            "-Dsonar.tests=rust/tests,python/tests,tests/conformance"
+            "-Dsonar.exclusions=rust/target/**,rust/.cargo/**,python/dist/**,**/__pycache__/**,docs/**,tests/conformance/inputs/**,tests/conformance/expected/**,.github/**,sonar-scanner*.zip,sonar-scanner-*/**"
+            "-Dsonar.rust.lcov.reportPaths=rust/lcov.info"
+            "-Dsonar.rust.clippy.enabled=false"
+            "-Dsonar.python.version=3.10"
+            "-Dsonar.python.coverage.reportPaths=python/coverage.xml"
+            # pythonsecurity:S8707 ("Agentic workflows should not be vulnerable
+            # to path injection") fires on `--config <path>` reaching the
+            # filesystem in config.py (since v4.0.0 only an existence check --
+            # the read itself is the compiled extension's). It is a false
+            # positive for this
+            # program shape: aero1553 is an operator-run CLI, the config path
+            # IS the interface, and the process holds exactly the permissions of
+            # the user who typed the command — there is no sandbox to escape and
+            # no privilege boundary to cross. The rule's premise (an agent
+            # escaping filesystem restrictions) presumes a confinement this tool
+            # does not have and does not claim.
+            #
+            # The read-safety hardening that WAS warranted is implemented and
+            # kept: the loader requires a *regular file* before reading, so
+            # `--config <dir>` and `--config /dev/zero` are rejected rather than
+            # raising IsADirectoryError or hanging (rust/src/config.rs
+            # load_config, which config.py runs).
+            #
+            # Scoped to the one rule in the one file so any other finding there,
+            # and this rule anywhere else, still fails the build.
+            #
+            # The operator-facing statement of the same decision lives in
+            # docs/CONFIG-REFERENCE.md "Trust boundary". Keep the two in step.
+            # ----------------------------------------------------------------
+            # reader.py / merge.py / dump.py: no suppressions since v4.0.0
+            # ----------------------------------------------------------------
+            #
+            # These three carried S2083 / S8707 entries for the operator-named
+            # input path and the contents of a --manifest file reaching open()
+            # / read_bytes(). Since v4.0.0 none of them opens a file: the
+            # reader, the manifest read and the dump are the Rust crate's, run
+            # through the compiled extension, so the Python code no longer
+            # contains the sinks the entries were for. The judgement they
+            # recorded -- a manifest's contents are exactly as trusted as the
+            # operator who chose it, and reading the named files is the
+            # documented purpose (L2-MRG-001) -- is unchanged.
+            "-Dsonar.issue.ignore.multicriteria=agenticPathInjection"
+            "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.ruleKey=pythonsecurity:S8707"
+            "-Dsonar.issue.ignore.multicriteria.agenticPathInjection.resourceKey=python/src/aero1553/config.py"
+          )
+
+          # A manual or scheduled run on a NON-default ref must be labelled as
+          # its own branch, or SonarCloud files it under the main branch and the
+          # dashboard then reports an unmerged commit as main.
+          #
+          # That is not hypothetical: dispatching this workflow on
+          # fix/sonar-reader-path-findings recorded revision 7478721 under
+          # `branch=main`, so main showed the analysis of code that was not on
+          # main until the merge landed. Harmless once the next push to main
+          # re-analyses, but misleading in the window between, and exactly the
+          # kind of thing someone checks the dashboard to rule out.
+          #
+          # Deliberately NOT set for pull_request events: those use the
+          # sonar.pullrequest.* parameters the SonarSource action supplies, and
+          # passing a branch name alongside them is a configuration error.
+          #
+          # If branch analysis is unavailable on this plan the scanner now fails
+          # with a clear message instead of silently overwriting main -- which is
+          # the better failure of the two.
+          if [ "${GITHUB_EVENT_NAME}" != "pull_request" ] \
+             && [ "${GITHUB_REF_NAME}" != "${DEFAULT_BRANCH}" ]; then
+            echo "${GITHUB_EVENT_NAME} on non-default ref ${GITHUB_REF_NAME} - labelling as its own branch"
+            args+=("-Dsonar.branch.name=${GITHUB_REF_NAME}")
+          fi
+
+          if [ "$SONAR_QG_WAIT" = "true" ]; then
+            echo "${GITHUB_EVENT_NAME} on ${GITHUB_REF_NAME} - waiting for Quality Gate..."
+            args+=("-Dsonar.qualitygate.wait=true" "-Dsonar.qualitygate.timeout=600")
+          fi
+
+          sonar-scanner "${args[@]}"
+
+      # --------------------------------------------------------------------------
+      # Fallback message if SonarCloud is skipped due to missing secrets
+      # --------------------------------------------------------------------------
+      - name: SonarCloud skipped (missing secrets)
+        if: ${{ env.SONAR_TOKEN == '' || env.SONAR_PROJECT_KEY == '' || env.SONAR_ORGANIZATION == '' }}
+        run: echo "Skipping SonarCloud (missing SONAR_TOKEN / SONAR_PROJECT_KEY / SONAR_ORGANIZATION)."
+
+      # --------------------------------------------------------------------------
+      # Setup Python runtime for SARIF export tooling
+      # --------------------------------------------------------------------------
+      - name: Setup Python (for sonar-tools)
+        if: ${{ github.event_name == 'push'
+                && github.ref_name == github.event.repository.default_branch
+                && env.SONAR_TOKEN != ''
+                && env.SONAR_PROJECT_KEY != ''
+                && env.SONAR_ORGANIZATION != '' }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.x"
+
+      # --------------------------------------------------------------------------
+      # Install sonar-tools (community exporter)
+      # Used to pull findings from SonarCloud and emit SARIF
+      # --------------------------------------------------------------------------
+      - name: Install sonar-tools
+        if: ${{ github.event_name == 'push'
+                && github.ref_name == github.event.repository.default_branch
+                && env.SONAR_TOKEN != ''
+                && env.SONAR_PROJECT_KEY != ''
+                && env.SONAR_ORGANIZATION != '' }}
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install sonar-tools
+
+      # --------------------------------------------------------------------------
+      # Debug: Show sonar-findings-export help and supported options
+      # --------------------------------------------------------------------------
+      - name: Show sonar-findings-export help
+        if: ${{ github.event_name == 'push'
+                && github.ref_name == github.event.repository.default_branch
+                && env.SONAR_TOKEN != ''
+                && env.SONAR_PROJECT_KEY != ''
+                && env.SONAR_ORGANIZATION != '' }}
+        run: |
+          echo "sonar-findings-export help:"
+          sonar-findings-export -h || true
+
+      # --------------------------------------------------------------------------
+      # Export SonarCloud issues as SARIF (default branch only)
+      # Filters to BUG and VULNERABILITY only to reduce noise in GitHub Security tab
+      # --------------------------------------------------------------------------
+      - name: Export SonarCloud findings as SARIF
+        if: ${{ github.event_name == 'push'
+                && github.ref_name == github.event.repository.default_branch
+                && env.SONAR_TOKEN != ''
+                && env.SONAR_PROJECT_KEY != ''
+                && env.SONAR_ORGANIZATION != '' }}
+        env:
+          SONAR_HOST_URL: https://sonarcloud.io
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          # Export only bugs + vulnerabilities to keep GitHub Code Scanning noise down.
+          # Remove --sarifNoCustomProperties if you want extra Sonar metadata in SARIF.
+          sonar-findings-export \
+            -k "${SONAR_PROJECT_KEY}" \
+            -o "${SONAR_ORGANIZATION}" \
+            --branch "${GITHUB_REF_NAME}" \
+            --skipVersionCheck \
+            --types VULNERABILITY,BUG \
+            --statuses OPEN,CONFIRMED,REOPENED,TO_REVIEW,REVIEWED \
+            --resolutions "" \
+            --format sarif \
+            --sarifNoCustomProperties \
+            -f sonarcloud.sarif
+
+      # --------------------------------------------------------------------------
+      # Upload SARIF to GitHub Code Scanning
+      # Results appear under Security → Code scanning
+      # Skipped automatically for forked PRs
+      # --------------------------------------------------------------------------
+      - name: Upload SARIF to GitHub Code Scanning
+        # Uploading SARIF doesn’t work for PRs from forks because they won’t have security-events:write
+        if: ${{ github.event_name == 'push'
+                && github.ref_name == github.event.repository.default_branch
+                && env.SONAR_TOKEN != ''
+                && env.SONAR_PROJECT_KEY != ''
+                && env.SONAR_ORGANIZATION != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: sonarcloud.sarif
+          category: sonarcloud

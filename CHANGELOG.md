@@ -19,6 +19,21 @@ shared behavior) holds at any compatible version pair. See
 
 ## [Unreleased]
 
+### Added
+
+- **SonarCloud and CodeQL analysis are back**, now that the repository is public again:
+  `.github/workflows/sonarcloud.yml` (Rust and Python, waiting on the quality gate, with
+  its documented suppressions) and `.github/workflows/codeql.yml` (Rust and Python), as
+  they were in 5.10.1, with the README's quality-gate badge. pylint's size heuristics are
+  again left to SonarCloud's cognitive-complexity check.
+
+### Changed
+
+- **The documentation no longer says the repository is private.** Cloning and downloading
+  a release need no GitHub account (`docs/BUILDING.md`, `docs/USER-GUIDE.md`);
+  `scripts/offline-bundle.py` still uses a GitHub sign-in when there is one, which lifts
+  GitHub's anonymous rate limit.
+
 ## [5.11.0] — 2026-11-08
 
 ### Added

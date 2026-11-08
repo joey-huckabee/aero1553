@@ -590,8 +590,8 @@ jobs:
 
       - name: Run pylint
         # Lints the package source (src/aero1553). The config — curated
-        # disables (lazy imports, the too-many-* size heuristics, etc.) and
-        # max-line-length — lives in
+        # disables (lazy imports, the too-many-* family already covered by
+        # SonarCloud, etc.) and max-line-length — lives in
         # python/pyproject.toml's [tool.pylint.*]. working-directory: python so
         # pylint picks up that config and resolves the package's imports. The
         # gate fails on any message (pylint exits non-zero below 10/10).

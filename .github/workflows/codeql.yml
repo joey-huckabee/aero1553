@@ -1,0 +1,66 @@
+# ----------------------------------------
+# CodeQL Security Scan
+# ----------------------------------------
+# Builds a CodeQL database per language and reports findings to GitHub code
+# scanning (Security tab). Both the Rust crate (under rust/) and the Python
+# package are scanned. Rust is supported only with build-mode: none (no
+# autobuild/manual); Python needs no build either — so CodeQL extracts each
+# database directly from source and the rust/ crate location needs no special
+# handling.
+# ----------------------------------------
+
+name: CodeQL Security Scan
+
+on:
+  # Manual trigger
+  workflow_dispatch:
+
+  # Run on PRs targeting main
+  pull_request:
+    branches: [ main ]
+
+  # Run on pushes to main
+  push:
+    branches: [ main ]
+
+  # Weekly scheduled scan (Monday 03:00 UTC)
+  schedule:
+    - cron: '0 3 * * 1'
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+
+    permissions:
+      security-events: write  # upload SARIF results to GitHub code scanning
+      actions: read           # read metadata about the actions used
+      contents: read          # check out the repository
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Rust is only supported with build-mode: none (no autobuild/manual).
+          - language: rust
+            build-mode: none
+          # Python needs no build either; none extracts directly from source.
+          - language: python
+            build-mode: none
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"

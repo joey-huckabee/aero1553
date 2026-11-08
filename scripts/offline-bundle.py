@@ -87,7 +87,7 @@ class _DropAuthOnRedirect(urllib.request.HTTPRedirectHandler):
 
 
 def github_token() -> str | None:
-    """A token for the private repository: GH_TOKEN or GITHUB_TOKEN, else the GitHub
+    """A GitHub token, if there is one: GH_TOKEN or GITHUB_TOKEN, else the GitHub
     CLI's (``gh auth login``). None if there is none."""
     for name in ("GH_TOKEN", "GITHUB_TOKEN"):
         if os.environ.get(name):
@@ -214,13 +214,14 @@ def release_binaries(out: Path, platforms: list[str], tag: str) -> None:
     """The binaries the release of ``tag`` attaches, checked against the SHA-256 in its
     notes, so the offline build can be compared with what shipped."""
     print(f"release binaries of {tag}")
-    # The repository is private: without a token GitHub answers 404 for the release.
+    # A token is optional: it lifts GitHub's anonymous rate limit, and reads the release if
+    # the repository is ever private again.
     token = github_token()
     url = f"https://api.github.com/repos/{REPO}/releases/tags/{tag}"
     try:
         meta = json.loads(fetch_github(url, token, "application/vnd.github+json"))
     except OSError as exc:
-        hint = "" if token else "; the repository is private: run `gh auth login` or set GH_TOKEN"
+        hint = "" if token else "; `gh auth login` or GH_TOKEN lifts GitHub's rate limit"
         print(f"  skipped: no GitHub release for {tag} ({exc}){hint}")
         return
     for platform in platforms:
