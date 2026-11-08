@@ -140,7 +140,7 @@ version = "0.6.0"
 
 [[package]]
 name = "tablekit-csv"
-version = "0.7.0"
+version = "0.7.1"
 dependencies = [
  "itoa",
  "tablekit",

@@ -46,7 +46,7 @@ path = "src/bin/aero1553.rs"
 # not fetched: tablekit is private, and a vendored copy builds anywhere, offline
 # included. Its own dependencies are itoa and zmij.
 tablekit = { path = "../third_party/tablekit/crates/tablekit", version = "0.6.0" }
-tablekit-csv = { path = "../third_party/tablekit/crates/tablekit-csv", version = "0.7.0" }
+tablekit-csv = { path = "../third_party/tablekit/crates/tablekit-csv", version = "0.7.1" }
 
 # Lint policy lives here so plain `cargo build` / `cargo clippy` enforce it, not
 # just the CI flags. All three pass clean today; they formalize practices the

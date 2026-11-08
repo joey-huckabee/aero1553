@@ -1,6 +1,6 @@
 """Vendor tablekit's CSV writer into third_party/tablekit, and check the copy is unchanged.
 
-    python3 scripts/vendor-tablekit.py update CLONE TAG   # e.g. ../tablekit v0.7.0
+    python3 scripts/vendor-tablekit.py update CLONE TAG   # e.g. ../tablekit v0.7.1
     python3 scripts/vendor-tablekit.py check              # run by repo-hygiene and CI
 
 aero1553 writes its CSV with tablekit-csv (L3-RS-002). tablekit is a private repository, so it

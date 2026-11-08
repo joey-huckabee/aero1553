@@ -51,7 +51,7 @@ read.
 ## tablekit for Parquet (6.x)
 
 **Where it stands.** The vendor CSV is written through tablekit-csv's row writer,
-vendored at tablekit v0.7.0 (`L3-RS-002`). Parquet would come from
+vendored at tablekit v0.7.1 (`L3-RS-002`). Parquet would come from
 `tablekit-parquet` the same way, with the conditions the CSV met:
 
 - the existing decode byte-identical and no slower: `perf/run.py`'s gates and

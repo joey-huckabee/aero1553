@@ -29,7 +29,8 @@
 //! | [`write_source_file`], [`write_source`] | a [`tablekit::Source`], a batch at a time | a table of any size, one batch in memory |
 //! | [`CsvWriter`] | a table in several batches (a [`tablekit::BatchWriter`]) | driving the batches yourself |
 //! | [`CsvFormat`] | a row at a time, as borrowed [`Value`]s, into the caller's buffer | a tool that writes each record as it reads it, allocating nothing per row |
-//! | [`RowWriter`] ([`CsvFormat::begin_row`], [`CsvWriter::write_row_with`]) | a row a cell at a time, typed by the method called | a tool whose columns are fixed in its code, at the speed of a hand-written writer |
+//! | [`RowWriter`] ([`CsvFormat::begin_row`], [`CsvWriter::write_row_with`]) | a row a cell at a time, typed by the method called; an unfinished row is taken back | a tool whose columns are fixed in its code, at the speed of a hand-written writer |
+//! | [`UnguardedRowWriter`] ([`CsvFormat::begin_row_unguarded`]) | the same, without taking back an unfinished row | such a tool that discards its whole output on any error, where the guard's cost is measured to matter |
 //!
 //! A column can be given a [`CellFormat`] other than pandas' default -- hexadecimal for
 //! raw words, a fixed number of decimals for a measured interval -- in
@@ -320,7 +321,8 @@ impl CsvFormat {
 
     /// Starts a row in `out`, to be written a cell at a time. Write every column's cell in
     /// column order with the [`RowWriter`] method for its type and format, then call
-    /// [`RowWriter::finish`].
+    /// [`RowWriter::finish`]. A row dropped before it is finished is taken back; for the same
+    /// writer without that guard, see [`CsvFormat::begin_row_unguarded`].
     ///
     /// ```
     /// use tablekit::{DataType, Field};
@@ -350,12 +352,28 @@ impl CsvFormat {
     /// ```
     #[inline]
     pub fn begin_row<'f, 'o>(&'f self, out: &'o mut Vec<u8>) -> RowWriter<'f, 'o> {
-        let line_start = out.len();
         RowWriter {
+            cells: self.begin_row_unguarded(out),
+        }
+    }
+
+    /// Starts a row in `out` as [`CsvFormat::begin_row`] does, without the rollback guard: a
+    /// row dropped or abandoned by a panic before [`UnguardedRowWriter::finish`] leaves its
+    /// cells in `out`. For a caller that discards its whole output on any error, where the
+    /// guard's cost on a hot path is measured to matter; see [`UnguardedRowWriter`] for when
+    /// that is safe and what it saves.
+    #[inline]
+    pub fn begin_row_unguarded<'f, 'o>(
+        &'f self,
+        out: &'o mut Vec<u8>,
+    ) -> UnguardedRowWriter<'f, 'o> {
+        let line_start = out.len();
+        UnguardedRowWriter {
             format: self,
             out,
             col: 0,
             line_start,
+            na_empty: self.na_empty,
             mismatch: None,
         }
     }
@@ -599,37 +617,83 @@ fn value_type(field: &Field, found: tablekit::DataType) -> TableError {
     }
 }
 
-/// One row, written a cell at a time straight into the output: for a tool whose columns are
-/// fixed in its code, at the speed of a hand-written writer. Start one with
-/// [`CsvFormat::begin_row`] or [`CsvWriter::write_row_with`].
+/// One row, written a cell at a time straight into the output, with no rollback when it is
+/// dropped: for a caller whose columns are fixed in its code and that discards its whole
+/// output on any error. Start one with [`CsvFormat::begin_row_unguarded`]. [`RowWriter`] is
+/// the same writer with a rollback guard, and the one to use unless the guard's cost is
+/// measured to matter.
 ///
 /// Call one method per column, in column order: the one for the column's type
-/// ([`RowWriter::u16`], [`RowWriter::text`], ...) or, for a column with a [`CellFormat`], the
-/// one for its format ([`RowWriter::hex`], [`RowWriter::fixed`]); [`RowWriter::missing`] for
-/// any column. Then [`RowWriter::finish`]. Each method names its column's type and format, so
-/// nothing is looked up per cell; that is where its speed comes from. The bytes are exactly
-/// what [`CsvFormat::row`] writes for the same values.
+/// ([`UnguardedRowWriter::u16`], [`UnguardedRowWriter::text`], ...) or, for a column with a
+/// [`CellFormat`], the one for its format ([`UnguardedRowWriter::hex`],
+/// [`UnguardedRowWriter::fixed`]); [`UnguardedRowWriter::missing`] for any column. Then
+/// [`UnguardedRowWriter::finish`]. Each method names its column's type and format, so nothing
+/// is looked up per cell; that is where its speed comes from. The bytes are exactly what
+/// [`CsvFormat::row`] writes for the same values.
 ///
 /// What is checked:
 ///
-/// - **Every build:** [`RowWriter::finish`] refuses a row with the wrong number of cells and
-///   takes it back. Text is quoted wherever it needs to be, [`RowWriter::text_with`]'s
-///   included, so the file is always valid CSV.
+/// - **Every build:** [`UnguardedRowWriter::finish`] refuses a row with the wrong number of
+///   cells and takes it back. Text is quoted wherever it needs to be,
+///   [`UnguardedRowWriter::text_with`]'s included, so a finished row is always valid CSV.
 /// - **Debug builds** (and so tests): that each cell's method suits its column's type and
-///   format; [`RowWriter::finish`] refuses the row otherwise, naming the column. A release
-///   build does not check this per cell: a caller's code calls the same methods for every row,
-///   so a test that writes one row of each shape proves them all. Where the columns are not
-///   fixed in the caller's code, use [`CsvFormat::row`], which checks every value.
+///   format; [`UnguardedRowWriter::finish`] refuses the row otherwise, naming the column. A
+///   release build does not check this per cell: a caller's code calls the same methods for
+///   every row, so a test that writes one row of each shape proves them all. Where the columns
+///   are not fixed in the caller's code, use [`CsvFormat::row`], which checks every value.
 ///
-/// Dropping an unfinished row takes back its cells, including during unwinding. Only a
-/// successful [`RowWriter::finish`] commits a row. Deliberately forgetting this guard
-/// bypasses rollback, as it does other Rust destructors.
-#[must_use = "finish the row to commit it; dropping it rolls back its cells"]
-pub struct RowWriter<'f, 'o> {
+/// # Unguarded: what an unfinished row leaves
+///
+/// A row that is not finished -- dropped before [`UnguardedRowWriter::finish`], or abandoned
+/// by a panic part-way through -- **leaves the cells written so far in the output**, with no
+/// line ending: the buffer then holds an incomplete line. [`RowWriter`] takes such cells back
+/// instead. A refused row (wrong cell count, or a cell type in a debug build) is taken back by
+/// both.
+///
+/// That is the whole difference, and it is why this type exists: a guard that runs on drop
+/// needs the compiler to keep a clean-up path on every call that may unwind, and in a row of
+/// dozens of inlined cells that path costs time even when nothing panics. Measured on x86
+/// (2 CPUs) for aero1553's 46-column CSV, the whole decode ran 2.5% slower, and a merge 5%
+/// slower, with the guard than without it (`docs/ROW-WRITER-GUARD.md`).
+///
+/// Use it only when an incomplete line can never reach a reader: the output is a temporary
+/// file renamed into place only on success, or a buffer that is thrown away on any error and
+/// panic. Truncating the buffer to its length before [`CsvFormat::begin_row_unguarded`] undoes
+/// an abandoned row by hand.
+///
+/// ```
+/// use tablekit::{DataType, Field};
+/// use tablekit_csv::{CsvFormat, CsvOptions};
+///
+/// let fields = vec![
+///     Field { name: "a".into(), data_type: DataType::U8 },
+///     Field { name: "b".into(), data_type: DataType::Text },
+/// ];
+/// let format = CsvFormat::new(fields, CsvOptions::default())?;
+/// let mut out = Vec::new();
+///
+/// let mut row = format.begin_row_unguarded(&mut out);
+/// row.u8(7);
+/// row.text("x");
+/// row.finish()?;
+/// assert_eq!(out, b"7,x\r\n");
+///
+/// // Abandoned part-way: the cell stays, unlike with `begin_row`.
+/// let mut row = format.begin_row_unguarded(&mut out);
+/// row.u8(8);
+/// drop(row);
+/// assert_eq!(out, b"7,x\r\n8,");
+/// # Ok::<(), tablekit::TableError>(())
+/// ```
+#[must_use = "finish the row to end it; an unguarded row dropped unfinished leaves its cells"]
+pub struct UnguardedRowWriter<'f, 'o> {
     format: &'f CsvFormat,
     out: &'o mut Vec<u8>,
     col: usize,
     line_start: usize,
+    /// Whether `na_rep` is empty, copied from the format: kept here, a missing cell reads it
+    /// without reloading the format through a pointer the output's writes may alias.
+    na_empty: bool,
     /// Debug builds: the first cell whose method did not suit its column, and the type the
     /// method writes.
     mismatch: Option<(usize, tablekit::DataType)>,
@@ -639,10 +703,10 @@ pub struct RowWriter<'f, 'o> {
     clippy::inline_always,
     reason = "the row writer is fast only when every cell inlines into the caller's row: measured in aero1553, where without it a 46-column row ran 1.20x its hand-written writer"
 )]
-impl RowWriter<'_, '_> {
+impl UnguardedRowWriter<'_, '_> {
     /// Counts a cell; in debug builds, checks the method that writes it (`ty`, `format`)
     /// suits the column. `None` suits any column. Each cell is followed by a separator
-    /// ([`RowWriter::end_cell`]), and [`RowWriter::finish`] turns the last one into the line
+    /// ([`UnguardedRowWriter::end_cell`]), and [`RowWriter::finish`] turns the last one into the line
     /// ending: no cell has to ask whether it is the first.
     // HOT PATH: per value.
     #[inline(always)]
@@ -660,7 +724,7 @@ impl RowWriter<'_, '_> {
         self.out.push(b',');
     }
 
-    /// The debug-build check of [`RowWriter::begin_cell`].
+    /// The debug-build check of [`UnguardedRowWriter::begin_cell`].
     fn check(&mut self, expect: Option<(tablekit::DataType, CellFormat)>) {
         let Some((ty, format)) = expect else { return };
         let suits = match (
@@ -680,7 +744,7 @@ impl RowWriter<'_, '_> {
     #[inline(always)]
     pub fn missing(&mut self) {
         self.begin_cell(None);
-        if !self.format.na_empty {
+        if !self.na_empty {
             text(self.out, &self.format.options.na_rep);
         }
         self.end_cell();
@@ -703,7 +767,7 @@ impl RowWriter<'_, '_> {
         if needs_quoting(s.as_bytes()) {
             text(self.out, s);
         } else {
-            self.out.extend_from_slice(s.as_bytes());
+            append_short(self.out, s.as_bytes());
         }
         self.end_cell();
     }
@@ -786,7 +850,7 @@ impl RowWriter<'_, '_> {
         self.end_cell();
     }
 
-    /// An `F32` column with [`CellFormat::Fixed`]`(D)`, as [`RowWriter::fixed`].
+    /// An `F32` column with [`CellFormat::Fixed`]`(D)`, as [`UnguardedRowWriter::fixed`].
     // HOT PATH: per value.
     #[inline(always)]
     pub fn fixed_f32<const D: u8>(&mut self, x: f32) {
@@ -817,7 +881,7 @@ impl RowWriter<'_, '_> {
         self.end_cell();
     }
 
-    /// As [`RowWriter::hex`], lower case ([`CellFormat::HexLower`]`(W)`).
+    /// As [`UnguardedRowWriter::hex`], lower case ([`CellFormat::HexLower`]`(W)`).
     // HOT PATH: per value.
     #[inline(always)]
     pub fn hex_lower<const W: u8>(&mut self, v: impl HexValue) {
@@ -835,6 +899,12 @@ impl RowWriter<'_, '_> {
     /// taken back.
     #[inline(always)]
     pub fn finish(mut self) -> Result<(), TableError> {
+        self.complete()
+    }
+
+    /// [`UnguardedRowWriter::finish`] without consuming the writer, for [`RowWriter`].
+    #[inline(always)]
+    fn complete(&mut self) -> Result<(), TableError> {
         let expected = self.format.schema.len();
         if self.col != expected {
             self.out.truncate(self.line_start);
@@ -847,21 +917,67 @@ impl RowWriter<'_, '_> {
         // The separator after the last cell (there is one: no table has no columns).
         self.out.pop();
         self.format.end_row(self.out, self.line_start);
-        self.line_start = self.out.len(); // Drop now retains the completed row.
         Ok(())
+    }
+}
+
+/// One row, written a cell at a time straight into the output, and taken back if it is not
+/// finished: for a tool whose columns are fixed in its code, at the speed of a hand-written
+/// writer. Start one with [`CsvFormat::begin_row`] or [`CsvWriter::write_row_with`].
+///
+/// Every cell method is [`UnguardedRowWriter`]'s, reached through `Deref` -- see it for the
+/// methods, what they write and what is checked. A `RowWriter` adds one guarantee: **dropping
+/// an unfinished row takes back its cells, including during unwinding.** Only a successful
+/// [`RowWriter::finish`] commits a row. Deliberately forgetting this guard
+/// (`std::mem::forget`) bypasses rollback, as it does other Rust destructors.
+///
+/// The guard has a cost on a hot path; where the whole output is discarded on any error
+/// anyway, [`CsvFormat::begin_row_unguarded`] writes the same bytes without it.
+#[must_use = "finish the row to commit it; dropping it rolls back its cells"]
+pub struct RowWriter<'f, 'o> {
+    cells: UnguardedRowWriter<'f, 'o>,
+}
+
+impl RowWriter<'_, '_> {
+    /// Ends the row and commits it, as [`UnguardedRowWriter::finish`].
+    ///
+    /// # Errors
+    ///
+    /// As [`UnguardedRowWriter::finish`]; the row is taken back.
+    #[inline]
+    pub fn finish(mut self) -> Result<(), TableError> {
+        let finished = self.cells.complete();
+        // A completed row is kept by the drop below; a refused one was already taken back.
+        self.cells.line_start = self.cells.out.len();
+        finished
+    }
+}
+
+impl<'f, 'o> std::ops::Deref for RowWriter<'f, 'o> {
+    type Target = UnguardedRowWriter<'f, 'o>;
+    #[inline]
+    fn deref(&self) -> &Self::Target {
+        &self.cells
+    }
+}
+
+impl std::ops::DerefMut for RowWriter<'_, '_> {
+    #[inline]
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.cells
     }
 }
 
 impl Drop for RowWriter<'_, '_> {
     #[inline]
     fn drop(&mut self) {
-        self.out.truncate(self.line_start);
+        self.cells.out.truncate(self.cells.line_start);
     }
 }
 
 macro_rules! row_writer_integers {
     ($($name:ident: $ty:ty => $data_type:ident),* $(,)?) => {
-        impl RowWriter<'_, '_> {
+        impl UnguardedRowWriter<'_, '_> {
             $(
                 #[doc = concat!("A `", stringify!($data_type), "` column's value, in decimal.")]
                 // HOT PATH: per value.
@@ -881,7 +997,7 @@ row_writer_integers! {
     u8: u8 => U8, u16: u16 => U16, u32: u32 => U32, u64: u64 => U64,
 }
 
-/// Builds one text cell for [`RowWriter::text_with`]. It notes, as text is added, whether
+/// Builds one text cell for [`UnguardedRowWriter::text_with`]. It notes, as text is added, whether
 /// the cell will need quoting, so nothing is read back: numbers never need it, and for a
 /// literal character the check is settled when compiling.
 pub struct TextBuilder<'o> {
@@ -954,11 +1070,11 @@ impl TextBuilder<'_> {
             self.quote |= matches!(byte, b',' | b'"' | b'\r' | b'\n');
             self.quotes += usize::from(byte == b'"');
         }
-        self.out.extend_from_slice(s.as_bytes());
+        append_short(self.out, s.as_bytes());
     }
 }
 
-/// An unsigned integer [`RowWriter::hex`] takes, naming the column type it belongs in.
+/// An unsigned integer [`UnguardedRowWriter::hex`] takes, naming the column type it belongs in.
 pub trait HexValue: Copy + sealed::Sealed {
     /// The column type this value belongs in.
     fn data_type(self) -> tablekit::DataType;
@@ -1016,14 +1132,62 @@ fn hex_const<const W: u8>(out: &mut Vec<u8>, v: u64, digits: &[u8; 16]) {
         hex(out, v, W, digits);
         return;
     }
-    let mut buf = [0u8; 16];
-    let cells = &mut buf[..usize::from(W)];
-    let mut rest = v;
-    for slot in cells.iter_mut().rev() {
-        *slot = digits[usize::try_from(rest & 0xF).unwrap_or(0)];
-        rest >>= 4;
+    // Each digit is a table lookup of one nibble; the common widths are written as one array
+    // of that size, so the copy is a fixed-size store, as a hand-written writer does it.
+    let d = |shift: u32| digits[usize::try_from((v >> shift) & 0xF).unwrap_or(0)];
+    match W {
+        2 => out.extend_from_slice(&[d(4), d(0)]),
+        4 => out.extend_from_slice(&[d(12), d(8), d(4), d(0)]),
+        8 => out.extend_from_slice(&[d(28), d(24), d(20), d(16), d(12), d(8), d(4), d(0)]),
+        _ => {
+            let mut buf = [0u8; 16];
+            let cells = &mut buf[..usize::from(W)];
+            let mut rest = v;
+            for slot in cells.iter_mut().rev() {
+                *slot = digits[usize::try_from(rest & 0xF).unwrap_or(0)];
+                rest >>= 4;
+            }
+            out.extend_from_slice(cells);
+        }
     }
-    out.extend_from_slice(cells);
+}
+
+/// Appends `bytes`. Up to 16 bytes -- a label, a code, a short name -- are copied with two
+/// overlapping copies of a fixed size, which compile to a few loads and stores; a copy of a
+/// length known only when running is otherwise a `memcpy` call per cell. Longer text is
+/// copied as usual.
+// HOT PATH: per value.
+#[expect(
+    clippy::inline_always,
+    reason = "a short copy is only cheaper than memcpy when it inlines into the cell"
+)]
+#[inline(always)]
+fn append_short(out: &mut Vec<u8>, bytes: &[u8]) {
+    let len = bytes.len();
+    if len > 16 {
+        out.extend_from_slice(bytes);
+        return;
+    }
+    let start = out.len();
+    out.extend_from_slice(&[0u8; 16]);
+    let cell = &mut out[start..start + 16];
+    match len {
+        0 => {}
+        1 => cell[0] = bytes[0],
+        2..=3 => {
+            cell[..2].copy_from_slice(&bytes[..2]);
+            cell[len - 2..len].copy_from_slice(&bytes[len - 2..]);
+        }
+        4..=7 => {
+            cell[..4].copy_from_slice(&bytes[..4]);
+            cell[len - 4..len].copy_from_slice(&bytes[len - 4..]);
+        }
+        _ => {
+            cell[..8].copy_from_slice(&bytes[..8]);
+            cell[len - 8..len].copy_from_slice(&bytes[len - 8..]);
+        }
+    }
+    out.truncate(start + len);
 }
 
 /// `x` (finite) with exactly `D` decimals, as Rust's and Python's `.{D}f` write it: rounded

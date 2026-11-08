@@ -27,7 +27,9 @@ use crate::parallel::render_all;
 pub use crate::parallel::{THREADS_MAX, THREADS_MIN, default_threads};
 use crate::{log_info, log_warn};
 use tablekit::{DataType, Field};
-use tablekit_csv::{CellFormat, CsvFormat, CsvOptions, LineEnding, RowWriter, TextBuilder};
+use tablekit_csv::{
+    CellFormat, CsvFormat, CsvOptions, LineEnding, TextBuilder, UnguardedRowWriter,
+};
 
 // ── Path identity (L2-WRT-014) ────────────────────────────────────────
 
@@ -679,7 +681,13 @@ pub(crate) fn render_message<'a>(
                 }
             })?),
         };
-    let mut cells = VENDOR_FORMAT.begin_row(row);
+    // Unguarded (tablekit's `begin_row_unguarded`): a row abandoned part-way would stay in
+    // `row`, but none can reach a reader. The one failure, `CalendarUnavailable`, is raised
+    // above, before the row starts; a finished row is complete; and `row` is a block written
+    // out only after every row in it has rendered, into an output committed only when the
+    // whole decode succeeds -- a panic discards both. On a 2-CPU x86 runner the rollback
+    // guard tablekit otherwise keeps cost the whole decode 2.5% and a merge 5%.
+    let mut cells = VENDOR_FORMAT.begin_row_unguarded(row);
     match (formatted, msg.timestamp) {
         (Some(text), _) => cells.text(&text),
         (None, Timestamp::Irig(t)) => cells.text_with(|b| push_irig_doy(b, &t)),
@@ -696,7 +704,7 @@ pub(crate) fn render_message<'a>(
 /// Render one CSV row into `row` (appended; the caller clears it).
 #[cfg(test)]
 fn render_row(row: &mut Vec<u8>, msg: &MieMessage, timestamp: &str) {
-    let mut cells = VENDOR_FORMAT.begin_row(row);
+    let mut cells = VENDOR_FORMAT.begin_row_unguarded(row);
     cells.text(timestamp);
     render_fields(&mut cells, msg, None);
     let finished = cells.finish();
@@ -748,7 +756,7 @@ impl<'a> MuxCells<'a> {
         }
     }
 
-    fn write(&mut self, cells: &mut RowWriter<'_, '_>, mux: &'a Arc<String>) {
+    fn write(&mut self, cells: &mut UnguardedRowWriter<'_, '_>, mux: &'a Arc<String>) {
         if let Some(&(_, start, end)) = self.cells.iter().find(|c| Arc::ptr_eq(c.0, mux)) {
             cells.text(&self.text[start..end]);
         } else if self.cells.len() < MUX_CELLS {
@@ -764,7 +772,7 @@ impl<'a> MuxCells<'a> {
 
 /// Write every column after `TIME_STAMP`.
 fn render_fields<'a>(
-    cells: &mut RowWriter<'_, '_>,
+    cells: &mut UnguardedRowWriter<'_, '_>,
     msg: &'a MieMessage,
     mux: Option<&mut MuxCells<'a>>,
 ) {
@@ -1471,9 +1479,9 @@ mod tests {
             one(DataType::U16, CellFormat::HexUpper(4)),
             one(DataType::U8, CellFormat::Default),
         );
-        let cell = |format: &CsvFormat, write: &dyn Fn(&mut RowWriter<'_, '_>)| {
+        let cell = |format: &CsvFormat, write: &dyn Fn(&mut UnguardedRowWriter<'_, '_>)| {
             let mut out = Vec::new();
-            let mut cells = format.begin_row(&mut out);
+            let mut cells = format.begin_row_unguarded(&mut out);
             write(&mut cells);
             cells.finish().unwrap();
             out.pop(); // the LF
