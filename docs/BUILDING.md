@@ -27,8 +27,8 @@ build:
 gh auth login
 gh repo clone joey-huckabee/aero1553
 cd aero1553
-git checkout v5.10.1            # the release to build; or stay on main
-python3 scripts/offline-bundle.py ../aero1553-bundle --ref v5.10.1
+git checkout v5.11.0            # the release to build; or stay on main
+python3 scripts/offline-bundle.py ../aero1553-bundle --ref v5.11.0
 ```
 
 `scripts/offline-bundle.py` writes `aero1553-bundle/`, about 600 MB with both platforms:
