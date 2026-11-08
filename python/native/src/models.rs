@@ -189,7 +189,6 @@ fn calendar_error(py: Python<'_>, err: CalendarError) -> PyErr {
 #[pyclass(
     frozen,
     eq,
-    skip_from_py_object,
     name = "TypeWord",
     module = "aero1553.models"
 )]
@@ -317,7 +316,6 @@ impl PyTypeWord {
 #[pyclass(
     frozen,
     eq,
-    skip_from_py_object,
     name = "CommandWord",
     module = "aero1553.models"
 )]
@@ -425,7 +423,6 @@ impl PyCommandWord {
 #[pyclass(
     frozen,
     eq,
-    skip_from_py_object,
     name = "IrigTimestamp",
     module = "aero1553.models"
 )]
@@ -545,7 +542,6 @@ impl PyIrigTimestamp {
 #[pyclass(
     frozen,
     eq,
-    skip_from_py_object,
     name = "StandardTimestamp",
     module = "aero1553.models"
 )]
@@ -667,7 +663,6 @@ fn command_word_object(py: Python<'_>, cw: Option<CommandWord>) -> PyResult<Boun
 #[pyclass(
     frozen,
     eq,
-    skip_from_py_object,
     name = "MieMessage",
     module = "aero1553.models"
 )]

@@ -29,6 +29,18 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **The SLES 12 SP5 binary is built with cargo-libc 0.6.0** (was 0.5.0), the latest
+  release. 0.6.0 refuses an option given twice on its command line and changes nothing
+  about how a binary is built, linked or inspected; aero1553 never repeats one. Proven in
+  CI on this change: the binary built with 0.6.0 compared against 5.11.0's (see the pull
+  request). The stripped-binary `libgcc_s` report is still "unresolved", so the binding
+  check stays.
+- **The Python extension uses PyO3 0.30.1** (was 0.29.2), the latest. Its only effect on
+  aero1553's code: `skip_from_py_object` is now PyO3's default, so the option is dropped
+  from five classes. The extension's locked `libc` and `unicode-ident` take their latest
+  patch releases. Everything else is already current: the core crate's `itoa` 1.0.18 and
+  `zmij` 1.0.23 (pinned through tablekit) and SUSE's SLES 12 SP5 image (12.5.6.11.20, the
+  `latest` tag's amd64 image).
 - **The documentation no longer says the repository is private.** Cloning and downloading
   a release need no GitHub account (`docs/BUILDING.md`, `docs/USER-GUIDE.md`);
   `scripts/offline-bundle.py` still uses a GitHub sign-in when there is one, which lifts
