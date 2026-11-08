@@ -29,12 +29,14 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
-- **The SLES 12 SP5 binary is built with cargo-libc 0.6.0** (was 0.5.0), the latest
-  release. 0.6.0 refuses an option given twice on its command line and changes nothing
-  about how a binary is built, linked or inspected; aero1553 never repeats one. Proven in
-  CI on this change: the binary built with 0.6.0 compared against 5.11.0's (see the pull
-  request). The stripped-binary `libgcc_s` report is still "unresolved", so the binding
-  check stays.
+- **The SLES 12 SP5 binary is built with cargo-libc 0.7.0** (was 0.5.0), the latest
+  release. 0.6.0 refuses an option given twice on its command line, which aero1553 never
+  does; 0.7.0 changes how cargo-libc publishes and selects its prepared glibc providers
+  (atomic, immutable generations, through libc-abi-tools 0.6.0). Neither changes cargo-libc's
+  own source, the glibc ABI inputs, clock linking or the system `libgcc_s` unwinder. Proven
+  in CI on each change: the binary built with the new tool, from a fresh install and a fresh
+  provider, compared byte for byte with 5.11.0's (see the pull requests). The stripped-binary
+  `libgcc_s` report is still "unresolved", so the binding check stays.
 - **The Python extension uses PyO3 0.30.1** (was 0.29.2), the latest. Its only effect on
   aero1553's code: `skip_from_py_object` is now PyO3's default, so the option is dropped
   from five classes. The extension's locked `libc` and `unicode-ident` take their latest
