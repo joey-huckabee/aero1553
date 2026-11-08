@@ -154,7 +154,7 @@ cd rust && cargo build --release
 python scripts/pe-imports.py rust/target/release/aero1553.exe
 
 # The SLES 12 SP5 binary (x86-64 Linux, Clang/GCC/binutils), as CI builds it:
-cargo install --locked cargo-libc@0.6.0      # the version CI pins (CARGO_LIBC_VERSION)
+cargo install --locked cargo-libc@0.7.0      # the version CI pins (CARGO_LIBC_VERSION)
 cd rust && cargo libc build --distro sles-12-sp5 \
     --artifact target/x86_64-unknown-linux-gnu/release/aero1553 -- --release --locked
 cargo libc inspect target/x86_64-unknown-linux-gnu/release/aero1553 --max-glibc 2.22
@@ -170,7 +170,7 @@ Linux with Docker -- WSL2 on a Windows machine included -- gives CI's result:
 
 ```bash
 sudo apt install clang gcc binutils python3 docker.io   # or Docker Desktop's WSL integration
-cargo install --locked cargo-libc@0.6.0                  # the version CI pins
+cargo install --locked cargo-libc@0.7.0                  # the version CI pins
 bash scripts/sles-check.sh                               # builds, then checks
 ```
 

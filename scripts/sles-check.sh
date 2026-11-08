@@ -92,7 +92,7 @@ cid=$(docker create "$SLES_IMAGE" /bin/true)
 docker export "$cid" | tar -x -C "$sles" --no-same-owner --exclude='dev/*'
 docker rm "$cid" >/dev/null
 grep -E '^(NAME|VERSION)=' "$sles/etc/os-release"
-# cargo-libc's comparison: "missing" (2) fails. On a stripped binary 0.5.0 and 0.6.0 report
+# cargo-libc's comparison: "missing" (2) fails. On a stripped binary 0.5.0 to 0.7.0 report
 # "unresolved" (3) for the symbols, though the version nodes match; the binding check
 # below covers the symbols.
 rc=0
