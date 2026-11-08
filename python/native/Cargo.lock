@@ -4,7 +4,7 @@ version = 4
 
 [[package]]
 name = "aero1553"
-version = "5.10.1"
+version = "5.11.0"
 dependencies = [
  "tablekit",
  "tablekit-csv",
@@ -12,7 +12,7 @@ dependencies = [
 
 [[package]]
 name = "aero1553-py"
-version = "5.10.1"
+version = "5.11.0"
 dependencies = [
  "aero1553",
  "pyo3",
