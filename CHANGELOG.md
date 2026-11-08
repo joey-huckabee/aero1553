@@ -21,6 +21,9 @@ shared behavior) holds at any compatible version pair. See
 
 ### Added
 
+- **`scripts/vendor-tablekit.py`**: vendors tablekit's CSV crates at a tag (`update`) and
+  checks the vendored copy is exactly that tag (`check`, in repo-hygiene and so in CI).
+
 - **`scripts/sles-check.sh`**: CI's whole check of the SLES 12 SP5 binary as one script
   (`L3-RS-018`): the glibc 2.22 symbol check, the tests under a simulated kernel 4.12, the
   conformance suite, and the run on SUSE's SLES 12 SP5 userland. The `rust-glibc-2-22` job
@@ -49,11 +52,27 @@ shared behavior) holds at any compatible version pair. See
 
 ### Changed
 
+- **The CSV rows are written by tablekit's CSV writer** (`L3-RS-002`). tablekit is the
+  maintainer's table writer shared by the FATMOPs tools; `writer.rs` now renders each row
+  through tablekit-csv's unguarded row writer (`begin_row_unguarded`) over the 46 columns,
+  with the hexadecimal words as `CellFormat::HexUpper(4)` and `DELTA` as
+  `CellFormat::Fixed(6)`, instead of its own renderer. **The output is unchanged, byte for
+  byte**: the 224 conformance cases on both CLIs, the golden pins, and every 256 MiB
+  comparison. Speed against aero1553's own writer, 256 MiB recordings on a 2-CPU x86 runner
+  (one rendering thread, where rendering sets the pace): decode 1.014-1.016, merge
+  1.005-1.006. The row writer runs without tablekit's rollback-on-drop guard, which cost
+  decode 2.5% and merge 5% there; `writer.rs` records why no unfinished row can reach a
+  reader. tablekit-csv 0.7.1 is vendored in `third_party/tablekit` (only
+  `tablekit` and `tablekit-csv`; `scripts/vendor-tablekit.py`, checked by repo-hygiene), so
+  the crate's dependencies are now tablekit-csv and its `itoa` and `zmij`; the build, the
+  offline bundle and the SLES 12 SP5 binary need no credential and no network for it.
+  `rust/deny.toml` ignores unpublished crates (tablekit's declare no licence) and allows
+  their workspace's path dependencies.
 - **Roadmap: the vendor CSV can move to tablekit too** (`docs/ROADMAP.md`).
   tablekit PR #18 adds cell formats (hexadecimal, fixed decimals) and a
   cell-at-a-time row writer; on the golden recording it rendered the 46-column
   CSV byte-identically at 0.97x the time of aero1553's own writer. The move
-  still needs the full performance gates on CI x86 and a tablekit 0.7.0 tag.
+  still needs the full performance gates on CI x86 and a tablekit release tag.
   The suggestion that tablekit add CI is withdrawn: its own rules forbid CI,
   and aero1553 needs a release tag from it, not CI.
 - **Roadmap: tablekit for the new CSV and Parquet outputs, in 6.x**

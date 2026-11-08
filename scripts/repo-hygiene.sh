@@ -535,6 +535,15 @@ if [[ "$(profile_of rust/Cargo.toml)" != "$(profile_of python/native/Cargo.toml)
     bad "[profile.release] differs between rust/ and python/native/ -- the extension and the binary would be built differently"
 fi
 
+# ── 22. The vendored tablekit is the tag it names (L3-RS-002) ─────────
+# third_party/tablekit is tablekit's CSV writer at a tag. A local edit there would
+# fork the library every FATMOPs tool shares; change tablekit upstream instead.
+step "third_party/tablekit matches its SHA256SUMS"
+if ! python3 scripts/vendor-tablekit.py check >/dev/null; then
+    python3 scripts/vendor-tablekit.py check || true
+    bad "third_party/tablekit was edited -- change tablekit upstream, tag it, and run scripts/vendor-tablekit.py update"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────
 if (( failures )); then
     printf '%shygiene: %d check(s) failed%s\n' "$RED" "$failures" "$RESET" >&2

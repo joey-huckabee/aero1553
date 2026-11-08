@@ -17,8 +17,9 @@ disconnected machine as it is:
     OUT/release/                   the release binaries of REF, to compare a build against
     OUT/SHA256SUMS                 a checksum for every file in OUT
 
-The CLI itself needs no crate at all (L3-RS-002); the vendored crates are for the Python
-extension (PyO3) and for cargo-libc. Every download is checked against the SHA-256 its
+The CLI needs only tablekit's CSV writer, which the repository vendors, and its itoa and
+zmij (L3-RS-002); the other vendored crates are for the Python extension (PyO3) and for
+cargo-libc. Every download is checked against the SHA-256 its
 publisher gives (PyPI, crates.io, static.rust-lang.org, the GitHub release notes). Only
 the standard library is used.
 

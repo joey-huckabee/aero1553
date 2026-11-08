@@ -10,6 +10,7 @@ This guide is for **maintainers**. End-user CLI usage belongs in [`docs/USER-GUI
 
 ```
 aero1553/
+├── third_party/tablekit/   tablekit's CSV writer, vendored at a tag (see §2, "tablekit")
 ├── rust/                   Rust crate (edition 2024, MSRV 1.88)
 │   ├── Cargo.toml / Cargo.lock
 │   ├── .cargo/config.toml  cargo-llvm-cov coverage aliases (cov / cov-lcov / cov-ci)
@@ -86,6 +87,29 @@ cd rust
 cargo build
 cargo test
 ```
+
+### tablekit (the CSV writer, vendored)
+
+The CSV rows are written by `tablekit-csv`, the maintainer's own table writer shared by the
+FATMOPs tools (`L3-RS-002`). tablekit is private, so it is vendored in `third_party/tablekit`
+at a tablekit tag rather than fetched: a clone, a CI run and an offline bundle build without a
+credential for it. Only `tablekit` and `tablekit-csv` are kept, with a workspace manifest
+trimmed to them; `SHA256SUMS` there names the tag and commit and checks every file.
+
+- **Never edit `third_party/tablekit`.** `scripts/repo-hygiene.sh` runs
+  `python3 scripts/vendor-tablekit.py check`, which fails on any changed, missing or added
+  file. A fix goes to tablekit itself.
+- **To move to a new tablekit tag**, with a local clone that can read it:
+
+  ```bash
+  python3 scripts/vendor-tablekit.py update ../tablekit v0.8.0
+  (cd rust && cargo update -p tablekit-csv -p tablekit) && (cd python/native && cargo update -w)
+  ```
+
+  Bump the `version` of the two path dependencies in `rust/Cargo.toml` to the crates' own,
+  then treat it as any change to the CSV path: the conformance suite byte-exact, the
+  performance gates, and a `perf-baseline`-labelled pull request (the 256 MiB comparison
+  against the last release).
 
 ### Python
 
